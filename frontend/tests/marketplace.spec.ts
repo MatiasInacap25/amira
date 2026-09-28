@@ -1,0 +1,152 @@
+import { expect, test } from "@playwright/test";
+
+const servicesResponse = {
+  items: [
+    {
+      profileId: "profile-test-1",
+      providerName: "Prestador de prueba",
+      category: "mudanza",
+      description: "Traslados de hogar dentro de la ciudad.",
+      location: "Santiago",
+      logoUrl: null,
+    },
+  ],
+  total: 1,
+  limit: 20,
+  offset: 0,
+};
+
+test("landing links lead to service search and shared-route search", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("navigation", { name: "Navegación principal" }).getByRole("link", { name: "Servicios" })).toHaveAttribute("href", "/servicios");
+  await expect(page.getByRole("link", { name: "Explorar servicios" })).toHaveAttribute("href", "/servicios");
+  await expect(page.getByRole("link", { name: "Buscar viajes compartidos" })).toHaveAttribute("href", "/rutas-compartidas");
+});
+
+test("service search sends only supported filters and displays API results without invented trust claims", async ({ page }) => {
+  let requestedUrl = "";
+  await page.route("**/api/services?*", async (route) => {
+    requestedUrl = route.request().url();
+    await route.fulfill({ json: servicesResponse });
+  });
+
+  await page.goto("/servicios");
+  await expect(page.getByRole("heading", { name: "Prestador de prueba" })).toBeVisible();
+  await page.getByLabel("Buscar por servicio o prestador").fill("camioneta");
+  await page.getByLabel("Categoría").selectOption("mudanza");
+  await page.getByLabel("Comuna o ciudad").fill("Santiago");
+  await page.getByRole("button", { name: "Buscar servicios" }).click();
+
+  await expect.poll(() => requestedUrl).toContain("q=camioneta");
+  const query = new URL(requestedUrl).searchParams;
+  expect(query.get("category")).toBe("mudanza");
+  expect(query.get("location")).toBe("Santiago");
+  expect(query.has("origin")).toBe(false);
+  expect(query.has("destination")).toBe(false);
+  await expect(page.getByText("No se muestran calificaciones ni verificaciones que Amira no ofrece.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /reservar|contratar|cotizar/i })).toHaveCount(0);
+});
+
+test("service search exposes loading, empty, and error states", async ({ page }) => {
+  await page.route("**/api/services?*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    await route.fulfill({ json: { ...servicesResponse, items: [], total: 0 } });
+  });
+
+  await page.goto("/servicios");
+  await expect(page.getByRole("status")).toContainText("Cargando servicios");
+  await expect(page.getByRole("status")).toContainText("No encontramos servicios");
+
+  await page.route("**/api/services?*", (route) => route.abort());
+  await page.getByLabel("Buscar por servicio o prestador").fill("error");
+  await page.getByRole("button", { name: "Buscar servicios" }).click();
+  await expect(page.locator(".marketplace-error")).toContainText("No pudimos cargar los servicios");
+  await expect(page.getByRole("button", { name: "Reintentar" })).toBeVisible();
+});
+
+test("shared-route search sends supported filters and shows ordered stops without a booking action", async ({ page }) => {
+  let requestedUrl = "";
+  await page.route("**/api/shared-routes?*", async (route) => {
+    requestedUrl = route.request().url();
+    await route.fulfill({
+      json: {
+        items: [{
+          tripId: "trip-test-1",
+          providerName: "Transportista de prueba",
+          origin: "Santiago",
+          destination: "Concepción",
+          departureAt: "2026-10-12T09:00:00-03:00",
+          stops: [
+            { stopNumber: 1, estimatedAt: "2026-10-12T11:00:00-03:00" },
+            { stopNumber: 2, estimatedAt: "2026-10-12T13:30:00-03:00" },
+          ],
+        }],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      },
+    });
+  });
+
+  await page.goto("/rutas-compartidas");
+  await page.getByLabel("Origen").fill("Santiago");
+  await page.getByLabel("Destino").fill("Concepción");
+  await page.getByLabel("Desde la fecha").fill("2026-10-10");
+  await page.getByLabel("Hasta la fecha").fill("2026-10-20");
+  await page.getByRole("button", { name: "Buscar rutas" }).click();
+
+  const query = new URL(requestedUrl).searchParams;
+  expect(query.get("departureFrom")).toContain("2026-10-10T00:00:00");
+  expect(query.get("departureFrom")).toMatch(/[+-]\d{2}:\d{2}$/);
+  expect(query.get("origin")).toBe("Santiago");
+  expect(query.get("destination")).toBe("Concepción");
+  expect(query.get("departureTo")).toContain("2026-10-20T23:59:59.999");
+  expect(query.get("departureTo")).toMatch(/[+-]\d{2}:\d{2}$/);
+  await expect(page.getByRole("heading", { name: "Santiago a Concepción" })).toBeVisible();
+  await expect(page.getByText("Parada intermedia 1")).toBeVisible();
+  await expect(page.getByText("Parada intermedia 2")).toBeVisible();
+  await expect(page.getByRole("button", { name: /reservar|contratar|consultar espacio/i })).toHaveCount(0);
+  await expect(page.getByText(/No es una reserva/)).toBeVisible();
+});
+
+test("shared-route search renders loading, empty, and failure feedback", async ({ page }) => {
+  await page.route("**/api/shared-routes?*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await route.fulfill({ json: { items: [], total: 0, limit: 20, offset: 0 } });
+  });
+  await page.goto("/rutas-compartidas");
+  await expect(page.getByRole("status")).toContainText("Cargando rutas");
+  await expect(page.getByRole("status")).toContainText("No encontramos rutas");
+
+  await page.route("**/api/shared-routes?*", (route) => route.abort());
+  await page.getByLabel("Origen").fill("Santiago");
+  await page.getByRole("button", { name: "Buscar rutas" }).click();
+  await expect(page.locator(".marketplace-error")).toContainText("No pudimos cargar las rutas");
+});
+
+test("marketplace pages remain usable on a narrow mobile viewport", async ({ page }) => {
+  await page.route("**/api/services?*", async (route) => route.fulfill({ json: { ...servicesResponse, items: [], total: 0 } }));
+  await page.route("**/api/shared-routes?*", async (route) => route.fulfill({ json: { items: [], total: 0, limit: 20, offset: 0 } }));
+  await page.setViewportSize({ width: 320, height: 760 });
+  await page.goto("/servicios");
+  const dimensions = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
+  expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport);
+  await expect(page.getByRole("button", { name: "Buscar servicios" })).toBeVisible();
+  await page.goto("/rutas-compartidas");
+  const routeDimensions = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
+  expect(routeDimensions.body).toBeLessThanOrEqual(routeDimensions.viewport);
+  await expect(page.getByRole("button", { name: "Buscar rutas" })).toBeVisible();
+});
+
+test("mobile landing navigation exposes and opens the service and shared-route pages", async ({ page }) => {
+  await page.route("**/api/services?*", async (route) => route.fulfill({ json: { ...servicesResponse, items: [], total: 0 } }));
+  await page.goto("/");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  const navigation = page.getByRole("navigation", { name: "Navegación móvil" });
+  await expect(navigation.getByRole("link", { name: "Buscar servicios" })).toHaveAttribute("href", "/servicios");
+  await expect(navigation.getByRole("link", { name: "Rutas compartidas" })).toHaveAttribute("href", "/rutas-compartidas");
+  await navigation.getByRole("link", { name: "Servicios" }).click();
+  await expect(page).toHaveURL(/\/servicios$/);
+  await expect(page.getByRole("heading", { name: "Encuentra el servicio que necesitas." })).toBeVisible();
+});
