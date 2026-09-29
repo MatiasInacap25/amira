@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from amira_api.account_routes import router as account_router
 from amira_api.public_routes import router as public_router
 from amira_api.settings import get_settings
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name)
+app.include_router(account_router)
 app.include_router(public_router)
 
 app.add_middleware(
@@ -13,7 +15,7 @@ app.add_middleware(
     allow_origins=settings.allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Amira-Email-Fallback-Proof"],
 )
 
 
