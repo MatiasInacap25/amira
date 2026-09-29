@@ -48,11 +48,11 @@ def test_database_engine_forces_psycopg_tls_and_bounded_timeouts(monkeypatch) ->
         engine.dispose()
 
 
-def test_rls_migration_covers_all_26_tables_and_alembic_history() -> None:
+def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
     migration = load_public_migration()
 
-    assert len(Base.metadata.tables) == 26
-    assert set(migration.PUBLIC_TABLES) - {"alembic_version"} == set(Base.metadata.tables)
+    assert len(Base.metadata.tables) == 28
+    assert (set(migration.PUBLIC_TABLES) - {"alembic_version"}) | set(load_auth_migration().RLS_TABLES) == set(Base.metadata.tables)
     assert "alembic_version" in migration.PUBLIC_TABLES
 
 
@@ -66,3 +66,28 @@ def test_demo_seed_is_labeled_and_does_not_create_auth_or_payment_records() -> N
     assert 'INSERT INTO auth.users' not in source
     assert 'INSERT INTO public."Pago"' not in source
     assert 'INSERT INTO public."Desembolso"' not in source
+
+
+def load_auth_migration():
+    migration_path = Path(__file__).parents[1] / "alembic" / "versions" / "20260928_0003_auth_profile_and_challenge_schema.py"
+    spec = spec_from_file_location("auth_profile_migration", migration_path)
+    migration = module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(migration)
+    return migration
+
+
+def test_auth_migration_fails_closed_for_unrecognized_role_labels_and_protects_new_tables() -> None:
+    migration = load_auth_migration()
+    source = Path(migration.__file__).read_text(encoding="utf-8")
+
+    assert migration.RLS_TABLES == ("DriverInvitation", "EmailFallbackChallenge")
+    assert "Unrecognized existing role labels" in source
+    assert "[DEMO] fixture owner" in source
+    assert "[DEMO] proveedor de prueba" in source
+    assert "REVOKE ALL PRIVILEGES ON TABLE public.%I FROM PUBLIC" in source
+    assert "REVOKE ALL PRIVILEGES ON TABLE public.%I FROM anon" in source
+    assert "REVOKE ALL PRIVILEGES ON TABLE public.%I FROM authenticated" in source
+    assert "Cannot downgrade: independent drivers require nullable Conductor.ID_perfil" in source
+    assert "independent or activated profile state would be lost" in source
+    assert "invitation or fallback challenge records would be lost" in source

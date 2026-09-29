@@ -63,6 +63,33 @@ def test_driver_and_public_profile_are_separate_memberships() -> None:
         constraint.name == "uq_conductor_user"
         for constraint in driver.constraints
     )
-    assert driver.c["ID_perfil"].nullable is False
+    assert driver.c["ID_perfil"].nullable is True
     assert profile.c["ID_user"].unique is True
     assert profile.c["Rut_Empresa"].nullable is True
+
+
+def test_auth_profile_and_challenge_tables_encode_server_owned_state() -> None:
+    metadata = Base.metadata
+    user_roles = metadata.tables["Rol_Usuario"]
+    profile_roles = metadata.tables["Rol_Perfil"]
+    profile = metadata.tables["Perfil"]
+    driver = metadata.tables["Conductor"]
+    invitations = metadata.tables["DriverInvitation"]
+    email_challenges = metadata.tables["EmailFallbackChallenge"]
+
+    assert any(constraint.name == "uq_rol_usuario_code" for constraint in user_roles.constraints)
+    assert any(constraint.name == "uq_rol_perfil_code" for constraint in profile_roles.constraints)
+    assert profile.c["kind"].nullable is False
+    assert profile.c["public_activated_at"].nullable is True
+    assert driver.c["ID_perfil"].nullable is True
+    assert any(constraint.name == "uq_driver_invitation_token_hash" for constraint in invitations.constraints)
+    assert invitations.c["target_email"].nullable is False
+    assert any(constraint.name == "ck_driver_invitation_target_email_normalized" for constraint in invitations.constraints)
+    assert invitations.c["expires_at"].nullable is False
+    assert email_challenges.c["code_hash"].nullable is False
+    assert email_challenges.c["auth_session_id"].nullable is False
+    assert email_challenges.c["expires_at"].nullable is False
+
+
+def test_invitation_and_fallback_tables_are_in_metadata() -> None:
+    assert {"DriverInvitation", "EmailFallbackChallenge"} <= set(Base.metadata.tables)

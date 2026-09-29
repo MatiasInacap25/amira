@@ -28,7 +28,7 @@ Users need verified accounts and provider profiles that can be found from servic
 - User explicitly authorized an audited initial Git baseline, followed by a feature branch and per-task commits. Stage only the parent-reviewed exact project-file allowlist; never use `git add .`. Exclude `.env` and secrets, generated output, caches, agent-private/tool state, and embedded Git repositories.
 - Configured TDD mode: strict TDD not established in available project notes; ordinary tests/functional checks are required. Runners: backend `uv run pytest`; frontend `npm run test:e2e`, `npm run lint`, `npm run build`.
 - Implementation route: delegated direct. Trigger evidence: this change spans substantially more than four files and requires coordinated frontend, backend, schema, API, auth/security, and test work. Parent maps the repository; one bounded writer owns each coordinated source batch.
-- Delivery strategy: `ask-on-risk` default; forecast exceeds the ~400-line delivery heuristic, so ask for chain strategy before any feature work-unit commit. Root is an unborn `master`; parent is auditing a minimal exact baseline allowlist under user authorization before branching.
+- Delivery strategy: `ask-on-risk`; the user selected `feature-branch-chain` (child PRs target the previous slice and only the tracker branch merges to main). The feature branch is `feature/auth-and-public-provider-profiles`; audited baseline commit is `1878cd3`.
 
 ## Acceptance criteria
 1. Password login and signup work through Supabase Auth; unconfirmed email cannot provision/enter protected app flows.
@@ -53,10 +53,12 @@ Users need verified accounts and provider profiles that can be found from servic
 ## Progress and verification evidence
 - Architecture approved by user; email fallback accepted with the explicit understanding it is not Supabase AAL2.
 - User-approved decisions: profile activation completeness; 7-day invitation expiry; Resend invitation email delivery; post-confirmation account/profile data entry; invitee may register via invite; no TOTP backup; email code may replace SMS when phone unavailable; company owners can list/revoke pending invites and resend with a new 7-day link that invalidates the previous one.
-- Exploration confirmed no source changes so far; detailed findings are in current session context.
-- Checks run: none yet.
+- T1 implementation is present but not committed: role codes, profile kind/activation, independent-driver employer semantics, invitation and email-fallback challenge persistence, fail-closed legacy role backfill, and default-deny RLS in `backend/src/amira_api/models.py` and `backend/alembic/versions/20260928_0003_auth_profile_and_challenge_schema.py`; structural tests updated in `backend/tests/test_models.py` and `backend/tests/test_public_db.py`.
+- T1 verification: writer and parent each ran `cd backend; uv run pytest` — 21 passed (pytest emitted a non-fatal cache permission warning); writer ran `uv run alembic upgrade head --sql` successfully offline; parent ran `git diff --check` with no reported whitespace errors. No hosted database was contacted. Graphify query/update failed with `uv trampoline failed to canonicalize script path`.
+- T1 remains unchecked until its work-unit commit and post-commit RDD assessment. T1 is ready for its first feature commit.
+- Backend login/registration endpoints and frontend login/registration pages have not been implemented yet. User authorized sequential delegated implementation for auth endpoints and frontend pages, with no routine authorization prompts.
 
 ## Next step
-Finish the parent-reviewed explicit baseline file allowlist, create the feature branch, then implement delegated work units. Keep live email/auth and delivery operations out of scope until separately authorized/configured.
+Commit and assess T1, then record its commit and close the task. Continue one delegated writer at a time for T2 and T5, with the remaining tasks sequenced by their dependencies. Keep live email/auth and remote operations out of scope until separately authorized/configured.
 
 

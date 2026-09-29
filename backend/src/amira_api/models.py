@@ -70,9 +70,14 @@ class Usuario(Base):
 
 class RolUsuario(Base):
     __tablename__ = "Rol_Usuario"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_rol_usuario_code"),
+        CheckConstraint("code IN ('client', 'company_owner', 'company_driver', 'independent_driver', 'demo_fixture')", name="ck_rol_usuario_code_allowed"),
+    )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column("Rol", String(80), nullable=False, unique=True)
+    code: Mapped[str] = mapped_column("code", String(64), nullable=False)
     users: Mapped[list[Usuario]] = relationship(back_populates="role")
 
 
@@ -86,9 +91,14 @@ class TipoConductor(Base):
 
 class RolPerfil(Base):
     __tablename__ = "Rol_Perfil"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_rol_perfil_code"),
+        CheckConstraint("code IN ('company', 'independent_driver', 'demo_fixture')", name="ck_rol_perfil_code_allowed"),
+    )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column("Rol", String(80), nullable=False, unique=True)
+    code: Mapped[str] = mapped_column("code", String(64), nullable=False)
     profiles: Mapped[list[Perfil]] = relationship(back_populates="role")
 
 
@@ -96,6 +106,7 @@ class Perfil(Base):
     __tablename__ = "Perfil"
     __table_args__ = (
         CheckConstraint("length(trim(\"Rut_Empresa\")) > 0 OR \"Rut_Empresa\" IS NULL", name="ck_perfil_company_tax_id_nonblank"),
+        CheckConstraint("kind IN ('company', 'independent_driver')", name="ck_perfil_kind_allowed"),
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -107,6 +118,8 @@ class Perfil(Base):
     location: Mapped[str | None] = mapped_column("Ubicacion", String(200))
     registered_at: Mapped[datetime] = mapped_column("fecha_registro", DateTime(timezone=True), nullable=False, server_default=func.now())
     company_tax_id: Mapped[str | None] = mapped_column("Rut_Empresa", String(16))
+    kind: Mapped[str] = mapped_column("kind", String(32), nullable=False)
+    public_activated_at: Mapped[datetime | None] = mapped_column("public_activated_at", DateTime(timezone=True))
 
     owner: Mapped[Usuario] = relationship(back_populates="profiles")
     role: Mapped[RolPerfil] = relationship(back_populates="profiles")
@@ -119,20 +132,57 @@ class Perfil(Base):
     payouts: Mapped[list[Desembolso]] = relationship(back_populates="beneficiary_profile")
 
 
+class DriverInvitation(Base):
+    __tablename__ = "DriverInvitation"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_driver_invitation_token_hash"),
+        CheckConstraint("target_email = lower(btrim(target_email))", name="ck_driver_invitation_target_email_normalized"),
+        Index("ix_driver_invitation_company_profile_id", "company_profile_id"),
+        Index("ix_driver_invitation_expiry", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column("id", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    company_profile_id: Mapped[UUID] = mapped_column("company_profile_id", ForeignKey("Perfil.ID", ondelete="CASCADE"), nullable=False)
+    target_email: Mapped[str] = mapped_column("target_email", String(320), nullable=False)
+    token_hash: Mapped[str] = mapped_column("token_hash", String(128), nullable=False)
+    created_by_user_id: Mapped[UUID] = mapped_column("created_by_user_id", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column("expires_at", DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column("accepted_at", DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column("revoked_at", DateTime(timezone=True))
+
+
+class EmailFallbackChallenge(Base):
+    __tablename__ = "EmailFallbackChallenge"
+    __table_args__ = (
+        CheckConstraint("attempt_count >= 0", name="ck_email_fallback_attempt_count_nonnegative"),
+        Index("ix_email_fallback_user_expiry", "user_id", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column("id", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    user_id: Mapped[UUID] = mapped_column("user_id", ForeignKey("Usuario.ID", ondelete="CASCADE"), nullable=False)
+    auth_session_id: Mapped[str] = mapped_column("auth_session_id", String(128), nullable=False)
+    code_hash: Mapped[str] = mapped_column("code_hash", String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column("expires_at", DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column("consumed_at", DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column("attempt_count", Integer, nullable=False, server_default=text("0"))
+
+
 class Conductor(Base):
     __tablename__ = "Conductor"
     __table_args__ = (UniqueConstraint("ID_user", name="uq_conductor_user"),)
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id: Mapped[UUID] = mapped_column("ID_user", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False)
-    employer_profile_id: Mapped[UUID] = mapped_column("ID_perfil", ForeignKey("Perfil.ID", ondelete="RESTRICT"), nullable=False, index=True)
+    employer_profile_id: Mapped[UUID | None] = mapped_column("ID_perfil", ForeignKey("Perfil.ID", ondelete="RESTRICT"), nullable=True, index=True)
     role_name: Mapped[str | None] = mapped_column("Rol", String(80))
     registered_at: Mapped[datetime] = mapped_column("Fecha_registro", DateTime(timezone=True), nullable=False, server_default=func.now())
     driver_type_id: Mapped[UUID] = mapped_column("Tipo_Conductor", ForeignKey("Tipo_Conductor.ID", ondelete="RESTRICT"), nullable=False, index=True)
     location: Mapped[str | None] = mapped_column("Ubicacion", String(200))
 
     user: Mapped[Usuario] = relationship(back_populates="driver_record")
-    employer_profile: Mapped[Perfil] = relationship(back_populates="drivers", foreign_keys=[employer_profile_id])
+    employer_profile: Mapped[Perfil | None] = relationship(back_populates="drivers", foreign_keys=[employer_profile_id])
     type: Mapped[TipoConductor] = relationship(back_populates="drivers")
     trip_assignments: Mapped[list[ViajeVehiculo]] = relationship(back_populates="driver")
     contracted_services: Mapped[list[Servicio]] = relationship(back_populates="contracted_driver", foreign_keys="Servicio.contracted_driver_id")
