@@ -34,6 +34,13 @@ def upgrade() -> None:
     op.execute('ALTER TABLE "Rol_Perfil" ADD COLUMN "code" VARCHAR(64)')
     op.execute('UPDATE "Rol_Usuario" SET "code" = \'demo_fixture\' WHERE "Rol" = \'[DEMO] fixture owner\'')
     op.execute('UPDATE "Rol_Perfil" SET "code" = \'demo_fixture\' WHERE "Rol" = \'[DEMO] proveedor de prueba\'')
+    # Reapply codes only to the deterministic role rows seeded by this revision.
+    # Both ID and exact display name must match; all other labels still fail closed.
+    for table, seeded_roles in (("Rol_Usuario", ACCOUNT_ROLES), ("Rol_Perfil", PROFILE_ROLES)):
+        for role_id, code, name in seeded_roles:
+            op.execute(
+                f"""UPDATE "{table}" SET "code" = '{code}' WHERE "ID" = '{role_id}' AND "Rol" = '{name}'"""
+            )
     op.execute(
         """
         DO $$

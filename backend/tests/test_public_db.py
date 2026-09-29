@@ -91,3 +91,44 @@ def test_auth_migration_fails_closed_for_unrecognized_role_labels_and_protects_n
     assert "Cannot downgrade: independent drivers require nullable Conductor.ID_perfil" in source
     assert "independent or activated profile state would be lost" in source
     assert "invitation or fallback challenge records would be lost" in source
+
+
+class AlembicOperationRecorder:
+    def __init__(self):
+        self.calls = []
+
+    def __getattr__(self, name):
+        def record(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+        return record
+
+
+def test_role_seed_codes_survive_upgrade_downgrade_upgrade_structurally() -> None:
+    migration = load_auth_migration()
+    recorder = AlembicOperationRecorder()
+    original_op = migration.op
+    migration.op = recorder
+
+    try:
+        migration.upgrade()
+        first_upgrade = [args[0] for name, args, _ in recorder.calls if name == "execute" and args]
+        recorder.calls.clear()
+
+        migration.downgrade()
+        downgrade_calls = list(recorder.calls)
+        recorder.calls.clear()
+
+        migration.upgrade()
+        second_upgrade = [args[0] for name, args, _ in recorder.calls if name == "execute" and args]
+    finally:
+        migration.op = original_op
+
+    assert ("drop_column", ("Rol_Usuario", "code"), {}) in downgrade_calls
+    assert ("drop_column", ("Rol_Perfil", "code"), {}) in downgrade_calls
+    assert not any("DELETE FROM \"Rol_Usuario\"" in sql or "DELETE FROM \"Rol_Perfil\"" in sql for name, args, _ in downgrade_calls if name == "execute" for sql in args)
+
+    for table, seeded_roles in (("Rol_Usuario", migration.ACCOUNT_ROLES), ("Rol_Perfil", migration.PROFILE_ROLES)):
+        for role_id, code, name in seeded_roles:
+            expected = f"""UPDATE "{table}" SET "code" = '{code}' WHERE "ID" = '{role_id}' AND "Rol" = '{name}'"""
+            assert expected in first_upgrade
+            assert expected in second_upgrade
