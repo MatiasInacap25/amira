@@ -15,14 +15,29 @@ type AccountRole = "client" | "company_owner" | "independent_driver";
 type PhoneFactor = { id: string; phone?: string; status?: string };
 
 const AUTH_ERROR = "No pudimos completar la operación. Revisa los datos e intenta nuevamente.";
+const REGISTRATION_DRAFT_KEY = "amira-registration-draft";
+type RegistrationDraft = {
+  email: string;
+  phone: string;
+  firstName: string;
+  lastName: string;
+  nationalId: string;
+  birthDate: string;
+  role: AccountRole;
+  displayName: string;
+  companyTaxId: string;
+  alsoDriver: boolean;
+};
 
 function messageFor(error: unknown) {
   const raw = error instanceof Error ? error.message : "";
+  if (raw === "Las contraseñas no coinciden.") return raw;
   if (/invalid login credentials|invalid credentials/i.test(raw)) return "El correo o la contraseña no son correctos.";
   if (/email not confirmed/i.test(raw)) return "Confirma tu correo antes de iniciar sesión. Revisa también la carpeta de correo no deseado.";
   if (/invalid verification code|mfa.*verification|challenge/i.test(raw)) return "El código no es válido o venció. Solicita otro código e inténtalo nuevamente.";
   if (/rate limit|too many requests/i.test(raw)) return "Hubo demasiados intentos. Espera un momento antes de volver a probar.";
   if (/independent driver provisioning is not configured/i.test(raw)) return "El registro de conductor independiente todavía requiere configuración. Contacta al equipo de Amira para continuar.";
+  if (/^El registro como conductor vinculado/.test(raw)) return raw;
   if (/API todavía no está configurada correctamente/i.test(raw)) return raw;
   if (/^Confirma tu correo|^La sesión |^Completa la verificación|^Completa tu correo|^Ingresa un número|^La API todavía|^El registro de conductor|^Ya existe una cuenta|^Revisa los campos|^El servicio no está disponible/.test(raw)) return raw;
   return AUTH_ERROR;
@@ -37,27 +52,48 @@ function getSafeNext() {
   return safeNextPath(new URLSearchParams(window.location.search).get("next"));
 }
 
-export function AuthPanel({ mode }: { mode: AuthMode }) {
+export function AuthPanel({ mode, providerIntent = false }: { mode: AuthMode; providerIntent?: boolean }) {
   const router = useRouter();
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [configError, setConfigError] = useState("");
   const [step, setStep] = useState<AuthStep>("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [nationalId, setNationalId] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [factorId, setFactorId] = useState("");
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [role, setRole] = useState<AccountRole>("client");
+  const [role, setRole] = useState<AccountRole>(providerIntent ? "independent_driver" : "client");
   const [displayName, setDisplayName] = useState("");
   const [companyTaxId, setCompanyTaxId] = useState("");
+  const [alsoDriver, setAlsoDriver] = useState(false);
   const [confirmedUser, setConfirmedUser] = useState<User | null>(null);
+
+  function clearRegistrationValues() {
+    setEmail("");
+    setPassword("");
+    setPasswordConfirm("");
+    setPhone("");
+    setNationalId("");
+    setBirthDate("");
+    setFirstName("");
+    setLastName("");
+    setRole(providerIntent ? "independent_driver" : "client");
+    setDisplayName("");
+    setCompanyTaxId("");
+    setAlsoDriver(false);
+    setPhoneVerified(false);
+  }
 
   useEffect(() => {
     let active = true;
@@ -90,6 +126,25 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           return;
         }
         setEmail(data.user.email ?? "");
+        try {
+          const rawDraft = window.sessionStorage.getItem(REGISTRATION_DRAFT_KEY);
+          const draft = rawDraft ? JSON.parse(rawDraft) as RegistrationDraft : null;
+          if (draft && draft.email.toLowerCase() === (data.user.email ?? "").toLowerCase()) {
+            setPhone(draft.phone);
+            setFirstName(draft.firstName);
+            setLastName(draft.lastName);
+            setNationalId(draft.nationalId);
+            setBirthDate(draft.birthDate);
+            setRole(draft.role);
+            setDisplayName(draft.displayName);
+            setCompanyTaxId(draft.companyTaxId);
+            setAlsoDriver(draft.alsoDriver);
+          } else {
+            window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+          }
+        } catch {
+          window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+        }
         await beginSecondFactor(client, data.user);
       } catch (cause) {
         setError(messageFor(cause));
@@ -118,6 +173,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
       return;
     }
     setFactorId(factor.id);
+    setPhoneVerified(factor.status === "verified");
     if (factor.phone) setPhone(factor.phone);
     await issueChallenge(supabase, factor.id);
   }
@@ -140,18 +196,29 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
     setNotice("");
     try {
       if (mode === "register") {
+        if (password !== passwordConfirm) throw new Error("Las contraseñas no coinciden.");
+        const registrationDraft: RegistrationDraft = {
+          email: email.trim(), phone: phone.trim(), firstName: firstName.trim(), lastName: lastName.trim(),
+          nationalId: nationalId.trim(), birthDate, role, displayName: displayName.trim(),
+          companyTaxId: companyTaxId.trim(), alsoDriver,
+        };
+        window.sessionStorage.setItem(REGISTRATION_DRAFT_KEY, JSON.stringify(registrationDraft));
         const callback = new URL("/auth/callback", window.location.origin);
-        callback.searchParams.set("next", "/registro?step=account");
+        callback.searchParams.set("next", providerIntent ? "/registro?step=account&intent=provider" : "/registro?step=account");
         const { data, error: signupError } = await client.auth.signUp({
           email: email.trim(),
           password,
           options: { emailRedirectTo: callback.toString() },
         });
         if (signupError) throw signupError;
+        setPassword("");
+        setPasswordConfirm("");
         if (data.session) {
           const { data: verified, error: verifyError } = await client.auth.getUser();
           if (verifyError || !isEmailConfirmed(verified.user)) {
             await client.auth.signOut();
+            window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+            clearRegistrationValues();
             throw new Error("Confirma tu correo antes de continuar.");
           }
           await beginSecondFactor(client, verified.user);
@@ -230,6 +297,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
     try {
       const { error: verifyError } = await client.auth.mfa.verify({ factorId, challengeId, code: code.trim() });
       if (verifyError) throw verifyError;
+      setPhoneVerified(true);
       await completeAuthentication(client);
     } catch (cause) {
       setError(messageFor(cause));
@@ -247,15 +315,27 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
       const { data: verified, error: verifyError } = await client.auth.getUser();
       if (verifyError || !isEmailConfirmed(verified.user) || verified.user.id !== confirmedUser.id) {
         await client.auth.signOut();
+        window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+        setConfirmedUser(null);
+        setStep("credentials");
+        clearRegistrationValues();
         throw new Error("La sesión no corresponde a un correo confirmado. Inicia sesión nuevamente.");
       }
       const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
       if (assuranceError || assurance.currentLevel !== "aal2") throw new Error("Completa la verificación SMS antes de crear tu cuenta.");
       const { data: sessionData, error: sessionError } = await client.auth.getSession();
       if (sessionError || !sessionData.session?.access_token) throw sessionError ?? new Error("La sesión expiró. Inicia sesión nuevamente.");
-      const payload: Record<string, string> = { role, first_name: firstName.trim(), last_name: lastName.trim() };
+      const payload: Record<string, string | boolean> = {
+        role,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        national_id: nationalId.trim(),
+        birth_date: birthDate,
+        phone: phone.trim(),
+      };
       if (role !== "client") payload.display_name = displayName.trim();
       if (role === "company_owner") payload.company_tax_id = companyTaxId.trim();
+      if (role === "company_owner") payload.also_driver = alsoDriver;
       const response = await accountApiFetch("/api/account/provision", sessionData.session.access_token, process.env.NEXT_PUBLIC_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -267,6 +347,8 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           const body = await response.json() as { detail?: string };
           if (response.status === 503 && role === "independent_driver") {
             detail = "El registro de conductor independiente todavía requiere configuración. Contacta al equipo de Amira para continuar.";
+          } else if (response.status === 503 && role === "company_owner" && alsoDriver) {
+            detail = "El registro como conductor vinculado todavía requiere configuración. La cuenta de empresa puede continuar sin activar esa opción.";
           } else if (response.status === 409) {
             detail = "Ya existe una cuenta con datos distintos para este correo. Contacta al equipo de Amira para revisarlo.";
           } else if (response.status === 422) {
@@ -277,6 +359,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
         } catch { /* Keep the safe generic message for non-JSON failures. */ }
         throw new Error(detail);
       }
+      window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
       router.replace(getSafeNext());
     } catch (cause) {
       setError(messageFor(cause));
@@ -290,7 +373,9 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
     setBusy(true);
     try {
       await client.auth.signOut();
+      window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
       setConfirmedUser(null);
+      clearRegistrationValues();
       setStep("credentials");
       setNotice("Cerraste tu sesión de forma segura.");
       router.replace(mode === "register" ? "/registro" : "/login");
@@ -334,6 +419,43 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
           {step === "credentials" && !client && !configError && <p aria-live="polite" className="auth-loading" role="status">Preparando el acceso seguro…</p>}
           {step === "credentials" && (
             <form className="auth-form" onSubmit={handleCredentials}>
+              {mode === "register" && <>
+                <div className="auth-name-fields">
+                  <label className="auth-field" htmlFor="auth-first-name">Nombre
+                    <input autoComplete="given-name" id="auth-first-name" maxLength={120} onChange={(event) => setFirstName(event.target.value)} required value={firstName} />
+                  </label>
+                  <label className="auth-field" htmlFor="auth-last-name">Apellido
+                    <input autoComplete="family-name" id="auth-last-name" maxLength={120} onChange={(event) => setLastName(event.target.value)} required value={lastName} />
+                  </label>
+                </div>
+                <label className="auth-field" htmlFor="auth-phone">Teléfono móvil
+                  <input autoComplete="tel" id="auth-phone" inputMode="tel" onChange={(event) => setPhone(event.target.value)} placeholder="+56912345678" required type="tel" value={phone} />
+                  <span className="auth-help">Incluye el código de país. Este número también se verificará por SMS.</span>
+                </label>
+                <label className="auth-field" htmlFor="auth-national-id">RUT personal
+                  <input autoComplete="off" id="auth-national-id" maxLength={16} onChange={(event) => setNationalId(event.target.value)} placeholder="12.345.678-5" required value={nationalId} />
+                </label>
+                <label className="auth-field" htmlFor="auth-birth-date">Fecha de nacimiento
+                  <input autoComplete="bday" id="auth-birth-date" max={new Date().toISOString().slice(0, 10)} min="1900-01-01" onChange={(event) => setBirthDate(event.target.value)} required type="date" value={birthDate} />
+                </label>
+                {providerIntent && <>
+                  <label className="auth-field" htmlFor="auth-provider-role">Quiero ofrecer mis servicios como
+                    <select id="auth-provider-role" onChange={(event) => setRole(event.target.value as AccountRole)} value={role}>
+                      <option value="independent_driver">Conductor independiente</option>
+                      <option value="company_owner">Empresa transportista</option>
+                    </select>
+                  </label>
+                  {role === "company_owner" && <>
+                    <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa
+                      <input autoComplete="off" id="auth-company-tax-id" maxLength={16} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} />
+                    </label>
+                    <label className="auth-checkbox" htmlFor="auth-also-driver">
+                      <input checked={alsoDriver} id="auth-also-driver" onChange={(event) => setAlsoDriver(event.target.checked)} type="checkbox" />
+                      También quiero registrarme como conductor de mi propia empresa para reservar servicios.
+                    </label>
+                  </>}
+                </>}
+              </>}
               <label className="auth-field" htmlFor="auth-email">Correo electrónico
                 <input autoComplete="email" id="auth-email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
               </label>
@@ -345,6 +467,9 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
                 </span>
                 <span className="auth-help">Usa al menos 8 caracteres. Puedes usar tu gestor de contraseñas.</span>
               </div>
+              {mode === "register" && <label className="auth-field" htmlFor="auth-password-confirm">Confirmar contraseña
+                <input autoComplete="new-password" id="auth-password-confirm" minLength={8} onChange={(event) => setPasswordConfirm(event.target.value)} required type={passwordVisible ? "text" : "password"} value={passwordConfirm} />
+              </label>}
               <button className="auth-submit" disabled={busy || !client} type="submit">{busy ? "Procesando…" : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}<ArrowRight aria-hidden="true" size={17} /></button>
             </form>
           )}
@@ -382,7 +507,7 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
             <form className="auth-form" onSubmit={handleProvision}>
               <label className="auth-field" htmlFor="auth-role">¿Cómo usarás Amira?
                 <select id="auth-role" onChange={(event) => setRole(event.target.value as AccountRole)} value={role}>
-                  <option value="client">Buscar un servicio de transporte</option>
+                  {!providerIntent && <option value="client">Buscar un servicio de transporte</option>}
                   <option value="company_owner">Publicar como empresa transportista</option>
                   <option value="independent_driver">Ofrecer servicios como conductor independiente</option>
                 </select>
@@ -391,8 +516,24 @@ export function AuthPanel({ mode }: { mode: AuthMode }) {
                 <label className="auth-field" htmlFor="auth-first-name">Nombre<input autoComplete="given-name" id="auth-first-name" maxLength={120} onChange={(event) => setFirstName(event.target.value)} required value={firstName} /></label>
                 <label className="auth-field" htmlFor="auth-last-name">Apellido<input autoComplete="family-name" id="auth-last-name" maxLength={120} onChange={(event) => setLastName(event.target.value)} required value={lastName} /></label>
               </div>
+              <label className="auth-field" htmlFor="auth-account-phone">Teléfono móvil
+                <input autoComplete="tel" id="auth-account-phone" inputMode="tel" readOnly={phoneVerified} required type="tel" value={phone} />
+                <span className="auth-help">Este es el número que acabas de verificar por SMS.</span>
+              </label>
+              <label className="auth-field" htmlFor="auth-account-national-id">RUT personal
+                <input autoComplete="off" id="auth-account-national-id" maxLength={16} onChange={(event) => setNationalId(event.target.value)} required value={nationalId} />
+              </label>
+              <label className="auth-field" htmlFor="auth-account-birth-date">Fecha de nacimiento
+                <input autoComplete="bday" id="auth-account-birth-date" max={new Date().toISOString().slice(0, 10)} min="1900-01-01" onChange={(event) => setBirthDate(event.target.value)} required type="date" value={birthDate} />
+              </label>
               {role !== "client" && <label className="auth-field" htmlFor="auth-display-name">Nombre público del prestador<input autoComplete="organization" id="auth-display-name" maxLength={160} onChange={(event) => setDisplayName(event.target.value)} required value={displayName} /></label>}
-              {role === "company_owner" && <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa<input autoComplete="off" id="auth-company-tax-id" maxLength={16} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} /></label>}
+              {role === "company_owner" && <>
+                <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa<input autoComplete="off" id="auth-company-tax-id" maxLength={16} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} /></label>
+                <label className="auth-checkbox" htmlFor="auth-account-also-driver">
+                  <input checked={alsoDriver} id="auth-account-also-driver" onChange={(event) => setAlsoDriver(event.target.checked)} type="checkbox" />
+                  También quiero registrarme como conductor de mi propia empresa para reservar servicios.
+                </label>
+              </>}
               <button className="auth-submit" disabled={busy} type="submit">{busy ? "Creando cuenta…" : "Completar registro"}<ArrowRight aria-hidden="true" size={17} /></button>
             </form>
           )}

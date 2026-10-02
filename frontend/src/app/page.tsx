@@ -238,7 +238,7 @@ export default function HomePage() {
           <div className="header-actions">
             <Link className="login-link" href="/login">Iniciar sesión</Link>
             <Link className="login-link home-register-link" href="/registro">Crear cuenta</Link>
-            <a className="button button-primary header-cta" href="#transportistas">Ofrecer mis servicios <ArrowUpRight aria-hidden="true" size={16} /></a>
+            <Link className="button button-primary header-cta" href="/registro?intent=provider">Ofrecer mis servicios <ArrowUpRight aria-hidden="true" size={16} /></Link>
             <button
               aria-label={mobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
               aria-expanded={mobileMenuOpen}
@@ -261,7 +261,7 @@ export default function HomePage() {
             <Link href="/login" onClick={() => setMobileMenuOpen(false)}>Iniciar sesión</Link>
             <Link href="/registro" onClick={() => setMobileMenuOpen(false)}>Crear cuenta</Link>
             <a href="#buscar" onClick={() => setMobileMenuOpen(false)}>Solicitar un servicio</a>
-            <a href="#transportistas" onClick={() => setMobileMenuOpen(false)}>Registrar mi vehículo</a>
+            <Link href="/registro?intent=provider" onClick={() => setMobileMenuOpen(false)}>Registrar mi vehículo</Link>
           </nav>
         )}
       </header>
@@ -274,7 +274,7 @@ export default function HomePage() {
             <p className="hero-description">Conecta con conductores independientes y empresas de transporte para mudanzas, fletes, mercadería, escombros y grúas en todo Chile.</p>
             <div className="hero-actions">
               <a className="button button-primary" href="#buscar">Buscar un servicio <ArrowRight aria-hidden="true" size={17} /></a>
-              <a className="text-link" href="#transportistas">Quiero transportar <ArrowUpRight aria-hidden="true" size={16} /></a>
+              <Link className="text-link" href="/registro?intent=provider">Quiero transportar <ArrowUpRight aria-hidden="true" size={16} /></Link>
             </div>
             <div className="hero-note"><UsersRound aria-hidden="true" size={16} /><span>Personas y negocios conectando directamente</span></div>
           </div>
@@ -426,12 +426,12 @@ export default function HomePage() {
 
         <section aria-labelledby="closing-title" className="closing-section section-wrap" id="ayuda">
           <div className="closing-copy"><span className="closing-mark"><Truck aria-hidden="true" size={22} /></span><div><p className="eyebrow">AMIRA · MOVEMOS CONTIGO</p><h2 id="closing-title">Mueve tu carga o haz crecer tu negocio de transporte.</h2></div></div>
-          <div className="closing-actions"><a className="button button-light" href="#buscar">Solicitar un servicio <ArrowRight aria-hidden="true" size={16} /></a><a className="button button-outline-light" href="#transportistas">Ofrecer mis servicios <ArrowUpRight aria-hidden="true" size={16} /></a></div>
+          <div className="closing-actions"><a className="button button-light" href="#buscar">Solicitar un servicio <ArrowRight aria-hidden="true" size={16} /></a><Link className="button button-outline-light" href="/registro?intent=provider">Ofrecer mis servicios <ArrowUpRight aria-hidden="true" size={16} /></Link></div>
         </section>
       </main>
 
       <footer className="site-footer" id="privacidad">
-        <div className="section-wrap footer-main"><div className="footer-brand"><Brand /><p>Una red que conecta necesidades de transporte con prestadores independientes.</p></div><div className="footer-links"><div><strong>Explora</strong><Link href="/servicios">Servicios</Link><Link href="/rutas-compartidas">Viajes compartidos</Link><a href="#como-funciona">Cómo funciona</a><a href="#empresas">Empresas</a></div><div><strong>Participa</strong><a href="#transportistas">Para transportistas</a><a href="#buscar">Solicitar un servicio</a><a href="#transportistas">Ofrecer mis servicios</a></div><div><strong>Información</strong><a href="#faq">Centro de ayuda</a><a href="#pago">Política de pagos</a><a href="#privacidad" onClick={() => showDemoNotice("Los términos, la política de privacidad y el canal de ayuda aún no están publicados.")}>Privacidad y términos</a></div></div></div>
+        <div className="section-wrap footer-main"><div className="footer-brand"><Brand /><p>Una red que conecta necesidades de transporte con prestadores independientes.</p></div><div className="footer-links"><div><strong>Explora</strong><Link href="/servicios">Servicios</Link><Link href="/rutas-compartidas">Viajes compartidos</Link><a href="#como-funciona">Cómo funciona</a><a href="#empresas">Empresas</a></div><div><strong>Participa</strong><a href="#transportistas">Para transportistas</a><a href="#buscar">Solicitar un servicio</a><Link href="/registro?intent=provider">Ofrecer mis servicios</Link></div><div><strong>Información</strong><a href="#faq">Centro de ayuda</a><a href="#pago">Política de pagos</a><a href="#privacidad" onClick={() => showDemoNotice("Los términos, la política de privacidad y el canal de ayuda aún no están publicados.")}>Privacidad y términos</a></div></div></div>
         <div className="section-wrap footer-bottom"><span>© 2026 Amira. Información de demostración.</span><span>Conecta. Cotiza. Coordina.</span></div>
       </footer>
       {demoNotice && <div aria-live="polite" className="notice-toast" role="status"><span>{demoNotice}</span><button aria-label="Cerrar aviso" onClick={() => setDemoNotice("")} type="button"><X aria-hidden="true" size={16} /></button></div>}

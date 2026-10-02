@@ -59,7 +59,7 @@ test("mobile navigation opens and exposes the service and provider actions", asy
   await expect(menu).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("navigation", { name: "Navegación móvil" }).getByRole("link", { name: "Buscar servicios" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Navegación móvil" }).getByRole("link", { name: "Rutas compartidas" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Navegación móvil" }).getByRole("link", { name: "Registrar mi vehículo" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Navegación móvil" }).getByRole("link", { name: "Registrar mi vehículo" })).toHaveAttribute("href", "/registro?intent=provider");
 });
 
 test("the page fits a narrow phone viewport without horizontal overflow", async ({ page }) => {

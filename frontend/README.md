@@ -16,6 +16,10 @@ Only the Supabase project URL and publishable key are exposed to browser code. N
 
 After email confirmation, the callback verifies the Supabase user server-side, then the browser flow requires a verified phone factor before it calls the authenticated account API. Profile and role details are submitted only to the FastAPI account API; they are not stored as user-editable Supabase authorization metadata and the browser does not access application tables.
 
+Registration collects name, email, phone, personal RUT, date of birth, password, and password confirmation before email confirmation. A same-tab `sessionStorage` draft preserves only the non-password form values across the confirmation return, is matched against the server-confirmed user's email, and is removed after successful provisioning or sign-out; password and confirmation are never persisted in that draft or sent to the account API. The `Ofrecer mis servicios` entry additionally lets applicants choose independent driver or company owner. Company owners must enter the company RUT and may optionally request a company-linked Conductor record for self-booking; leaving the option unchecked preserves company-management capability without making the owner a driver. The backend decides and validates this relationship.
+
+Personal RUT, date of birth, and phone are private account data. They are persisted only by the authenticated backend after email confirmation and SMS AAL2; they are excluded from Supabase user metadata and public account responses. Didit identity verification is planned as a separate future registration step and is not part of this flow.
+
 ## Development
 
 From this directory, run `npm run dev` and open [http://localhost:3000](http://localhost:3000). Verification commands are `npm run lint`, `npm run build`, and `npm run test:e2e`. E2E starts an isolated temporary app copy with `.env*` files excluded, explicit test-only loopback Supabase/API values, and a local fake Supabase endpoint; it never reuses an existing dev server or contacts a hosted project.

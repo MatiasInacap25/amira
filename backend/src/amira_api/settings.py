@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     supabase_jwt_issuer: str | None = None
     supabase_jwt_audience: str = "authenticated"
     independent_driver_type_id: UUID | None = None
+    company_driver_type_id: UUID | None = None
 
     @property
     def allowed_origins(self) -> list[str]:

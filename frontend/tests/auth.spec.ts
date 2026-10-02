@@ -28,7 +28,7 @@ function session(aal: "aal1" | "aal2" = "aal1", tokenId?: string, expiresIn = 36
   };
 }
 
-async function installAuthMocks(page: Page, options: { accountExists?: boolean; refresh?: boolean; existingPhone?: boolean } = {}) {
+async function installAuthMocks(page: Page, options: { accountExists?: boolean; refresh?: boolean; existingPhone?: boolean; companyDriverUnavailable?: boolean } = {}) {
   const events: Array<{ path: string; method: string; body?: Record<string, unknown>; authorization?: string }> = [];
   let factorExists = options.existingPhone ?? false;
   let factorPhone = factorExists ? "+56912345678" : "";
@@ -112,6 +112,10 @@ async function installAuthMocks(page: Page, options: { accountExists?: boolean; 
       await route.fulfill({ status: 503, json: { detail: "Independent driver provisioning is not configured." } });
       return;
     }
+    if (body.role === "company_owner" && body.also_driver === true && options.companyDriverUnavailable) {
+      await route.fulfill({ status: 503, json: { detail: "Company-linked driver provisioning is not configured." } });
+      return;
+    }
     provisioned = true;
     await route.fulfill({ status: 201, json: { user_id: "account-test-1", role: body.role, profile_id: body.role === "client" ? null : "profile-test-1" } });
   });
@@ -119,17 +123,41 @@ async function installAuthMocks(page: Page, options: { accountExists?: boolean; 
   return { events, getSignupRedirect: () => signupRedirect };
 }
 
+async function fillRegistrationCredentials(page: Page, email = "persona@example.test") {
+  await page.locator("#auth-first-name").fill("Camila");
+  await page.locator("#auth-last-name").fill("Rojas");
+  await page.locator("#auth-phone").fill("+56912345678");
+  await page.locator("#auth-national-id").fill("12.345.678-5");
+  await page.locator("#auth-birth-date").fill("1990-01-01");
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.locator("#auth-password-confirm").fill("un-password-seguro");
+}
+
+async function fillAccountPrivateDetails(page: Page) {
+  await expect(page.locator("#auth-account-phone")).toHaveValue("+56912345678");
+  await page.locator("#auth-account-national-id").fill("12.345.678-5");
+  await page.locator("#auth-account-birth-date").fill("1990-01-01");
+}
+
 test("registration waits for email confirmation before asking for account details", async ({ page }) => {
   const mocks = await installAuthMocks(page);
   await page.goto("/registro");
-  await page.getByLabel("Correo electrónico").fill("persona@example.test");
-  await page.locator("#auth-password").fill("un-password-seguro");
+  await fillRegistrationCredentials(page);
   await page.getByRole("button", { name: "Crear cuenta" }).click();
 
   await expect(page.getByRole("heading", { name: "Confirma tu correo" })).toBeVisible();
   await expect(page.getByText(/Después podrás completar tu cuenta/)).toBeVisible();
   await expect.poll(() => new URL(mocks.getSignupRedirect()).pathname).toBe("/auth/callback");
   expect(new URL(mocks.getSignupRedirect()).searchParams.get("next")).toBe("/registro?step=account");
+  const signup = mocks.events.find((event) => event.path === "/signup");
+  expect(signup?.body?.email).toBe("persona@example.test");
+  expect(signup?.body?.password).toBe("un-password-seguro");
+  expect(signup?.body?.data).toEqual({});
+  expect(JSON.stringify(signup?.body)).not.toContain("12.345.678-5");
+  const draft = await page.evaluate(() => sessionStorage.getItem("amira-registration-draft"));
+  expect(draft).not.toContain("un-password-seguro");
+  expect(JSON.parse(draft ?? "{}")).not.toHaveProperty("passwordConfirm");
   expect(mocks.events.some((event) => event.path === "/api/account/provision")).toBe(false);
 });
 
@@ -166,11 +194,12 @@ test("login requires SMS, retries a rejected challenge, and provisions only afte
   await expect(page.getByLabel("¿Cómo usarás Amira?")).toBeVisible();
   await page.getByLabel("Nombre").fill("Camila");
   await page.getByLabel("Apellido").fill("Rojas");
+  await fillAccountPrivateDetails(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
   const provisionRequest = mocks.events.find((event) => event.path === "/api/account/provision");
   expect(provisionRequest?.authorization).toBe(`Bearer ${accessToken("aal2", "refreshed-aal2-token")}`);
-  expect(provisionRequest?.body).toEqual({ role: "client", first_name: "Camila", last_name: "Rojas" });
+  expect(provisionRequest?.body).toEqual({ role: "client", first_name: "Camila", last_name: "Rojas", national_id: "12.345.678-5", birth_date: "1990-01-01", phone: "+56912345678" });
   expect(mocks.events.some((event) => event.method === "POST" && event.path === "/factors" && event.body?.phone === "+56912345678")).toBe(true);
   expect(mocks.events.filter((event) => event.path === "/factors/factor-sms-1/challenge")).toHaveLength(2);
 });
@@ -188,12 +217,13 @@ test("confirmed registration supports company fields and surfaces unavailable dr
   await page.getByLabel("¿Cómo usarás Amira?").selectOption("company_owner");
   await page.locator("#auth-first-name").fill("Ana");
   await page.getByLabel("Apellido").fill("Pérez");
+  await fillAccountPrivateDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Transportes Sur");
-  await page.getByLabel("RUT de la empresa").fill("76.123.456-7");
+  await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
   const company = mocks.events.find((event) => event.path === "/api/account/provision");
-  expect(company?.body).toEqual({ role: "company_owner", first_name: "Ana", last_name: "Pérez", display_name: "Transportes Sur", company_tax_id: "76.123.456-7" });
+  expect(company?.body).toEqual({ role: "company_owner", first_name: "Ana", last_name: "Pérez", national_id: "12.345.678-5", birth_date: "1990-01-01", phone: "+56912345678", display_name: "Transportes Sur", company_tax_id: "76.123.456-0", also_driver: false });
 });
 
 test("independent-driver provisioning failure gives an actionable message", async ({ page }) => {
@@ -209,10 +239,33 @@ test("independent-driver provisioning failure gives an actionable message", asyn
   await page.getByLabel("¿Cómo usarás Amira?").selectOption("independent_driver");
   await page.locator("#auth-first-name").fill("Pedro");
   await page.getByLabel("Apellido").fill("Soto");
+  await fillAccountPrivateDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page.locator(".auth-error")).toContainText("todavía requiere configuración");
   await expect(page.getByLabel("Nombre público del prestador")).toHaveValue("Fletes Pedro");
+});
+
+test("company owner can retain company account when linked-driver configuration is unavailable", async ({ page }) => {
+  const mocks = await installAuthMocks(page, { existingPhone: true, companyDriverUnavailable: true });
+  await page.goto("/login");
+  await page.getByLabel("Correo electrónico").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await page.getByLabel("Código de verificación").fill("246810");
+  await page.getByRole("button", { name: "Verificar teléfono" }).click();
+  await page.getByLabel("¿Cómo usarás Amira?").selectOption("company_owner");
+  await page.locator("#auth-first-name").fill("Camila");
+  await page.locator("#auth-last-name").fill("Rojas");
+  await fillAccountPrivateDetails(page);
+  await page.getByLabel("Nombre público del prestador").fill("Transportes Sur");
+  await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
+  await page.locator("#auth-account-also-driver").check();
+  await page.getByRole("button", { name: "Completar registro" }).click();
+  await expect(page.locator(".auth-error")).toContainText("La cuenta de empresa puede continuar sin activar esa opción");
+  const request = mocks.events.find((event) => event.path === "/api/account/provision");
+  expect(request?.body?.also_driver).toBe(true);
+  await expect(page.getByLabel("¿Cómo usarás Amira?")).toBeVisible();
 });
 
 test("callback rejects external next destinations and returns to the login flow", async ({ page }) => {
@@ -224,13 +277,12 @@ test("callback rejects external next destinations and returns to the login flow"
 test("confirmed callback persists a verified session through the account redirect", async ({ page }) => {
   const mocks = await installAuthMocks(page);
   await page.goto("/registro");
-  await page.getByLabel("Correo electrónico").fill("confirmed@example.test");
-  await page.locator("#auth-password").fill("un-password-seguro");
+  await fillRegistrationCredentials(page, "confirmed@example.test");
   await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page.getByRole("heading", { name: "Confirma tu correo" })).toBeVisible();
-  const callback = await page.request.get("/auth/callback?code=valid-confirmation-code&next=%2Fregistro%3Fstep%3Daccount", { maxRedirects: 0 });
+  const callback = await page.request.get("/auth/callback?code=valid-confirmation-code&next=%2Fregistro%3Fstep%3Daccount%26intent%3Dprovider", { maxRedirects: 0 });
   expect(callback.status()).toBe(307);
-  expect(callback.headers().location).toMatch(/\/registro\?step=account$/);
+  expect(callback.headers().location).toMatch(/\/registro\?step=account&intent=provider$/);
   const sessionCookies = (await page.context().cookies()).filter((cookie) => cookie.name.endsWith("auth-token"));
   expect(sessionCookies.length).toBeGreaterThan(0);
   expect(mocks.events.some((event) => event.path === "/signup")).toBe(true);
@@ -239,8 +291,7 @@ test("confirmed callback persists a verified session through the account redirec
 test("confirmed callback rejects an external next destination", async ({ page }) => {
   await installAuthMocks(page);
   await page.goto("/registro");
-  await page.getByLabel("Correo electrónico").fill("confirmed@example.test");
-  await page.locator("#auth-password").fill("un-password-seguro");
+  await fillRegistrationCredentials(page, "confirmed@example.test");
   await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page.getByRole("heading", { name: "Confirma tu correo" })).toBeVisible();
   const callback = await page.request.get("/auth/callback?code=valid-confirmation-code&next=https%3A%2F%2Fevil.test%2Fcollect", { maxRedirects: 0 });
@@ -264,6 +315,7 @@ test("home and desktop/mobile marketplace navigation expose real auth routes", a
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "Crear cuenta" })).toHaveAttribute("href", "/registro");
+  await expect(page.getByRole("link", { name: "Ofrecer mis servicios" }).first()).toHaveAttribute("href", "/registro?intent=provider");
 
   await page.goto("/servicios");
   await expect(page.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
@@ -275,6 +327,22 @@ test("home and desktop/mobile marketplace navigation expose real auth routes", a
   await expect(mobileNav.getByRole("link", { name: "Crear cuenta" })).toHaveAttribute("href", "/registro");
   await mobileNav.getByRole("link", { name: "Iniciar sesión" }).click();
   await expect(page).toHaveURL(/\/login$/);
+});
+
+test("provider registration starts with service-role choice and company RUT/driver opt-in", async ({ page }) => {
+  const mocks = await installAuthMocks(page);
+  await page.goto("/registro?intent=provider");
+  await expect(page.getByLabel("Quiero ofrecer mis servicios como")).toBeVisible();
+  await page.getByLabel("Quiero ofrecer mis servicios como").selectOption("company_owner");
+  await expect(page.getByLabel("RUT de la empresa")).toBeVisible();
+  await expect(page.getByLabel(/También quiero registrarme como conductor/)).toBeVisible();
+  await expect(page.locator("#auth-also-driver")).not.toBeChecked();
+  await page.locator("#auth-also-driver").check();
+  await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
+  await fillRegistrationCredentials(page, "owner@example.test");
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
+  await expect(page.getByRole("heading", { name: "Confirma tu correo" })).toBeVisible();
+  await expect.poll(() => new URL(mocks.getSignupRedirect()).searchParams.get("next")).toBe("/registro?step=account&intent=provider");
 });
 
 test("auth layout remains usable at a narrow mobile viewport", async ({ page }) => {

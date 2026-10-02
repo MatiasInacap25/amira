@@ -17,6 +17,8 @@ uv run uvicorn amira_api.main:app --reload
 
 The API is available at `http://127.0.0.1:8000`; interactive API documentation is at `/docs`. The health endpoint is `GET /health`.
 
+Account provisioning requires the trusted `INDEPENDENT_DRIVER_TYPE_ID` mapping for independent drivers. If a company owner opts into a linked driver record, configure `COMPANY_DRIVER_TYPE_ID` with the UUID of the approved `Tipo_Conductor` row. The API verifies that configured row exists and fails closed before creating account records if it does not; do not accept a driver type from browser input or infer one from a display name. Company owners who do not opt in remain company-only accounts. Personal RUT, birth date, and phone are validated and stored on the private `Usuario` record; they are not Supabase user metadata or fields in public account responses. Supabase Auth remains the only password store, and the API email is taken from the verified Auth identity.
+
 Set `CORS_ORIGINS` to a comma-separated list of exact browser origins, including scheme and port, for example `http://localhost:3000`. Do not use wildcard origins when sending credentials. The API connects lazily when a database-backed request runs; Alembic reads `DATABASE_URL` and reports a clear error if migrations are run before one is configured.
 
 ## Public browse API
