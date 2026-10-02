@@ -20,6 +20,10 @@ export function MarketplaceHeader() {
           <Link href="/#como-funciona">Cómo funciona</Link>
         </nav>
         <div className="header-actions">
+          <div className="header-auth-links">
+            <Link className="login-link" href="/login">Iniciar sesión</Link>
+            <Link className="button button-secondary header-nav-button" href="/registro">Crear cuenta</Link>
+          </div>
           <Link className="button button-primary header-cta" href="/servicios">Buscar un servicio <ArrowRight aria-hidden="true" size={16} /></Link>
           <button
             aria-controls="marketplace-mobile-navigation"
@@ -37,6 +41,8 @@ export function MarketplaceHeader() {
         <nav aria-label="Navegación móvil" className="mobile-nav" id="marketplace-mobile-navigation">
           <Link className="header-nav-button" href="/servicios" onClick={() => setMenuOpen(false)}>Buscar servicios</Link>
           <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMenuOpen(false)}>Rutas compartidas</Link>
+          <Link className="header-nav-button" href="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
+          <Link className="header-nav-button" href="/registro" onClick={() => setMenuOpen(false)}>Crear cuenta</Link>
           <Link href="/#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</Link>
         </nav>
       )}

@@ -236,7 +236,8 @@ export default function HomePage() {
             <a href="#transportistas">Para transportistas</a>
           </nav>
           <div className="header-actions">
-            <a className="login-link" href="#ayuda" onClick={() => showDemoNotice("El inicio de sesión aún no está habilitado.")}>Iniciar sesión</a>
+            <Link className="login-link" href="/login">Iniciar sesión</Link>
+            <Link className="login-link home-register-link" href="/registro">Crear cuenta</Link>
             <a className="button button-primary header-cta" href="#transportistas">Ofrecer mis servicios <ArrowUpRight aria-hidden="true" size={16} /></a>
             <button
               aria-label={mobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
@@ -257,6 +258,8 @@ export default function HomePage() {
             <a href="#como-funciona" onClick={() => setMobileMenuOpen(false)}>Cómo funciona</a>
             <a href="#empresas" onClick={() => setMobileMenuOpen(false)}>Empresas</a>
             <a href="#transportistas" onClick={() => setMobileMenuOpen(false)}>Para transportistas</a>
+            <Link href="/login" onClick={() => setMobileMenuOpen(false)}>Iniciar sesión</Link>
+            <Link href="/registro" onClick={() => setMobileMenuOpen(false)}>Crear cuenta</Link>
             <a href="#buscar" onClick={() => setMobileMenuOpen(false)}>Solicitar un servicio</a>
             <a href="#transportistas" onClick={() => setMobileMenuOpen(false)}>Registrar mi vehículo</a>
           </nav>
