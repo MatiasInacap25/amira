@@ -12,6 +12,8 @@ from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
 from amira_api.models import (
     Conductor,
+    Chat,
+    ChatParticipante,
     FormularioServicio,
     ParadaViaje,
     Perfil,
@@ -33,6 +35,9 @@ from amira_api.public_schemas import (
     PublicServicePage,
     PublicSharedRoute,
     PublicSharedRoutePage,
+    ProviderRequestDecision,
+    ProviderRequestItem,
+    ProviderRequestPage,
     ServiceRequestCreate,
     ServiceRequestCreated,
 )
@@ -176,6 +181,135 @@ def create_service_request(
     session.add(request)
     session.commit()
     return ServiceRequestCreated(request_id=request.id, status=request.status)
+
+
+def _owned_provider(session: Session, current_user: AuthenticatedUser) -> tuple[UUID, UUID]:
+    account = session.execute(
+        select(Usuario.id, RolUsuario.code)
+        .join(RolUsuario, RolUsuario.id == Usuario.role_id)
+        .where(Usuario.auth_user_id == current_user.id)
+    ).one_or_none()
+    if account is None:
+        raise HTTPException(status_code=403, detail="A provider account is required.")
+    account_id, role_code = account
+    expected_profile_role = {
+        "company_owner": ("company", "company"),
+        "independent_driver": ("independent_driver", "independent_driver"),
+    }.get(role_code)
+    if expected_profile_role is None:
+        raise HTTPException(status_code=403, detail="Only provider accounts can manage requests.")
+    profile_kind, profile_role = expected_profile_role
+    profile_id = session.execute(
+        select(Perfil.id)
+        .join(RolPerfil, RolPerfil.id == Perfil.role_id)
+        .where(
+            Perfil.owner_user_id == account_id,
+            Perfil.kind == profile_kind,
+            RolPerfil.code == profile_role,
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if profile_id is None:
+        raise HTTPException(status_code=403, detail="An owned provider profile is required.")
+    return account_id, profile_id
+
+
+@router.get("/provider/requests", response_model=ProviderRequestPage)
+def list_provider_requests(
+    current_user: CurrentUser,
+    session: Database,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
+    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
+) -> ProviderRequestPage:
+    _, profile_id = _owned_provider(session, current_user)
+    total = session.execute(
+        select(func.count()).select_from(FormularioServicio).where(FormularioServicio.profile_id == profile_id)
+    ).scalar_one()
+    rows = session.execute(
+        select(
+            FormularioServicio.id.label("request_id"),
+            FormularioServicio.status.label("status"),
+            FormularioServicio.origin.label("origin"),
+            FormularioServicio.destination.label("destination"),
+            FormularioServicio.requested_at.label("requested_at"),
+            FormularioServicio.created_at.label("created_at"),
+            FormularioServicio.estimated_weight.label("estimated_weight"),
+            FormularioServicio.estimated_volume.label("estimated_volume"),
+            FormularioServicio.description.label("description"),
+            FormularioServicio.cargo_measurements.label("cargo_measurements"),
+            TipoServicio.name.label("service_name"),
+            Chat.id.label("chat_id"),
+        )
+        .join(TipoServicio, TipoServicio.id == FormularioServicio.service_type_id)
+        .outerjoin(Chat, Chat.form_id == FormularioServicio.id)
+        .where(FormularioServicio.profile_id == profile_id)
+        .order_by(FormularioServicio.created_at.desc(), FormularioServicio.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).mappings().all()
+    return ProviderRequestPage(
+        items=[ProviderRequestItem(**row) for row in rows], total=total, limit=limit, offset=offset
+    )
+
+
+def _decide_provider_request(
+    request_id: UUID,
+    decision: str,
+    current_user: AuthenticatedUser,
+    session: Session,
+) -> ProviderRequestDecision:
+    account_id, profile_id = _owned_provider(session, current_user)
+    request = session.execute(
+        select(FormularioServicio)
+        .where(FormularioServicio.id == request_id, FormularioServicio.profile_id == profile_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if request is None:
+        raise HTTPException(status_code=404, detail="Provider request not found.")
+
+    chats = session.execute(select(Chat).where(Chat.form_id == request.id)).scalars().all()
+    if request.status == decision:
+        if decision == "accepted" and len(chats) != 1:
+            raise HTTPException(status_code=409, detail="Accepted request has an inconsistent chat state.")
+        if decision == "rejected" and chats:
+            raise HTTPException(status_code=409, detail="Rejected request has an inconsistent chat state.")
+        session.commit()
+        return ProviderRequestDecision(
+            request_id=request.id,
+            status=request.status,
+            chat_id=chats[0].id if chats else None,
+        )
+    if request.status != "pending":
+        raise HTTPException(status_code=409, detail="This request has already been decided.")
+    if chats:
+        raise HTTPException(status_code=409, detail="Pending request already has a chat.")
+
+    try:
+        request.status = decision
+        chat_id = None
+        if decision == "accepted":
+            chat_id = uuid4()
+            session.add(Chat(id=chat_id, form_id=request.id))
+            session.flush()
+            session.add_all([
+                ChatParticipante(user_id=request.customer_id, chat_id=chat_id),
+                ChatParticipante(user_id=account_id, chat_id=chat_id),
+            ])
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return ProviderRequestDecision(request_id=request.id, status=request.status, chat_id=chat_id)
+
+
+@router.post("/provider/requests/{request_id}/accept", response_model=ProviderRequestDecision)
+def accept_provider_request(request_id: UUID, current_user: CurrentUser, session: Database) -> ProviderRequestDecision:
+    return _decide_provider_request(request_id, "accepted", current_user, session)
+
+
+@router.post("/provider/requests/{request_id}/reject", response_model=ProviderRequestDecision)
+def reject_provider_request(request_id: UUID, current_user: CurrentUser, session: Database) -> ProviderRequestDecision:
+    return _decide_provider_request(request_id, "rejected", current_user, session)
 
 
 @router.get("/services", response_model=PublicServicePage)

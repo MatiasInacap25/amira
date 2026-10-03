@@ -365,6 +365,86 @@ test("verified client can submit a quote request with the current MFA access tok
   expect(sentRequest.body).not.toHaveProperty("status");
 });
 
+async function signInAsSmsVerifiedProvider(page: Page) {
+  await installAuthMocks(page, { existingPhone: true, accountExists: true });
+  await page.goto("/login?next=%2Fsolicitudes");
+  await page.locator("#auth-email").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.locator("form.auth-form button[type=submit]").click();
+  await page.locator("#auth-code").fill("246810");
+  await page.locator("form.auth-form button[type=submit]").click();
+  await expect(page).toHaveURL(/\/solicitudes$/);
+}
+
+const pendingProviderRequest = {
+  requestId: "request-provider-1",
+  status: "pending",
+  origin: "Santiago",
+  destination: "ValparaÃ­so",
+  requestedAt: "2026-10-12T12:00:00Z",
+  createdAt: "2026-10-01T12:00:00Z",
+  estimatedWeight: "250.5",
+  estimatedVolume: null,
+  description: "Retiro de muebles.",
+  cargoMeasurements: "2 x 1 x 1 m",
+  serviceName: "Mudanzas",
+  chatId: null,
+};
+
+test("provider inbox accepts owned request with the verified token and opens its request chat", async ({ page }) => {
+  let status = "pending";
+  const apiEvents: Array<{ method: string; path: string; authorization?: string }> = [];
+  await page.route("**/api/provider/requests**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    apiEvents.push({ method: request.method(), path: url.pathname, authorization: request.headers()["authorization"] });
+    if (request.method() === "GET") {
+      await route.fulfill({ json: { items: [{ ...pendingProviderRequest, status, chatId: status === "accepted" ? "chat-provider-1" : null }], total: 1, limit: 20, offset: 0 } });
+      return;
+    }
+    status = "accepted";
+    await route.fulfill({ json: { requestId: pendingProviderRequest.requestId, status, chatId: "chat-provider-1" } });
+  });
+  await signInAsSmsVerifiedProvider(page);
+
+  await expect(page.getByRole("heading", { name: "Solicitudes recibidas" })).toBeVisible();
+  await expect(page.getByText("Santiago")).toBeVisible();
+  await page.getByRole("button", { name: "Aceptar y abrir chat" }).click();
+  await expect(page.getByRole("link", { name: "Abrir chat" })).toHaveAttribute("href", "/mensajes/chat-provider-1");
+  expect(apiEvents.filter((event) => event.method === "POST")[0]).toMatchObject({
+    path: "/api/provider/requests/request-provider-1/accept",
+    authorization: `Bearer ${accessToken("aal2", "verified-aal2-token")}`,
+  });
+  await page.getByRole("link", { name: "Abrir chat" }).click();
+  await expect(page).toHaveURL(/\/mensajes\/chat-provider-1$/);
+  await expect(page.getByRole("heading", { name: "El chat está listo para continuar" })).toBeVisible();
+});
+
+test("provider can reject a request and an API failure is shown without closing it", async ({ page }) => {
+  let attempts = 0;
+  let rejected = false;
+  await page.route("**/api/provider/requests**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: { items: [{ ...pendingProviderRequest, status: rejected ? "rejected" : "pending" }], total: 1, limit: 20, offset: 0 } });
+      return;
+    }
+    attempts += 1;
+    if (attempts === 1) await route.fulfill({ status: 503, json: { detail: "Temporary failure" } });
+    else {
+      rejected = true;
+      await route.fulfill({ json: { requestId: pendingProviderRequest.requestId, status: "rejected", chatId: null } });
+    }
+  });
+  await signInAsSmsVerifiedProvider(page);
+  await expect(page.getByRole("button", { name: "Rechazar" })).toBeVisible();
+  await page.getByRole("button", { name: "Rechazar" }).click();
+  await expect(page.locator(".provider-inbox-error")).toContainText("No pudimos responder la solicitud");
+  await expect(page.getByRole("button", { name: "Rechazar" })).toBeVisible();
+  await page.getByRole("button", { name: "Rechazar" }).click();
+  await expect(page.getByText("Solicitud cerrada")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Abrir chat" })).toHaveCount(0);
+});
+
 test("home and desktop/mobile marketplace navigation expose real auth routes", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
@@ -374,11 +454,13 @@ test("home and desktop/mobile marketplace navigation expose real auth routes", a
   await page.goto("/servicios");
   await expect(page.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "Crear cuenta" })).toHaveAttribute("href", "/registro");
+  await expect(page.getByRole("link", { name: "Mis solicitudes" })).toHaveAttribute("href", "/solicitudes");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Abrir menú" }).click();
   const mobileNav = page.getByRole("navigation", { name: "Navegación móvil" });
   await expect(mobileNav.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
   await expect(mobileNav.getByRole("link", { name: "Crear cuenta" })).toHaveAttribute("href", "/registro");
+  await expect(mobileNav.getByRole("link", { name: "Mis solicitudes" })).toHaveAttribute("href", "/solicitudes");
   await mobileNav.getByRole("link", { name: "Iniciar sesión" }).click();
   await expect(page).toHaveURL(/\/login$/);
 });

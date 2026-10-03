@@ -48,6 +48,27 @@ export type ServiceRequestInput = {
   cargoMeasurements: string | null;
 };
 
+export type ProviderRequest = {
+  requestId: string;
+  status: "pending" | "accepted" | "rejected" | string;
+  origin: string;
+  destination: string;
+  requestedAt: string | null;
+  createdAt: string;
+  estimatedWeight: string | null;
+  estimatedVolume: string | null;
+  description: string | null;
+  cargoMeasurements: string | null;
+  serviceName: string;
+  chatId: string | null;
+};
+
+export type ProviderRequestDecision = {
+  requestId: string;
+  status: "accepted" | "rejected";
+  chatId: string | null;
+};
+
 export type PagedResponse<T> = {
   items: T[];
   total: number;
@@ -93,6 +114,26 @@ export async function createServiceRequest(input: ServiceRequestInput, accessTok
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
+  );
+}
+
+export async function getProviderRequests(accessToken: string) {
+  const response = await authenticatedApiFetch(
+    "/api/provider/requests",
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) throw new Error(`Provider requests failed (${response.status})`);
+  return response.json() as Promise<PagedResponse<ProviderRequest>>;
+}
+
+export async function decideProviderRequest(requestId: string, decision: "accept" | "reject", accessToken: string) {
+  return authenticatedApiFetch(
+    `/api/provider/requests/${encodeURIComponent(requestId)}/${decision}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { Accept: "application/json" } },
   );
 }
 

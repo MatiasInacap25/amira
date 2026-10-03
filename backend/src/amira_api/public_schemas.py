@@ -113,3 +113,31 @@ class ServiceRequestCreate(BaseModel):
 class ServiceRequestCreated(PublicResponse):
     request_id: UUID
     status: str
+
+
+class ProviderRequestItem(PublicResponse):
+    request_id: UUID
+    status: str
+    origin: str
+    destination: str
+    requested_at: datetime | None
+    created_at: datetime
+    estimated_weight: Decimal | None
+    estimated_volume: Decimal | None
+    description: str | None
+    cargo_measurements: str | None
+    service_name: str
+    chat_id: UUID | None
+
+
+class ProviderRequestPage(PublicResponse):
+    items: list[ProviderRequestItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class ProviderRequestDecision(PublicResponse):
+    request_id: UUID
+    status: str
+    chat_id: UUID | None
