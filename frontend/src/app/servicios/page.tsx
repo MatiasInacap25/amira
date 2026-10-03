@@ -10,10 +10,10 @@ import { getServices, type ProviderProfile, type ServiceFilters } from "@/lib/ma
 
 const categories = [
   { value: "mudanza", label: "Mudanzas" },
-  { value: "mercaderia", label: "Transporte de mercadería" },
+  { value: "mercadería", label: "Transporte de mercadería" },
   { value: "flete", label: "Fletes y traslados" },
   { value: "escombros", label: "Recolección de escombros" },
-  { value: "grua", label: "Servicios de grúa" },
+  { value: "grúa", label: "Servicios de grúa" },
 ];
 
 const initialFilters: ServiceFilters = { q: "", category: "", location: "", offset: 0 };

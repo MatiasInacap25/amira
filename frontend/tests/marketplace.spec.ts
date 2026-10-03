@@ -42,10 +42,10 @@ test("service search sends only supported filters and displays API results witho
   await expect.poll(() => page.getByLabel("Categoría").locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))).toEqual([
     "",
     "mudanza",
-    "mercaderia",
+    "mercadería",
     "flete",
     "escombros",
-    "grua",
+    "grúa",
   ]);
   await page.getByLabel("Buscar por servicio o prestador").fill("camioneta");
   await page.getByLabel("Categoría").selectOption("mudanza");
@@ -64,6 +64,25 @@ test("service search sends only supported filters and displays API results witho
   await expect(dialog.getByLabel("Servicio")).toHaveValue("service-type-1");
   await expect(dialog.getByLabel("Servicio")).toBeDisabled();
   await expect(page.getByRole("button", { name: /reservar|contratar/i })).toHaveCount(0);
+});
+
+test("accented service category labels send accent-preserving API filters", async ({ page }) => {
+  let requestedCategory: string | null = null;
+  await page.route("**/api/services?*", async (route) => {
+    requestedCategory = new URL(route.request().url()).searchParams.get("category");
+    await route.fulfill({ json: servicesResponse });
+  });
+
+  await page.goto("/servicios");
+  const category = page.getByLabel("Categoría");
+  for (const [label, expectedCategory] of [
+    ["Transporte de mercadería", "mercadería"],
+    ["Servicios de grúa", "grúa"],
+  ]) {
+    await category.selectOption({ label });
+    await page.getByRole("button", { name: "Buscar servicios" }).click();
+    await expect.poll(() => requestedCategory).toBe(expectedCategory);
+  }
 });
 
 test("provider quote dialog only offers matching services and allows choosing between them", async ({ page }) => {
