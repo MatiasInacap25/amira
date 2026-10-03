@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import httpx
+from sqlalchemy.dialects import postgresql
 
 from amira_api.db import get_db_session
 from amira_api.main import app
@@ -26,13 +27,18 @@ class FakeResult:
 class FakeSession:
     def __init__(self, results):
         self.results = iter(results)
+        self.statements = []
 
     def execute(self, statement):
+        self.statements.append(statement)
         return next(self.results)
 
 
-def run_get(path: str, results, **params) -> httpx.Response:
-    app.dependency_overrides[get_db_session] = lambda: FakeSession(results)
+def run_get(path: str, results, *, sessions=None, **params) -> httpx.Response:
+    session = FakeSession(results)
+    app.dependency_overrides[get_db_session] = lambda: session
+    if sessions is not None:
+        sessions.append(session)
 
     async def request() -> httpx.Response:
         async with httpx.AsyncClient(
@@ -48,6 +54,8 @@ def run_get(path: str, results, **params) -> httpx.Response:
 
 def test_services_returns_only_public_provider_and_service_fields() -> None:
     profile_id = UUID("be7374de-165b-4d95-8da6-9a08c233b003")
+    service_id = UUID("ae7374de-165b-4d95-8da6-9a08c233b004")
+    sessions = []
     response = run_get(
         "/api/services",
         [
@@ -60,10 +68,14 @@ def test_services_returns_only_public_provider_and_service_fields() -> None:
                         "category": "Mudanzas",
                         "description": "Servicio de demostración.",
                         "location": "Santiago",
+                        "services": [
+                            {"serviceTypeId": str(service_id), "name": "Mudanzas"},
+                        ],
                     }
                 ]
             ),
         ],
+        sessions=sessions,
         q="mudanza",
         limit=20,
         offset=0,
@@ -79,6 +91,9 @@ def test_services_returns_only_public_provider_and_service_fields() -> None:
                 "description": "Servicio de demostración.",
                 "location": "Santiago",
                 "logoUrl": None,
+                "services": [
+                    {"serviceTypeId": str(service_id), "name": "Mudanzas"},
+                ],
             }
         ],
         "total": 1,
@@ -87,6 +102,45 @@ def test_services_returns_only_public_provider_and_service_fields() -> None:
     }
     assert "logo_storage_key" not in response.text
     assert "company_tax_id" not in response.text
+    count_sql = str(sessions[0].statements[0].compile(dialect=postgresql.dialect())).lower()
+    page_sql = str(sessions[0].statements[1].compile(dialect=postgresql.dialect())).lower()
+    assert "count(distinct" in count_sql
+    assert "public_activated_at" in count_sql
+    assert "group by" in page_sql
+    assert " limit " in page_sql and " offset " in page_sql
+
+
+def test_services_paginates_provider_profiles_and_keeps_total_independent_of_offers() -> None:
+    profile_id = UUID("be7374de-165b-4d95-8da6-9a08c233b003")
+    service_id = UUID("ae7374de-165b-4d95-8da6-9a08c233b004")
+    response = run_get(
+        "/api/services",
+        [
+            FakeResult(scalar=21),
+            FakeResult(
+                rows=[
+                    {
+                        "profile_id": profile_id,
+                        "provider_name": "Ana Pérez",
+                        "category": "Mudanzas",
+                        "description": None,
+                        "location": "Santiago",
+                        "services": [{"serviceTypeId": str(service_id), "name": "Mudanzas"}],
+                    }
+                ]
+            ),
+        ],
+        limit=20,
+        offset=20,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 21
+    assert body["limit"] == 20
+    assert body["offset"] == 20
+    assert [item["profileId"] for item in body["items"]] == [str(profile_id)]
+    assert body["items"][0]["services"] == [{"serviceTypeId": str(service_id), "name": "Mudanzas"}]
 
 
 def test_shared_routes_returns_ordered_public_stops_without_vehicle_or_driver() -> None:

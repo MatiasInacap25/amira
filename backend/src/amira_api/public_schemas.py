@@ -17,6 +17,11 @@ class PublicResponse(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
 
 
+class PublicProviderService(PublicResponse):
+    service_type_id: UUID
+    name: str
+
+
 class PublicServiceItem(PublicResponse):
     profile_id: UUID
     provider_name: str
@@ -24,6 +29,7 @@ class PublicServiceItem(PublicResponse):
     description: str | None
     location: str | None
     logo_url: str | None = None
+    services: list[PublicProviderService]
 
 
 class PublicServicePage(PublicResponse):
@@ -58,11 +64,6 @@ class PublicSharedRoutePage(PublicResponse):
 class PublicProviderDriver(PublicResponse):
     first_name: str
     last_name: str
-
-
-class PublicProviderService(PublicResponse):
-    service_type_id: UUID
-    name: str
 
 
 class PublicProviderVehicle(PublicResponse):

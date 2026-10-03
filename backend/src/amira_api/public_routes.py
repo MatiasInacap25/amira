@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, or_, select
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
@@ -342,15 +343,14 @@ def list_services(
     if location_filter:
         filters.append(Perfil.location.ilike(_contains(location_filter), escape="\\"))
 
-    joins = (
-        select(Perfil.id, Perfil.name, Perfil.description, Perfil.location, TipoServicio.name)
+    total = session.execute(
+        select(func.count(func.distinct(Perfil.id)))
         .select_from(Perfil)
         .join(Usuario, Usuario.id == Perfil.owner_user_id)
         .join(ServicioDisponible, ServicioDisponible.profile_id == Perfil.id)
         .join(TipoServicio, TipoServicio.id == ServicioDisponible.service_type_id)
         .where(*filters)
-    )
-    total = session.execute(select(func.count()).select_from(joins.subquery())).scalar_one()
+    ).scalar_one()
 
     rows = session.execute(
         select(
@@ -359,16 +359,34 @@ def list_services(
                 (Perfil.kind == "independent_driver", Usuario.first_name + " " + Usuario.last_name),
                 else_=Perfil.name,
             ).label("provider_name"),
-            TipoServicio.name.label("category"),
+            func.min(TipoServicio.name).label("category"),
             Perfil.description.label("description"),
             Perfil.location.label("location"),
+            func.json_agg(
+                aggregate_order_by(
+                    func.json_build_object(
+                        "serviceTypeId", TipoServicio.id,
+                        "name", TipoServicio.name,
+                    ),
+                    TipoServicio.name,
+                )
+            ).label("services"),
         )
         .select_from(Perfil)
         .join(Usuario, Usuario.id == Perfil.owner_user_id)
         .join(ServicioDisponible, ServicioDisponible.profile_id == Perfil.id)
         .join(TipoServicio, TipoServicio.id == ServicioDisponible.service_type_id)
         .where(*filters)
-        .order_by(Perfil.name.asc(), Perfil.id.asc(), TipoServicio.name.asc())
+        .group_by(
+            Perfil.id,
+            Perfil.kind,
+            Perfil.name,
+            Perfil.description,
+            Perfil.location,
+            Usuario.first_name,
+            Usuario.last_name,
+        )
+        .order_by(Perfil.name.asc(), Perfil.id.asc())
         .limit(limit)
         .offset(offset)
     ).mappings().all()
