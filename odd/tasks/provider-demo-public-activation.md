@@ -21,7 +21,7 @@ The public provider endpoint intentionally hides profiles unless `public_activat
 ## Tasks
 - [x] T1: Add a failing migration regression test proving only the demo fixture is activated idempotently. RED observed: `uv run pytest tests/test_email_fallback_migration.py -k demo_profile_activation -q` failed because the expected migration file does not exist yet.
 - [x] T2: Add the narrowly scoped additive migration and make the test pass.
-- [ ] T3: Commit the implementation work unit and record its commit identity.
+- [x] T3: Commit the implementation work unit and record its commit identity.
 
 ## Acceptance criteria
 - The new migration sets `public_activated_at` for only the seeded demo profile if it still matches the expected marker and is not already activated.
@@ -32,11 +32,13 @@ The public provider endpoint intentionally hides profiles unless `public_activat
 ## Progress
 - Investigation verified the exact UUID is the synthetic fixture inserted by `20260927_0002`; migration `20260928_0003` adds the nullable activation field without backfilling it.
 - RED: `uv run pytest tests/test_email_fallback_migration.py -k demo_profile_activation -q` failed as expected because the new migration file was absent (1 failed, 2 deselected).
-- GREEN: `uv run pytest tests/test_email_fallback_migration.py -q` passed (3 passed).
+- GREEN: `uv run pytest tests/test_provider_demo_public_activation_migration.py tests/test_email_fallback_migration.py -q` passed (3 passed).
 - Regression coverage: recorder test verifies one `Perfil` update constrained by the exact fixture ID, exact `[DEMO]` name, and `public_activated_at IS NULL`.
 - Backend verification: `uv run pytest tests/test_public_db.py tests/test_public_provider_routes.py tests/test_public_routes.py tests/test_provider_request_routes.py -q` passed (35 passed); `uv run alembic heads` reports `20261003_0001 (head)`.
 - Both pytest runs emitted a non-failing `PytestCacheWarning` because the runner could not write to `backend/.pytest_cache`.
-- No Supabase query or migration execution was performed. Commit/staging remain parent-owned; no files were staged by the delegated writer.
+- Work-unit commit: `6fcccd4 fix: publish seeded demo provider profile`.
+- RDD: enabled by default; candidate assessment was unassessable due unrelated untracked files, then native STATUS stopped safely because the RAR authority path is owned by a different SID. No review receipt was produced.
+- No Supabase query or migration execution was performed. The production database still needs this migration applied separately.
 
 ## Relevant files
 - `backend/alembic/versions/20260927_0002_public_browse_rls_and_demo_seed.py` — creates the synthetic provider fixture.
