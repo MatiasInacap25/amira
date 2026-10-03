@@ -115,7 +115,7 @@ export default function SharedRoutesPage() {
                   <article aria-labelledby={`route-${route.tripId}`} className="marketplace-card shared-route-card" key={route.tripId}>
                     <div className="route-result-top"><span className="provider-mark"><Truck aria-hidden="true" size={21} strokeWidth={1.8} /></span><span className="route-published-label">Ruta publicada</span></div>
                     <h3 id={`route-${route.tripId}`}>{route.origin} a {route.destination}</h3>
-                    <p className="route-provider">Transportista: <strong>{route.providerName}</strong></p>
+                    <p className="route-provider">Transportista: <strong><Link className="route-provider-link" href={`/prestadores/${encodeURIComponent(route.profileId)}`}>{route.providerName}</Link></strong></p>
                     <p className="route-departure"><CalendarDays aria-hidden="true" size={15} />Salida: {formatDeparture(route.departureAt)}</p>
                     {route.stops && route.stops.length > 0 && (
                       <div className="route-stops">

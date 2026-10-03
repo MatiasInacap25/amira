@@ -114,10 +114,11 @@ export default function ServicesPage() {
                       <span aria-hidden="true" className="provider-mark"><Truck size={21} strokeWidth={1.8} /></span>
                       <span className="service-result-category">{categoryName(service.category)}</span>
                     </div>
-                    <h3>{service.providerName}</h3>
+                    <h3><Link className="service-provider-link" href={`/prestadores/${encodeURIComponent(service.profileId)}`}>{service.providerName}</Link></h3>
                     <p className="service-result-description">{service.description || "El prestador no agregó una descripción."}</p>
                     {service.location && <p className="service-result-location"><MapPin aria-hidden="true" size={15} />{service.location}</p>}
                     <p className="service-result-note">La disponibilidad y las condiciones se coordinan directamente con el prestador.</p>
+                    <Link className="service-result-action" href={`/prestadores/${encodeURIComponent(service.profileId)}`}>Ver perfil y solicitar cotización</Link>
                   </article>
                 ))}
               </div>

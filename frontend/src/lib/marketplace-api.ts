@@ -1,3 +1,5 @@
+import { authenticatedApiFetch, resolveApiBaseUrl } from "@/lib/auth/account-api";
+
 export type ServiceProfile = {
   profileId: string;
   providerName: string;
@@ -14,11 +16,36 @@ export type SharedRouteStop = {
 
 export type SharedRoute = {
   tripId: string;
+  profileId: string;
   providerName: string;
   origin: string;
   destination: string;
   departureAt?: string | null;
   stops?: SharedRouteStop[] | null;
+};
+
+export type ProviderProfile = {
+  profileId: string;
+  providerName: string;
+  kind: "company" | "independent_driver";
+  description: string | null;
+  location: string | null;
+  ownerName: string;
+  drivers: Array<{ firstName: string; lastName: string }>;
+  services: Array<{ serviceTypeId: string; name: string }>;
+  vehicles: Array<{ brand: string; model: string; year: number | null; maximumWeight: string | null }>;
+};
+
+export type ServiceRequestInput = {
+  profileId: string;
+  serviceTypeId: string;
+  origin: string;
+  destination: string;
+  requestedAt: string | null;
+  estimatedWeight: string | null;
+  estimatedVolume: string | null;
+  description: string | null;
+  cargoMeasurements: string | null;
 };
 
 export type PagedResponse<T> = {
@@ -44,17 +71,29 @@ export type SharedRouteFilters = {
 };
 
 const PAGE_SIZE = 20;
-const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
-
 function addNonEmpty(params: URLSearchParams, key: string, value: string) {
   const normalized = value.trim();
   if (normalized) params.set(key, normalized);
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { headers: { Accept: "application/json" }, signal });
+  const apiBaseUrl = resolveApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+  const response = await fetch(`${apiBaseUrl}${path}`, { headers: { Accept: "application/json" }, cache: "no-store", signal });
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response.json() as Promise<T>;
+}
+
+export function getProviderProfile(profileId: string, signal?: AbortSignal) {
+  return getJson<ProviderProfile>(`/api/providers/${encodeURIComponent(profileId)}`, signal);
+}
+
+export async function createServiceRequest(input: ServiceRequestInput, accessToken: string) {
+  return authenticatedApiFetch(
+    "/api/service-requests",
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
+  );
 }
 
 export function getServices(filters: ServiceFilters, signal?: AbortSignal) {

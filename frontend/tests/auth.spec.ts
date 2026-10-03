@@ -311,6 +311,60 @@ test("successful login sends an external next destination to the safe marketplac
   await expect(page).toHaveURL(/\/servicios$/);
 });
 
+test("verified client can submit a quote request with the current MFA access token", async ({ page }) => {
+  const mocks = await installAuthMocks(page, { existingPhone: true, accountExists: true, refresh: true });
+  await page.route("**/api/providers/profile-test-1", async (route) => route.fulfill({
+    json: {
+      profileId: "profile-test-1",
+      providerName: "Transportes del Sur",
+      kind: "company",
+      description: null,
+      location: "Santiago",
+      ownerName: "Ana Pérez",
+      drivers: [],
+      services: [{ serviceTypeId: "service-type-1", name: "Mudanzas" }],
+      vehicles: [],
+    },
+  }));
+  let sentRequest: { body?: Record<string, unknown>; authorization?: string } = {};
+  await page.route("**/api/service-requests", async (route) => {
+    sentRequest = {
+      body: route.request().postDataJSON() as Record<string, unknown>,
+      authorization: route.request().headers()["authorization"],
+    };
+    mocks.events.push({ path: "/api/service-requests", method: "POST", body: sentRequest.body, authorization: sentRequest.authorization });
+    await route.fulfill({ status: 201, json: { request_id: "request-test-1", status: "pending" } });
+  });
+
+  await page.goto("/login?next=%2Fprestadores%2Fprofile-test-1");
+  await page.getByLabel("Correo electrónico").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await expect(page.getByLabel("Código de verificación")).toBeVisible();
+  await page.getByLabel("Código de verificación").fill("246810");
+  await page.getByRole("button", { name: "Verificar teléfono" }).click();
+  await expect(page).toHaveURL(/\/prestadores\/profile-test-1$/);
+  await page.getByRole("button", { name: "Solicitar cotización" }).click();
+  await page.getByLabel("Origen").fill("Santiago");
+  await page.getByLabel("Destino").fill("Valparaíso");
+  await page.getByLabel("Peso estimado (kg)").fill("250.5");
+  await page.getByLabel("Detalles de la solicitud").fill("Retiro de muebles.");
+  await page.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Solicitud enviada");
+  expect(sentRequest.authorization).toBe(`Bearer ${accessToken("aal2", "refreshed-aal2-token")}`);
+  expect(sentRequest.body).toMatchObject({
+    profileId: "profile-test-1",
+    serviceTypeId: "service-type-1",
+    origin: "Santiago",
+    destination: "Valparaíso",
+    estimatedWeight: "250.5",
+    description: "Retiro de muebles.",
+  });
+  expect(sentRequest.body).not.toHaveProperty("customerId");
+  expect(sentRequest.body).not.toHaveProperty("status");
+});
+
 test("home and desktop/mobile marketplace navigation expose real auth routes", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");

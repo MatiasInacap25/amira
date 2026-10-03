@@ -32,6 +32,7 @@ test("service search sends only supported filters and displays API results witho
 
   await page.goto("/servicios");
   await expect(page.getByRole("heading", { name: "Prestador de prueba" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ver perfil y solicitar cotización" })).toHaveAttribute("href", "/prestadores/profile-test-1");
   await page.getByLabel("Buscar por servicio o prestador").fill("camioneta");
   await page.getByLabel("Categoría").selectOption("mudanza");
   await page.getByLabel("Comuna o ciudad").fill("Santiago");
@@ -72,6 +73,7 @@ test("shared-route search sends supported filters and shows ordered stops withou
       json: {
         items: [{
           tripId: "trip-test-1",
+          profileId: "profile-test-1",
           providerName: "Transportista de prueba",
           origin: "Santiago",
           destination: "Concepción",
@@ -103,10 +105,39 @@ test("shared-route search sends supported filters and shows ordered stops withou
   expect(query.get("departureTo")).toContain("2026-10-20T23:59:59.999");
   expect(query.get("departureTo")).toMatch(/[+-]\d{2}:\d{2}$/);
   await expect(page.getByRole("heading", { name: "Santiago a Concepción" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Transportista de prueba" })).toHaveAttribute("href", "/prestadores/profile-test-1");
   await expect(page.getByText("Parada intermedia 1")).toBeVisible();
   await expect(page.getByText("Parada intermedia 2")).toBeVisible();
   await expect(page.getByRole("button", { name: /reservar|contratar|consultar espacio/i })).toHaveCount(0);
   await expect(page.getByText(/No es una reserva/)).toBeVisible();
+});
+
+test("public provider profile shows real names and services, while quote requests require a verified customer session", async ({ page }) => {
+  await page.route("**/api/providers/profile-test-1", async (route) => route.fulfill({
+    json: {
+      profileId: "profile-test-1",
+      providerName: "Transportes del Sur",
+      kind: "company",
+      description: "Traslados y carga en la zona central.",
+      location: "Santiago",
+      ownerName: "Ana Pérez",
+      drivers: [{ firstName: "Pedro", lastName: "Soto" }],
+      services: [{ serviceTypeId: "service-type-1", name: "Mudanzas" }],
+      vehicles: [{ brand: "Volvo", model: "FH", year: 2022, maximumWeight: "18000.00" }],
+    },
+  }));
+  await page.goto("/prestadores/profile-test-1");
+  await expect(page.getByRole("heading", { name: "Transportes del Sur" }).first()).toBeVisible();
+  await expect(page.getByText("Ana Pérez")).toBeVisible();
+  await expect(page.getByText("Pedro Soto")).toBeVisible();
+  await expect(page.getByText("Volvo FH")).toBeVisible();
+  await page.getByRole("button", { name: "Solicitar cotización" }).click();
+  await expect(page.getByRole("dialog", { name: "Cuéntanos qué necesitas" })).toBeVisible();
+  await page.getByLabel("Origen").fill("Santiago");
+  await page.getByLabel("Destino").fill("Valparaíso");
+  await page.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Inicia sesión con un correo confirmado");
+  await expect(page.getByRole("dialog").getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fprestadores%2Fprofile-test-1");
 });
 
 test("shared-route search renders loading, empty, and failure feedback", async ({ page }) => {

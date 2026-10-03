@@ -20,7 +20,17 @@ export function resolveApiBaseUrl(value: string | undefined) {
 }
 
 export async function accountApiFetch(
-  path: "/api/account/me" | "/api/account/provision",
+  path: "/api/account/me" | "/api/account/provision" | "/api/service-requests",
+  accessToken: string,
+  apiUrl: string | undefined,
+  options: RequestInit = {},
+  fetcher: typeof fetch = fetch,
+) {
+  return authenticatedApiFetch(path, accessToken, apiUrl, options, fetcher);
+}
+
+export async function authenticatedApiFetch(
+  path: string,
   accessToken: string,
   apiUrl: string | undefined,
   options: RequestInit = {},

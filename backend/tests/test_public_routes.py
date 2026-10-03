@@ -91,6 +91,7 @@ def test_services_returns_only_public_provider_and_service_fields() -> None:
 
 def test_shared_routes_returns_ordered_public_stops_without_vehicle_or_driver() -> None:
     trip_id = UUID("c4ab4de6-4b14-4c5e-85c8-57306928c1dc")
+    profile_id = UUID("be7374de-165b-4d95-8da6-9a08c233b003")
     departure = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
     stop_time = datetime(2026, 10, 5, 14, tzinfo=timezone.utc)
     response = run_get(
@@ -101,6 +102,7 @@ def test_shared_routes_returns_ordered_public_stops_without_vehicle_or_driver() 
                 rows=[
                     {
                         "trip_id": trip_id,
+                        "profile_id": profile_id,
                         "provider_name": "[DEMO] Transporte Prueba",
                         "origin": "Santiago",
                         "destination": "Valparaíso",
@@ -128,6 +130,7 @@ def test_shared_routes_returns_ordered_public_stops_without_vehicle_or_driver() 
     item = response.json()["items"][0]
     assert item == {
         "tripId": str(trip_id),
+        "profileId": str(profile_id),
         "providerName": "[DEMO] Transporte Prueba",
         "origin": "Santiago",
         "destination": "Valparaíso",
