@@ -16,13 +16,13 @@ The existing design reference is an authenticated, company-focused dashboard. Th
 - Existing public provider code lists drivers through `Conductor.employer_profile_id`; independent drivers have no such profile association today. Do not misuse the employer field or company role: implementation must add the smallest explicit roster relationship required for the approved visible-driver count and test it.
 - Inspect canonical `Tipo_Conductor` values before fixture implementation. Use a deterministic synthetic type only if no suitable canonical value exists; this remains an implementation task.
 - Public production fixtures will be visible. Document exact IDs and natural cleanup keys for possible future cleanup, but cleanup/deletion is not authorized.
-- This documentation stage performs no app/source change or remote operation. The design spec and this ODD task document are to be committed as documentation before implementation; no such commit has been made yet. Implementation and production seed application remain gated on the user reviewing the written spec, local tests passing, and narrow exact-target verification. Production writes are limited to the synthetic fixtures, the current independent-driver profile, and two synthetic driver users plus two vehicles per profile; do not create `auth.users` or credentials, create/insert/reference `Rol_Perfil` `[DEMO] proveedor de prueba`, delete existing data, or broaden access.
+- This documentation stage performs no app/source change or remote operation. The design spec and this ODD task document were committed as documentation in `2408c5c` before implementation. Implementation and production seed application remain gated on the user reviewing the written spec, local tests passing, and narrow exact-target verification. Production writes are limited to the synthetic fixtures, the current independent-driver profile, and two synthetic driver users plus two vehicles per profile; do not create `auth.users` or credentials, create/insert/reference `Rol_Perfil` `[DEMO] proveedor de prueba`, delete existing data, or broaden access.
 
 ## Authorized scope
 - Documentation only: this design spec and this ODD task document.
 - Design: `docs/superpowers/specs/2026-10-03-provider-profile-mockups-and-demo-fixtures-design.md`.
 - Future implementation route: delegated direct; multiple non-trivial presentation/data/test files and schema relationship discovery are expected.
-- The user authorized the implementation direction in the established production context, but the written-spec review, local-test, and narrow-target gates above remain mandatory. No implementation or production write occurs during this documentation stage. Commit the design and task artifacts as documentation before implementation; that commit is still pending.
+- The user authorized the implementation direction in the established production context, but the written-spec review, local-test, and narrow-target gates above remain mandatory. No implementation or production write occurs during this documentation stage. The design and task artifacts were committed as documentation in `2408c5c`; this does not authorize implementation before the gates above.
 
 ## TDD and checks
 - `strict_tdd: true`; source: explicit user/project instruction; sequence RED → GREEN → REFACTOR is required for future code changes.
@@ -56,7 +56,7 @@ The existing design reference is an authenticated, company-focused dashboard. Th
 - 2026-10-03: Existing role codes include canonical `company` and `independent_driver`; the initial fixture migration contains the legacy `[DEMO] proveedor de prueba` role, but the new design explicitly forbids referencing/recreating it. `Conductor.driver_type_id` is required; inspect canonical driver types and add a deterministic synthetic type only if necessary.
 - 2026-10-03: Static mockup ratings/reviews are mock-only; the current live public provider DTO has no rating/review data. The approved production write remains gated on design-spec review, local tests, and narrow exact-target verification.
 - 2026-10-03: Design spec written at `docs/superpowers/specs/2026-10-03-provider-profile-mockups-and-demo-fixtures-design.md`. No code, database, or production changes made.
-- 2026-10-03: Reconciled the written-spec review gate and documentation commit requirement: direction is agreed, but the written spec still awaits user review; source/DB/Supabase work remains gated. The documentation commit has not been made.
+- 2026-10-03: Committed the design and task artifacts in `2408c5c` (`docs: design provider profile mockups and fixtures`). The written spec still awaits user review; this commit does not authorize source or database work before the remaining gates.
 
 ## Progress
 - [x] Design spec and task document created and read back.
