@@ -9,6 +9,7 @@ const servicesResponse = {
       description: "Traslados de hogar dentro de la ciudad.",
       location: "Santiago",
       logoUrl: null,
+      services: [{ serviceTypeId: "service-type-1", name: "Mudanzas" }],
     },
   ],
   total: 1,
@@ -32,7 +33,20 @@ test("service search sends only supported filters and displays API results witho
 
   await page.goto("/servicios");
   await expect(page.getByRole("heading", { name: "Prestador de prueba" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Ver perfil y solicitar cotización" })).toHaveAttribute("href", "/prestadores/profile-test-1");
+  const card = page.locator(".service-result-card");
+  await expect(card.getByRole("link", { name: "Ver perfil" })).toHaveAttribute("href", "/prestadores/profile-test-1");
+  await expect(card.getByRole("button", { name: "Cotizar" })).toBeVisible();
+  await expect(card.getByRole("link")).toHaveCount(1);
+  await expect(card.getByRole("button")).toHaveCount(1);
+  await expect(page.getByLabel("Categoría")).toHaveJSProperty("tagName", "SELECT");
+  await expect.poll(() => page.getByLabel("Categoría").locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))).toEqual([
+    "",
+    "mudanza",
+    "mercaderia",
+    "flete",
+    "escombros",
+    "grua",
+  ]);
   await page.getByLabel("Buscar por servicio o prestador").fill("camioneta");
   await page.getByLabel("Categoría").selectOption("mudanza");
   await page.getByLabel("Comuna o ciudad").fill("Santiago");
@@ -45,7 +59,38 @@ test("service search sends only supported filters and displays API results witho
   expect(query.has("origin")).toBe(false);
   expect(query.has("destination")).toBe(false);
   await expect(page.getByText("No se muestran calificaciones ni verificaciones que Amira no ofrece.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /reservar|contratar|cotizar/i })).toHaveCount(0);
+  await card.getByRole("button", { name: "Cotizar" }).click();
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await expect(dialog.getByLabel("Servicio")).toHaveValue("service-type-1");
+  await expect(dialog.getByLabel("Servicio")).toBeDisabled();
+  await expect(page.getByRole("button", { name: /reservar|contratar/i })).toHaveCount(0);
+});
+
+test("provider quote dialog only offers matching services and allows choosing between them", async ({ page }) => {
+  await page.route("**/api/services?*", async (route) => route.fulfill({
+    json: {
+      ...servicesResponse,
+      items: [{
+        ...servicesResponse.items[0],
+        services: [
+          { serviceTypeId: "service-type-1", name: "Mudanzas" },
+          { serviceTypeId: "service-type-2", name: "Fletes" },
+        ],
+      }],
+    },
+  }));
+
+  await page.goto("/servicios");
+  const card = page.locator(".service-result-card");
+  await card.getByRole("button", { name: "Cotizar" }).click();
+
+  const serviceSelect = page.getByRole("dialog").getByLabel("Servicio");
+  await expect(serviceSelect).toBeEnabled();
+  await expect(serviceSelect.locator("option")).toHaveCount(2);
+  await expect(serviceSelect.locator("option").nth(0)).toHaveAttribute("value", "service-type-1");
+  await expect(serviceSelect.locator("option").nth(1)).toHaveAttribute("value", "service-type-2");
+  await serviceSelect.selectOption("service-type-2");
+  await expect(serviceSelect).toHaveValue("service-type-2");
 });
 
 test("service search exposes loading, empty, and error states", async ({ page }) => {

@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, MapPin, Search, Truck } from "lucide-react";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { QuoteRequestDialog } from "@/components/marketplace/quote-request-dialog";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
-import { getServices, type ServiceFilters } from "@/lib/marketplace-api";
+import { getServices, type ProviderProfile, type ServiceFilters } from "@/lib/marketplace-api";
 
 const categories = [
   { value: "mudanza", label: "Mudanzas" },
@@ -17,13 +18,13 @@ const categories = [
 
 const initialFilters: ServiceFilters = { q: "", category: "", location: "", offset: 0 };
 
-function categoryName(category: string) {
-  return categories.find((item) => item.value === category)?.label ?? category;
-}
-
 export default function ServicesPage() {
   const [filters, setFilters] = useState(initialFilters);
   const [query, setQuery] = useState(initialFilters);
+  const [quote, setQuote] = useState<{
+    profile: Pick<ProviderProfile, "profileId" | "providerName" | "services">;
+    selectedServiceId: string;
+  } | null>(null);
   const servicesQuery = useQuery({
     queryKey: ["services", query],
     queryFn: ({ signal }) => getServices(query, signal),
@@ -112,13 +113,30 @@ export default function ServicesPage() {
                   <article className="marketplace-card service-result-card" key={service.profileId}>
                     <div className="service-result-top">
                       <span aria-hidden="true" className="provider-mark"><Truck size={21} strokeWidth={1.8} /></span>
-                      <span className="service-result-category">{categoryName(service.category)}</span>
+                      <span className="service-result-category">{service.services.map((offer) => offer.name).join(" · ")}</span>
                     </div>
-                    <h3><Link className="service-provider-link" href={`/prestadores/${encodeURIComponent(service.profileId)}`}>{service.providerName}</Link></h3>
+                    <h3>{service.providerName}</h3>
                     <p className="service-result-description">{service.description || "El prestador no agregó una descripción."}</p>
                     {service.location && <p className="service-result-location"><MapPin aria-hidden="true" size={15} />{service.location}</p>}
                     <p className="service-result-note">La disponibilidad y las condiciones se coordinan directamente con el prestador.</p>
-                    <Link className="service-result-action" href={`/prestadores/${encodeURIComponent(service.profileId)}`}>Ver perfil y solicitar cotización</Link>
+                    <div className="service-result-actions">
+                      <Link className="button button-secondary" href={`/prestadores/${encodeURIComponent(service.profileId)}`}>Ver perfil</Link>
+                      <button
+                        className="button button-primary"
+                        disabled={service.services.length === 0}
+                        onClick={() => setQuote({
+                          profile: {
+                            profileId: service.profileId,
+                            providerName: service.providerName,
+                            services: service.services,
+                          },
+                          selectedServiceId: service.services[0]?.serviceTypeId ?? "",
+                        })}
+                        type="button"
+                      >
+                        Cotizar
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -136,6 +154,14 @@ export default function ServicesPage() {
         </div>
       </main>
       <MarketplaceFooter />
+      {quote && (
+        <QuoteRequestDialog
+          onClose={() => setQuote(null)}
+          open
+          profile={quote.profile}
+          selectedServiceId={quote.selectedServiceId}
+        />
+      )}
     </>
   );
 }

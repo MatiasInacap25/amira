@@ -537,6 +537,8 @@ h1, h2, h3, p { margin-top: 0; }
 .service-provider-link:hover, .route-provider-link:hover { color: #173f55; }
 .service-result-card .service-provider-link { display: inline-block; }
 .service-result-action { display: inline-flex; align-self: flex-start; margin-top: 12px; color: #173f55; font-size: 12px; font-weight: 750; text-decoration-color: #df6e3e; text-underline-offset: 4px; }
+.service-result-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.service-result-actions .button { flex: 1 1 110px; }
 .provider-profile-layout { display: grid; grid-template-columns: minmax(250px, .78fr) minmax(0, 1.22fr); align-items: start; gap: 18px; }
 .provider-profile-card, .provider-profile-section { min-width: 0; padding: 24px; border: 1px solid #dbe4e5; border-radius: 13px; background: #fff; }
 .provider-profile-heading { display: flex; align-items: center; gap: 13px; }

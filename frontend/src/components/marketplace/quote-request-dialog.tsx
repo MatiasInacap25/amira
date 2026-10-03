@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 type Props = {
   open: boolean;
-  profile: ProviderProfile;
+  profile: Pick<ProviderProfile, "profileId" | "providerName" | "services">;
   selectedServiceId: string;
   onClose: () => void;
 };
@@ -23,6 +23,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [signInPath, setSignInPath] = useState("/login");
+  const [serviceId, setServiceId] = useState(selectedServiceId);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -39,7 +40,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
     const volume = String(form.get("estimatedVolume") ?? "").trim();
     const input: ServiceRequestInput = {
       profileId: profile.profileId,
-      serviceTypeId: selectedServiceId,
+      serviceTypeId: serviceId,
       origin: String(form.get("origin") ?? "").trim(),
       destination: String(form.get("destination") ?? "").trim(),
       requestedAt: requestedAt ? new Date(requestedAt).toISOString() : null,
@@ -115,7 +116,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
         <form className="quote-request-form" onSubmit={submit}>
           <label className="marketplace-field" htmlFor="quote-service">
             <span>Servicio</span>
-            <select defaultValue={selectedServiceId} disabled id="quote-service">
+            <select disabled={profile.services.length === 1} id="quote-service" onChange={(event) => setServiceId(event.target.value)} value={serviceId}>
               {profile.services.map((service) => <option key={service.serviceTypeId} value={service.serviceTypeId}>{service.name}</option>)}
             </select>
           </label>

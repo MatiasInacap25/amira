@@ -7,6 +7,7 @@ export type ServiceProfile = {
   description?: string | null;
   location?: string | null;
   logoUrl?: string | null;
+  services: Array<{ serviceTypeId: string; name: string }>;
 };
 
 export type SharedRouteStop = {
