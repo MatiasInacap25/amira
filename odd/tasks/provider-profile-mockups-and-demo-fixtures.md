@@ -59,6 +59,7 @@ The existing design reference is an authenticated, company-focused dashboard. Th
 - 2026-10-03: Read-only account-role audit confirmed current provision flow rejects role changes, creates a Perfil for `independent_driver`, and lacks standalone `company_driver` provisioning. The clarified product behavior therefore needs an explicit owner-authorized atomic transition; its fixture seed remains separate and leaves the existing independent profile unchanged.
 - 2026-10-03: Design spec written at `docs/superpowers/specs/2026-10-03-provider-profile-mockups-and-demo-fixtures-design.md`. No code, database, or production changes made.
 - 2026-10-03: Committed the design and task artifacts in `2408c5c` (`docs: design provider profile mockups and fixtures`). The written spec still awaits user review; this commit does not authorize source or database work before the remaining gates.
+- 2026-10-03: Updated the design for the user's one-owner/company-driver transition rule and committed it in `d331b7f` (`docs: specify provider company transition`). The written spec is ready for review; implementation and fixture writes have not started.
 
 ## Progress
 - [x] Design spec and task document created and read back.
