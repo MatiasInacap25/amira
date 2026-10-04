@@ -74,3 +74,46 @@ Have the user review the written spec. Then implement and test the owner-authori
 - `backend/src/amira_api/public_schemas.py` — public provider response allowlist.
 - `backend/src/amira_api/models.py` — canonical profile/account roles, driver, and vehicle schema.
 - `backend/alembic/versions/20260927_0002_public_browse_rls_and_demo_seed.py` — historical demo seed with legacy demo role; do not replicate that role pattern.
+
+## Implementation authorization and clarified service roles
+
+The user explicitly approved implementation after reviewing the design and clarified these required runtime boundaries:
+
+- The existing profile owner is the only client-facing account: the owner talks with customers, schedules services, and chooses which linked driver performs each service.
+- A linked `company_driver` only performs services assigned by the owner. Profile membership must not grant chat participation, scheduling, or customer messaging permissions.
+- Driver assignments must be validated against the same company profile; never allow the owner to assign a driver belonging to another profile.
+- The transition remains same-profile: preserve `Perfil.ID` and owner; change the profile to canonical `company`, owner capability to `company_owner`, reuse/link the owner's unique `Conductor`, and create the added user as `company_driver` with no second `Perfil`.
+- Keep the synthetic company fixture distinct from the real transition and do not mutate the existing independent profile. This request does not authorize applying migrations or fixture data to Supabase/production; do not perform remote DB operations.
+
+Authorized route is delegated direct because implementation spans non-trivial backend, frontend/mockup, fixture, and test files. Preserve strict TDD (`uv run pytest` in `backend`), run `graphify update .` after source edits, and do not stage unrelated existing working-tree changes.
+
+Implementation tasks:
+- [x] Implement the owner-authorized atomic same-profile transition: owner capability/profile role upgrade, owner Conductor reuse/link, and linked company-driver account provisioning without a second profile.
+- [x] Enforce owner-only request decisions/chat participation and driver assignment; reject cross-profile drivers and keep public payloads allowlisted.
+- [x] Complete both dependency-free Spanish mockups and the isolated local-only company SQL fixture; do not add it to Alembic or apply it.
+- [x] Run final checks, update the graph, record fixture IDs and work-unit commit identity.
+
+## Implementation progress (2026-10-03)
+
+- Added `POST /api/account/company/transition`. It locks and validates the authenticated owner, existing profile, owner driver, and invited existing client account; changes the existing owner/profile in place; links the owner's unique Conductor; and upgrades the linked client to `company_driver` with a same-profile Conductor. It creates no profile for the driver. Company profile/account role codes are resolved canonically; invalid configuration and mismatched/conflicting state fail closed.
+- Added `PUT /api/provider/services/{service_id}/driver`. Only the profile owner can use it; the service must belong to that profile and the selected driver must be a linked `company_driver` or the authenticated owner. Cross-profile IDs are hidden as not found. Provider inbox decisions keep the company owner as the only provider chat participant; `company_driver` remains ineligible for provider/client quote actions.
+- Public driver listing now includes an independent profile owner's existing Conductor through the owner-user association as well as employer-linked company drivers. Public response schemas remain explicit and exclude account/private fields.
+- Added `docs/mockups/public-provider-independent.html` and `docs/mockups/public-provider-company.html`, which share the same responsive, offline Spanish layout; mock rating and vehicle data are clearly labeled as illustrative.
+- Added `backend/tests/fixtures/company_profile_demo.sql` as a local-test-only, standalone fixture (not an Alembic migration and not applied). The repository has no canonical driver-type seed; this isolated fixture inserts the deterministic synthetic type only for the local test dataset. It resolves canonical `company_owner`, `company_driver`, and `company` roles and fails on conflicting fixture IDs; no existing independent profile is referenced or updated.
+
+Fixture UUIDs and natural cleanup keys (cleanup is not authorized):
+- Company profile `b3000000-0000-4000-8000-000000000002` — `[DEMO] Logística del Valle`.
+- Owner user `b3000000-0000-4000-8000-000000000001` — `demo-compania@example.invalid`; synthetic auth UUID `b3000000-0000-4000-8000-00000000000a` is an application field only, not an `auth.users` row.
+- Driver user `b3000000-0000-4000-8000-000000000003` — `demo-mateo@example.invalid`; synthetic auth UUID `b3000000-0000-4000-8000-00000000000b`. Driver record `b3000000-0000-4000-8000-000000000005` links to profile `b3000000-0000-4000-8000-000000000002`.
+- Driver user `b3000000-0000-4000-8000-000000000004` — `demo-lucia@example.invalid`; synthetic auth UUID `b3000000-0000-4000-8000-00000000000c`. Driver record `b3000000-0000-4000-8000-000000000006` links to profile `b3000000-0000-4000-8000-000000000002`.
+- Vehicle `b3000000-0000-4000-8000-000000000007` — plate `DEMO-001`; vehicle `b3000000-0000-4000-8000-000000000008` — plate `DEMO-002`. Both link to profile `b3000000-0000-4000-8000-000000000002`.
+- Local synthetic driver-type lookup `b3000000-0000-4000-8000-000000000009` — `[DEMO] Conductor de empresa`.
+- The company's `DEMO-76000000` tax marker is deliberately synthetic and never included in a public DTO.
+
+
+Work-unit commits on `feature/auth-and-public-provider-profiles`:
+- `34c70e1` — `feat: transition independent providers into companies`.
+- `860ffcc` — `feat: enforce owner-managed service assignments`.
+- `09cf3a1` — `docs: add provider profile mockups and local fixture`.
+
+Focused RED/GREEN evidence: `uv run pytest tests/test_company_transition.py tests/test_company_demo_fixture.py tests/test_provider_mockups.py tests/test_public_provider_routes.py tests/test_provider_request_routes.py -q` — 36 passed, including owner-only chat/assignment, foreign-driver rejection, transition retry and commit-rollback tests. Full suite `uv run pytest -q` from `backend` — 102 passed. `graphify update .` succeeded (SQL AST plugin unavailable; SQL fixture not represented in graph); `git diff --check` succeeded. Pytest emitted a cache-write permission warning for the pre-existing `.pytest_cache`. Earlier RED for assignment failed with route-not-found as expected. No database was connected, no migration/fixture was run, and no remote or Auth operation occurred.
