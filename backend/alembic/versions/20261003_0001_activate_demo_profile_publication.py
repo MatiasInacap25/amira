@@ -1,13 +1,13 @@
 """Activate the synthetic demo provider profile for public browsing.
 
 Revision ID: 20261003_0001
-Revises: 20260928_0004
+Revises: 20260928_0003
 """
 
 from alembic import op
 
 revision = "20261003_0001"
-down_revision = "20260928_0004"
+down_revision = "20260928_0003"
 branch_labels = None
 depends_on = None
 
