@@ -152,6 +152,19 @@ class DriverInvitation(Base):
     revoked_at: Mapped[datetime | None] = mapped_column("revoked_at", DateTime(timezone=True))
 
 
+class DriverInvitationAttempt(Base):
+    __tablename__ = "DriverInvitationAttempt"
+    __table_args__ = (
+        Index("ix_driver_invitation_attempt_identity_created", "auth_user_id", "auth_session_id", "created_at"),
+        Index("ix_driver_invitation_attempt_created_at", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column("id", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    auth_user_id: Mapped[UUID] = mapped_column("auth_user_id", Uuid(as_uuid=True), nullable=False)
+    auth_session_id: Mapped[str] = mapped_column("auth_session_id", String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class EmailFallbackChallenge(Base):
     __tablename__ = "EmailFallbackChallenge"
     __table_args__ = (

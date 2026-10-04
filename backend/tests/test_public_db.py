@@ -51,8 +51,12 @@ def test_database_engine_forces_psycopg_tls_and_bounded_timeouts(monkeypatch) ->
 def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
     migration = load_public_migration()
 
-    assert len(Base.metadata.tables) == 28
-    assert (set(migration.PUBLIC_TABLES) - {"alembic_version"}) | set(load_auth_migration().RLS_TABLES) == set(Base.metadata.tables)
+    assert len(Base.metadata.tables) == 29
+    assert (
+        (set(migration.PUBLIC_TABLES) - {"alembic_version"})
+        | set(load_auth_migration().RLS_TABLES)
+        | {"DriverInvitationAttempt"}
+    ) == set(Base.metadata.tables)
     assert "alembic_version" in migration.PUBLIC_TABLES
 
 

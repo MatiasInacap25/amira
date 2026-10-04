@@ -15,9 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from amira_api.account_schemas import AccountProvisionRequest
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
-from amira_api.models import Conductor, DriverInvitation, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
+from amira_api.models import Conductor, DriverInvitation, DriverInvitationAttempt, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
 from amira_api.settings import Settings, get_settings
 
 router = APIRouter(tags=["company invitations"])
@@ -26,6 +27,8 @@ Database = Annotated[Session, Depends(get_db_session)]
 INVITATION_TTL = timedelta(days=7)
 ISSUE_WINDOW = timedelta(minutes=15)
 MAX_ISSUES_PER_WINDOW = 5
+MAX_ACCEPTS_PER_WINDOW = 5
+ACCEPT_WINDOW = timedelta(minutes=15)
 INVALID_INVITATION = "Invitation is invalid or expired."
 
 
@@ -107,6 +110,7 @@ class ResendInvitationSender:
 class InvitationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     email: str = Field(min_length=3, max_length=320)
+    company_tax_id: str | None = Field(default=None, min_length=9, max_length=16)
 
     @field_validator("email")
     @classmethod
@@ -118,6 +122,11 @@ class InvitationCreate(BaseModel):
         if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
             raise ValueError("Enter a valid email address.")
         return normalized
+
+    @field_validator("company_tax_id")
+    @classmethod
+    def normalize_company_tax_id(cls, value: str | None) -> str | None:
+        return AccountProvisionRequest.normalize_rut(value) if value is not None else None
 
 
 class InvitationAccept(BaseModel):
@@ -163,20 +172,51 @@ def _invitation_status(invitation: DriverInvitation, now: datetime) -> str:
     return "pending"
 
 
-def _owned_company(session: Session, auth_user_id: UUID, *, lock: bool = False):
+def _owned_provider(session: Session, auth_user_id: UUID, *, lock: bool = False):
     statement = (
-        select(Usuario, Perfil)
+        select(Usuario, Perfil, RolUsuario.code, RolPerfil.code)
         .join(RolUsuario, RolUsuario.id == Usuario.role_id)
         .join(Perfil, Perfil.owner_user_id == Usuario.id)
         .join(RolPerfil, RolPerfil.id == Perfil.role_id)
-        .where(Usuario.auth_user_id == auth_user_id, RolUsuario.code == "company_owner", Perfil.kind == "company", RolPerfil.code == "company")
+        .where(Usuario.auth_user_id == auth_user_id)
     )
     if lock:
         statement = statement.with_for_update()
     result = session.execute(statement).one_or_none()
-    if result is None:
-        raise HTTPException(status_code=403, detail="A company owner profile is required.")
+    if result is None or (result[2], result[1].kind, result[3]) not in {
+        ("company_owner", "company", "company"),
+        ("independent_driver", "independent_driver", "independent_driver"),
+    }:
+        raise HTTPException(status_code=403, detail="A provider owner profile is required.")
     return result
+
+
+def _record_acceptance_attempt(session: Session, current_user: AuthenticatedUser) -> None:
+    now = datetime.now(timezone.utc)
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(
+        f"driver-invitation-accept:{current_user.id}:{current_user.session_id}", 0
+    ))))
+    session.execute(
+        DriverInvitationAttempt.__table__.delete().where(
+            DriverInvitationAttempt.created_at < now - ACCEPT_WINDOW
+        )
+    )
+    count = session.execute(
+        select(func.count()).select_from(DriverInvitationAttempt).where(
+            DriverInvitationAttempt.auth_user_id == current_user.id,
+            DriverInvitationAttempt.auth_session_id == str(current_user.session_id),
+            DriverInvitationAttempt.created_at >= now - ACCEPT_WINDOW,
+        )
+    ).scalar_one()
+    if count >= MAX_ACCEPTS_PER_WINDOW:
+        session.rollback()
+        raise HTTPException(status_code=429, detail="Invitation acceptance rate limit exceeded.")
+    session.add(DriverInvitationAttempt(
+        auth_user_id=current_user.id,
+        auth_session_id=str(current_user.session_id),
+        created_at=now,
+    ))
+    session.commit()
 
 
 def _new_invitation(session: Session, owner: Usuario, profile: Perfil, email: str, settings: Settings, sender: InvitationSender) -> InvitationResult:
@@ -247,13 +287,19 @@ def create_invitation(
 ) -> InvitationResult:
     if sender is None:
         raise HTTPException(status_code=503, detail="Invitation delivery is not configured.")
-    owner, profile = _owned_company(session, current_user.id, lock=True)
+    owner, profile, owner_role, _ = _owned_provider(session, current_user.id, lock=True)
+    if owner_role == "independent_driver":
+        if payload.company_tax_id is None:
+            raise HTTPException(status_code=422, detail="A company tax ID is required for the first invitation.")
+        if profile.company_tax_id not in {None, payload.company_tax_id}:
+            raise HTTPException(status_code=409, detail="The pending company tax ID cannot be changed.")
+        profile.company_tax_id = payload.company_tax_id
     return _new_invitation(session, owner, profile, _normalize_email(payload.email), settings, sender)
 
 
 @router.get("/api/company/profiles/me/driver-invitations", response_model=InvitationList)
 def list_invitations(current_user: CurrentUser, session: Database) -> InvitationList:
-    _, profile = _owned_company(session, current_user.id)
+    _, profile, _, _ = _owned_provider(session, current_user.id)
     rows = session.execute(
         select(DriverInvitation).where(DriverInvitation.company_profile_id == profile.id)
         .order_by(DriverInvitation.created_at.desc(), DriverInvitation.id.desc())
@@ -268,7 +314,7 @@ def list_invitations(current_user: CurrentUser, session: Database) -> Invitation
 
 @router.delete("/api/company/profiles/me/driver-invitations/{invitation_id}", response_model=InvitationResult)
 def revoke_invitation(invitation_id: UUID, current_user: CurrentUser, session: Database) -> InvitationResult:
-    _, profile = _owned_company(session, current_user.id, lock=True)
+    _, profile, _, _ = _owned_provider(session, current_user.id, lock=True)
     invitation = session.execute(
         select(DriverInvitation).where(
             DriverInvitation.id == invitation_id,
@@ -294,7 +340,7 @@ def reissue_invitation(
 ) -> InvitationResult:
     if sender is None:
         raise HTTPException(status_code=503, detail="Invitation delivery is not configured.")
-    owner, profile = _owned_company(session, current_user.id, lock=True)
+    owner, profile, _, _ = _owned_provider(session, current_user.id, lock=True)
     previous = session.execute(
         select(DriverInvitation).where(
             DriverInvitation.id == invitation_id,
@@ -323,6 +369,7 @@ def accept_invitation(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authentication credentials.")
     access_token = authorization.removeprefix("Bearer ").strip()
+    _record_acceptance_attempt(session, current_user)
     if not access_token or not email_verifier.is_confirmed(access_token, current_user.id, _normalize_email(current_user.email)):
         raise HTTPException(status_code=403, detail="A confirmed email identity is required.")
     if settings.company_driver_type_id is None:
@@ -334,7 +381,7 @@ def accept_invitation(
     if candidate_profile_id is None:
         raise HTTPException(status_code=400, detail=INVALID_INVITATION)
     profile_result = session.execute(
-        select(Perfil, RolPerfil.code, RolUsuario.code)
+        select(Perfil, RolPerfil.code, Usuario, RolUsuario.code)
         .join(RolPerfil, RolPerfil.id == Perfil.role_id)
         .join(Usuario, Usuario.id == Perfil.owner_user_id)
         .join(RolUsuario, RolUsuario.id == Usuario.role_id)
@@ -342,8 +389,10 @@ def accept_invitation(
     ).one_or_none()
     if profile_result is None:
         raise HTTPException(status_code=400, detail=INVALID_INVITATION)
-    profile, profile_role, owner_role = profile_result
-    if profile.kind != "company" or profile_role != "company" or owner_role != "company_owner":
+    profile, profile_role, owner, owner_role = profile_result
+    if profile_role != profile.kind or (owner_role, profile.kind) not in {
+        ("company_owner", "company"), ("independent_driver", "independent_driver")
+    }:
         raise HTTPException(status_code=400, detail=INVALID_INVITATION)
 
     # Keep the lock order profile -> invitation -> invitee, matching owner
@@ -378,6 +427,27 @@ def accept_invitation(
     driver_type = session.execute(select(TipoConductor).where(TipoConductor.id == settings.company_driver_type_id)).scalar_one_or_none()
     if driver_role is None or driver_type is None:
         raise HTTPException(status_code=503, detail="Company-linked driver provisioning is not configured.")
+
+    if profile.kind == "independent_driver":
+        if not profile.company_tax_id:
+            raise HTTPException(status_code=400, detail=INVALID_INVITATION)
+        owner_driver = session.execute(
+            select(Conductor).where(Conductor.user_id == owner.id).with_for_update()
+        ).scalar_one_or_none()
+        if owner_driver is None or owner_driver.employer_profile_id not in {None, profile.id}:
+            raise HTTPException(status_code=400, detail=INVALID_INVITATION)
+        company_profile_role = session.execute(
+            select(RolPerfil).where(RolPerfil.code == "company")
+        ).scalar_one_or_none()
+        company_owner_role = session.execute(
+            select(RolUsuario).where(RolUsuario.code == "company_owner")
+        ).scalar_one_or_none()
+        if company_profile_role is None or company_owner_role is None:
+            raise HTTPException(status_code=503, detail="Company profile or account role is not configured.")
+        profile.kind = "company"
+        profile.role_id = company_profile_role.id
+        owner.role_id = company_owner_role.id
+        owner_driver.employer_profile_id = profile.id
 
     invitation.accepted_at = datetime.now(timezone.utc)
     user.role_id = driver_role.id

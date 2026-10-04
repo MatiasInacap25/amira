@@ -83,17 +83,6 @@ class AccountProvisionRequest(BaseModel):
         return self
 
 
-class CompanyTransitionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    company_tax_id: str = Field(min_length=9, max_length=16)
-
-    @field_validator("company_tax_id")
-    @classmethod
-    def validate_company_tax_id(cls, value: str) -> str:
-        return AccountProvisionRequest.normalize_rut(value)
-
-
 class AccountResponse(BaseModel):
     user_id: UUID
     role: AccountRoleCode

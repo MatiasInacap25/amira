@@ -13,6 +13,7 @@ export default function CompanyInvitationsPage() {
   const [token, setToken] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [email, setEmail] = useState("");
+  const [companyTaxId, setCompanyTaxId] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
@@ -65,7 +66,8 @@ export default function CompanyInvitationsPage() {
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await api("/api/company/profiles/me/driver-invitations", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, ...(companyTaxId.trim() ? { company_tax_id: companyTaxId.trim() } : {}) }),
       });
       if (!response.ok) throw new Error("No pudimos enviar la invitación. Revisa la dirección o intenta más tarde.");
       setEmail(""); setNotice("Invitación enviada. El vínculo vence en siete días."); await reload();
@@ -93,11 +95,15 @@ export default function CompanyInvitationsPage() {
           <p className="auth-kicker">GESTIÓN DE EMPRESA</p>
           <h1 id="invitations-title">Invitar conductores</h1>
           <p>Las personas invitadas deberán confirmar su correo, completar la verificación de acceso y aceptar antes de quedar vinculadas.</p>
+          <p>El perfil independiente se convierte en empresa solo cuando la primera persona invitada acepta.</p>
           {notice && <p role="status" aria-live="polite" className="auth-notice">{notice}</p>}
           {error && <p role="alert" aria-live="assertive" className="auth-error">{error}</p>}
           <form className="auth-form" onSubmit={create}>
             <label className="auth-field" htmlFor="driver-invitation-email">Correo de la persona invitada
               <input id="driver-invitation-email" autoComplete="email" type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label className="auth-field" htmlFor="driver-invitation-company-tax-id">RUT de empresa (requerido solo para el primer conductor)
+              <input id="driver-invitation-company-tax-id" autoComplete="off" maxLength={16} value={companyTaxId} onChange={(event) => setCompanyTaxId(event.target.value)} />
             </label>
             <button className="auth-submit" disabled={busy || !token} type="submit">{busy ? "Procesando…" : "Enviar invitación"}</button>
           </form>

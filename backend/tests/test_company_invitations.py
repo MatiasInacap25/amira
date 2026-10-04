@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 
-from amira_api.account_schemas import CompanyTransitionRequest
 from amira_api.auth import AuthenticatedUser
 from amira_api.invitation_routes import (
     INVALID_INVITATION,
@@ -58,6 +57,7 @@ class Session:
         self.committed = False
         self.rolled_back = False
         self.fail_commit = fail_commit
+        self.commits = 0
 
     def execute(self, statement):
         self.statements.append(statement)
@@ -72,7 +72,8 @@ class Session:
                 value.id = uuid4()
 
     def commit(self):
-        if self.fail_commit:
+        self.commits += 1
+        if self.fail_commit and self.commits > 1:
             raise RuntimeError("database write failed")
         self.committed = True
 
@@ -110,33 +111,39 @@ def auth(email="driver@example.test"):
     )
 
 
-def acceptance_session(*, email="DRIVER@example.test", role="client", expires=None, accepted=None, fail_commit=False):
+def acceptance_session(*, email="DRIVER@example.test", role="client", expires=None, accepted=None, fail_commit=False, independent=False):
     now = datetime.now(timezone.utc)
     invite = DriverInvitation(
         id=uuid4(), company_profile_id=PROFILE_ID, target_email="driver@example.test",
         token_hash=sha256(TOKEN.encode("ascii")).hexdigest(), created_by_user_id=uuid4(),
         created_at=now, expires_at=expires or now + timedelta(days=7), accepted_at=accepted,
     )
-    profile = SimpleNamespace(id=PROFILE_ID, kind="company")
+    profile = SimpleNamespace(
+        id=PROFILE_ID,
+        kind="independent_driver" if independent else "company",
+        role_id=UUID("6633368a-3f77-4569-b203-57a1622d5852"),
+        company_tax_id="76123456-0" if independent else None,
+    )
+    owner = SimpleNamespace(id=uuid4(), role_id=UUID("6633368a-3f77-4569-b203-57a1622d5853"))
+    owner_driver = SimpleNamespace(id=uuid4(), user_id=owner.id, employer_profile_id=None)
     user = SimpleNamespace(id=USER_ID, email=email, role_id=UUID("6633368a-3f77-4569-b203-57a1622d5851"))
     driver_role = SimpleNamespace(id=DRIVER_ROLE_ID)
     driver_type = SimpleNamespace(id=DRIVER_TYPE_ID)
-    return Session([
-        Result(scalar=PROFILE_ID), Result(row=(profile, "company", "company_owner")),
+    results = [
+        Result(), Result(), Result(scalar=0),
+        Result(scalar=PROFILE_ID), Result(row=(profile, "independent_driver" if independent else "company", owner, "independent_driver" if independent else "company_owner")),
         Result(scalar=invite), Result(row=(user, role)),
         Result(scalar=None), Result(scalar=None), Result(scalar=driver_role), Result(scalar=driver_type),
-    ], fail_commit=fail_commit), invite, profile, user
-
-
-def test_transition_request_cannot_name_an_invitee_account():
-    with pytest.raises(ValueError):
-        CompanyTransitionRequest(driver_user_id=USER_ID, company_tax_id="76.123.456-0")
+    ]
+    if independent:
+        results.extend([Result(scalar=owner_driver), Result(scalar=SimpleNamespace(id=uuid4())), Result(scalar=SimpleNamespace(id=uuid4()))])
+    return Session(results, fail_commit=fail_commit), invite, profile, user, owner, owner_driver
 
 
 def test_invitation_creation_normalizes_email_and_persists_only_token_hash():
-    owner = SimpleNamespace(id=USER_ID)
-    profile = SimpleNamespace(id=PROFILE_ID)
-    session = Session([Result(row=(owner, profile)), Result(scalar=0), Result()])
+    owner = SimpleNamespace(id=USER_ID, role_id=DRIVER_ROLE_ID)
+    profile = SimpleNamespace(id=PROFILE_ID, kind="company", role_id=DRIVER_ROLE_ID, company_tax_id=None)
+    session = Session([Result(row=(owner, profile, "company_owner", "company")), Result(scalar=0), Result()])
     sender = FakeSender()
 
     result = create_invitation(
@@ -157,9 +164,9 @@ def test_invitation_creation_normalizes_email_and_persists_only_token_hash():
 
 
 def test_unconfigured_delivery_fails_before_writing_invitation():
-    owner = SimpleNamespace(id=USER_ID)
-    profile = SimpleNamespace(id=PROFILE_ID)
-    session = Session([Result(row=(owner, profile)), Result(scalar=0), Result()])
+    owner = SimpleNamespace(id=USER_ID, role_id=DRIVER_ROLE_ID)
+    profile = SimpleNamespace(id=PROFILE_ID, kind="company", role_id=DRIVER_ROLE_ID, company_tax_id=None)
+    session = Session([Result(row=(owner, profile, "company_owner", "company")), Result(scalar=0), Result()])
     sender = FakeSender(delivered=False)
 
     with pytest.raises(HTTPException) as error:
@@ -173,8 +180,8 @@ def test_unconfigured_delivery_fails_before_writing_invitation():
 
 
 def test_reissue_replaces_pending_token_and_revokes_old_invitation():
-    owner = SimpleNamespace(id=USER_ID)
-    profile = SimpleNamespace(id=PROFILE_ID)
+    owner = SimpleNamespace(id=USER_ID, role_id=DRIVER_ROLE_ID)
+    profile = SimpleNamespace(id=PROFILE_ID, kind="company", role_id=DRIVER_ROLE_ID, company_tax_id=None)
     previous = DriverInvitation(
         id=uuid4(), company_profile_id=PROFILE_ID, target_email="driver@example.test",
         token_hash=sha256(b"older-token-value-which-is-long-enough").hexdigest(),
@@ -182,7 +189,7 @@ def test_reissue_replaces_pending_token_and_revokes_old_invitation():
         expires_at=datetime.now(timezone.utc) + timedelta(days=2),
     )
     session = Session([
-        Result(row=(owner, profile)), Result(scalar=previous), Result(scalar=0), Result(),
+        Result(row=(owner, profile, "company_owner", "company")), Result(scalar=previous), Result(scalar=0), Result(),
     ])
     sender = FakeSender()
 
@@ -200,7 +207,7 @@ def test_reissue_replaces_pending_token_and_revokes_old_invitation():
 
 
 def test_acceptance_consumes_invite_and_creates_one_company_driver_without_profile():
-    session, invitation, profile, user = acceptance_session()
+    session, invitation, profile, user, _, _ = acceptance_session()
 
     result = accept_invitation(
         InvitationAccept(token=TOKEN), auth(), session,
@@ -216,6 +223,52 @@ def test_acceptance_consumes_invite_and_creates_one_company_driver_without_profi
     assert sum("FOR UPDATE" in str(statement.compile(dialect=__import__("sqlalchemy.dialects.postgresql", fromlist=["dialect"]).dialect())) for statement in session.statements) >= 4
 
 
+def test_first_acceptance_atomically_converts_same_profile_and_reuses_owner_driver():
+    session, invitation, profile, user, owner, owner_driver = acceptance_session(independent=True)
+    company_role_id = UUID("6f87b410-07c0-4bdd-9458-bf34060810b1")
+    company_owner_role_id = UUID("6f87b410-07c0-4bdd-9458-bf34060810b2")
+    session.results = iter([
+        Result(), Result(), Result(scalar=0),
+        Result(scalar=PROFILE_ID), Result(row=(profile, "independent_driver", owner, "independent_driver")),
+        Result(scalar=invitation), Result(row=(user, "client")), Result(scalar=None), Result(scalar=None),
+        Result(scalar=SimpleNamespace(id=DRIVER_ROLE_ID)), Result(scalar=SimpleNamespace(id=DRIVER_TYPE_ID)),
+        Result(scalar=owner_driver), Result(scalar=SimpleNamespace(id=company_role_id)),
+        Result(scalar=SimpleNamespace(id=company_owner_role_id)),
+    ])
+
+    result = accept_invitation(
+        InvitationAccept(token=TOKEN), auth(), session,
+        Settings(_env_file=None, company_driver_type_id=DRIVER_TYPE_ID),
+        "Bearer verified-session-token", FakeEmailVerifier(),
+    )
+
+    assert result.profile_id == profile.id
+    assert profile.kind == "company" and profile.role_id == company_role_id
+    assert profile.company_tax_id == "76123456-0"
+    assert owner.role_id == company_owner_role_id
+    assert owner_driver.employer_profile_id == profile.id
+    assert user.role_id == DRIVER_ROLE_ID
+    assert invitation.accepted_at is not None
+    assert sum(isinstance(row, Conductor) for row in session.added) == 1
+    assert session.commits == 2
+
+
+def test_invite_issue_does_not_convert_independent_owner_before_acceptance():
+    owner = SimpleNamespace(id=USER_ID, role_id="independent-role")
+    profile = SimpleNamespace(id=PROFILE_ID, kind="independent_driver", role_id="independent-role", company_tax_id=None)
+    session = Session([Result(row=(owner, profile, "independent_driver", "independent_driver")), Result(scalar=0), Result()])
+
+    create_invitation(
+        InvitationCreate(email="driver@example.test", company_tax_id="76.123.456-0"), auth("owner@example.test"), session,
+        Settings(_env_file=None, frontend_base_url="https://amira.example"), FakeSender(),
+    )
+
+    assert profile.kind == "independent_driver"
+    assert owner.role_id == "independent-role"
+    assert profile.company_tax_id == "76123456-0"
+    assert session.committed
+
+
 @pytest.mark.parametrize("case", ["expired", "accepted", "wrong_email", "wrong_profile_email"])
 def test_invalid_invitation_or_recipient_fails_closed(case):
     kwargs = {}
@@ -228,7 +281,8 @@ def test_invalid_invitation_or_recipient_fails_closed(case):
         identity_email = "other@example.test"
     elif case == "wrong_profile_email":
         kwargs["email"] = "other@example.test"
-    session, _, _, _ = acceptance_session(**kwargs)
+    independent = case == "expired"
+    session, _, profile, _, owner, _ = acceptance_session(**kwargs, independent=independent)
 
     with pytest.raises(HTTPException) as error:
         accept_invitation(
@@ -238,11 +292,14 @@ def test_invalid_invitation_or_recipient_fails_closed(case):
 
     assert error.value.status_code == 400
     assert error.value.detail == INVALID_INVITATION
-    assert not session.committed
+    assert session.commits == 1
+    if independent:
+        assert profile.kind == "independent_driver"
+        assert owner.role_id != DRIVER_ROLE_ID
 
 
 def test_acceptance_rolls_back_role_and_invite_when_commit_fails():
-    session, invitation, _, user = acceptance_session(fail_commit=True)
+    session, invitation, _, user, _, _ = acceptance_session(fail_commit=True)
 
     with pytest.raises(RuntimeError, match="database write failed"):
         accept_invitation(
@@ -253,11 +310,30 @@ def test_acceptance_rolls_back_role_and_invite_when_commit_fails():
     assert user.role_id == DRIVER_ROLE_ID
     assert invitation.accepted_at is not None
     assert session.rolled_back
-    assert not session.committed
+    assert session.commits == 2
+
+
+def test_failed_first_acceptance_commit_rolls_back_transition_and_invitation():
+    session, invitation, profile, user, owner, owner_driver = acceptance_session(independent=True, fail_commit=True)
+
+    with pytest.raises(RuntimeError, match="database write failed"):
+        accept_invitation(
+            InvitationAccept(token=TOKEN), auth(), session,
+            Settings(_env_file=None, company_driver_type_id=DRIVER_TYPE_ID),
+            "Bearer verified-session-token", FakeEmailVerifier(),
+        )
+
+    assert profile.kind == "company"
+    assert owner.role_id != UUID("6633368a-3f77-4569-b203-57a1622d5853")
+    assert owner_driver.employer_profile_id == PROFILE_ID
+    assert user.role_id == DRIVER_ROLE_ID
+    assert invitation.accepted_at is not None
+    assert session.rolled_back
+    assert session.commits == 2
 
 
 def test_acceptance_requires_independent_server_confirmation_evidence():
-    session, _, _, _ = acceptance_session()
+    session, _, _, _, _, _ = acceptance_session()
 
     with pytest.raises(HTTPException) as error:
         accept_invitation(
@@ -267,8 +343,8 @@ def test_acceptance_requires_independent_server_confirmation_evidence():
         )
 
     assert error.value.status_code == 403
-    assert not session.committed
-    assert session.statements == []
+    assert session.commits == 1
+    assert len(session.statements) == 3
 
 
 def test_email_confirmation_verifier_checks_auth_user_identity_and_confirmed_timestamp(monkeypatch):

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from amira_api.account_schemas import AccountProvisionRequest, AccountResponse, AccountRole, AccountRoleCode, CompanyTransitionRequest
+from amira_api.account_schemas import AccountProvisionRequest, AccountResponse, AccountRole, AccountRoleCode
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
 from amira_api.models import Conductor, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
@@ -31,71 +31,6 @@ def get_account(current_user: CurrentUser, session: Database) -> AccountResponse
     user, role_code = result
     profile = session.execute(select(Perfil.id).where(Perfil.owner_user_id == user.id)).scalar_one_or_none()
     return AccountResponse(user_id=user.id, role=AccountRoleCode(role_code), profile_id=profile)
-
-
-@router.post("/company/transition", response_model=AccountResponse)
-def transition_to_company(
-    payload: CompanyTransitionRequest,
-    current_user: CurrentUser,
-    session: Database,
-) -> AccountResponse:
-    owner_result = session.execute(
-        select(Usuario, RolUsuario.code)
-        .join(RolUsuario, RolUsuario.id == Usuario.role_id)
-        .where(Usuario.auth_user_id == current_user.id)
-        .with_for_update()
-    ).one_or_none()
-    if owner_result is None:
-        raise HTTPException(status_code=403, detail="A provisioned provider owner account is required.")
-    owner, owner_role_code = owner_result
-    if owner_role_code not in {"independent_driver", "company_owner"}:
-        raise HTTPException(status_code=403, detail="Only a provider profile owner can add a company driver.")
-    profile_result = session.execute(
-        select(Perfil, RolPerfil.code)
-        .join(RolPerfil, RolPerfil.id == Perfil.role_id)
-        .where(Perfil.owner_user_id == owner.id)
-        .with_for_update()
-    ).one_or_none()
-    if profile_result is None:
-        raise HTTPException(status_code=403, detail="An owned provider profile is required.")
-    profile, profile_role_code = profile_result
-    if profile_role_code != profile.kind or profile.kind not in {"company", "independent_driver"}:
-        raise HTTPException(status_code=409, detail="Provider profile role is inconsistent.")
-    if (owner_role_code, profile.kind) not in {
-        ("independent_driver", "independent_driver"),
-        ("company_owner", "company"),
-    }:
-        raise HTTPException(status_code=409, detail="Provider account and profile roles are inconsistent.")
-    if owner_role_code == "company_owner" and profile.company_tax_id != payload.company_tax_id:
-        raise HTTPException(status_code=409, detail="Company tax ID does not match the existing profile.")
-
-    owner_driver = session.execute(
-        select(Conductor).where(Conductor.user_id == owner.id).with_for_update()
-    ).scalar_one_or_none()
-    if owner_driver is None or owner_driver.employer_profile_id not in {None, profile.id}:
-        raise HTTPException(status_code=409, detail="The profile owner's existing driver record cannot be linked safely.")
-
-    company_profile_role = session.execute(
-        select(RolPerfil).where(RolPerfil.code == "company")
-    ).scalar_one_or_none()
-    company_owner_role = session.execute(
-        select(RolUsuario).where(RolUsuario.code == "company_owner")
-    ).scalar_one_or_none()
-    if company_profile_role is None or company_owner_role is None:
-        raise HTTPException(status_code=503, detail="Company profile or account role is not configured.")
-
-    try:
-        if owner_role_code == "independent_driver":
-            owner.role_id = company_owner_role.id
-            profile.kind = "company"
-            profile.role_id = company_profile_role.id
-            profile.company_tax_id = payload.company_tax_id
-        owner_driver.employer_profile_id = profile.id
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    return AccountResponse(user_id=owner.id, role=AccountRoleCode.COMPANY_OWNER, profile_id=profile.id)
 
 
 @router.post("/provision", response_model=AccountResponse, status_code=201)
