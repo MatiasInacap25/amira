@@ -230,6 +230,17 @@ def test_only_company_owners_and_independent_provider_owners_can_open_inbox():
     assert response.status_code == 200
 
 
+def test_company_driver_cannot_schedule_or_chat_with_clients():
+    store = FakeStore(role="company_driver")
+
+    response = run_request("POST", f"/api/provider/requests/{REQUEST_ID}/accept", store)
+
+    assert response.status_code == 403
+    assert store.form.status == "pending"
+    assert store.chats == []
+    assert store.participants == []
+
+
 def test_accept_creates_one_request_anchored_chat_and_two_participants():
     store = FakeStore()
 

@@ -7,11 +7,12 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.dialects import postgresql
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
 from amira_api.main import app
-from amira_api.models import FormularioServicio
+from amira_api.models import Conductor, FormularioServicio, Servicio
 
 AUTH_USER_ID = UUID("a6607c8d-9ea3-4166-8bf2-2333ae164d57")
 ACCOUNT_ID = UUID("59f7cf6f-4d38-4c9c-96e7-62f354874d1d")
@@ -43,8 +44,10 @@ class FakeSession:
         self.results = iter(results)
         self.added = []
         self.committed = False
+        self.statements = []
 
     def execute(self, statement):
+        self.statements.append(statement)
         return next(self.results)
 
     def add(self, value):
@@ -133,7 +136,7 @@ def test_independent_driver_public_name_uses_real_name_not_profile_handle():
     }
     session = FakeSession([
         FakeResult(row=profile),
-        FakeResult(rows=[]),
+        FakeResult(rows=[{"first_name": "Pedro", "last_name": "Soto"}]),
         FakeResult(rows=[{"service_type_id": SERVICE_TYPE_ID, "name": "Fletes"}]),
         FakeResult(rows=[]),
     ])
@@ -142,7 +145,11 @@ def test_independent_driver_public_name_uses_real_name_not_profile_handle():
 
     assert response.status_code == 200
     assert response.json()["providerName"] == "Pedro Soto"
+    assert response.json()["drivers"] == [{"firstName": "Pedro", "lastName": "Soto"}]
     assert "Fletes Pedro" not in response.text
+    driver_query = str(session.statements[1].compile(dialect=postgresql.dialect()))
+    assert '"Perfil"."ID_user"' in driver_query
+    assert '"Conductor"."ID_perfil" IS NULL' in driver_query
 
 
 @pytest.mark.parametrize("profile_row", [None, {**PROFILE, "public_activated_at": None}])
@@ -237,6 +244,51 @@ def test_quote_request_rejects_unavailable_profile_service_without_persisting():
 
     assert response.status_code == 404
     assert session.added == []
+    assert not session.committed
+
+
+def test_profile_owner_can_assign_only_a_driver_from_their_provider_profile():
+    service = Servicio(id=uuid4(), profile_id=PROFILE_ID, contracted_driver_id=None)
+    driver = Conductor(id=uuid4(), user_id=uuid4(), employer_profile_id=PROFILE_ID, driver_type_id=uuid4())
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "company_owner")),
+        FakeResult(scalar=PROFILE_ID),
+        FakeResult(scalar=service),
+        FakeResult(scalar=driver),
+    ])
+
+    response = run_request("PUT", f"/api/provider/services/{service.id}/driver", session, json_body={"driverId": str(driver.id)})
+
+    assert response.status_code == 200
+    assert response.json() == {"serviceId": str(service.id), "driverId": str(driver.id)}
+    assert service.contracted_driver_id == driver.id
+    assert session.committed
+
+
+def test_profile_owner_cannot_assign_a_driver_from_another_company():
+    service = Servicio(id=uuid4(), profile_id=PROFILE_ID, contracted_driver_id=None)
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "company_owner")),
+        FakeResult(scalar=PROFILE_ID),
+        FakeResult(scalar=service),
+        FakeResult(scalar=None),
+    ])
+
+    response = run_request("PUT", f"/api/provider/services/{service.id}/driver", session, json_body={"driverId": str(uuid4())})
+
+    assert response.status_code == 404
+    assert service.contracted_driver_id is None
+    assert not session.committed
+
+
+def test_company_driver_cannot_assign_services_or_act_as_provider_owner():
+    service = Servicio(id=uuid4(), profile_id=PROFILE_ID, contracted_driver_id=None)
+    session = FakeSession([FakeResult(row=(ACCOUNT_ID, "company_driver"))])
+
+    response = run_request("PUT", f"/api/provider/services/{service.id}/driver", session, json_body={"driverId": str(uuid4())})
+
+    assert response.status_code == 403
+    assert service.contracted_driver_id is None
     assert not session.committed
 
 

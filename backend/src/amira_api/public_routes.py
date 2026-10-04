@@ -20,6 +20,7 @@ from amira_api.models import (
     Perfil,
     RolPerfil,
     RolUsuario,
+    Servicio,
     ServicioDisponible,
     TipoServicio,
     Usuario,
@@ -39,6 +40,8 @@ from amira_api.public_schemas import (
     ProviderRequestDecision,
     ProviderRequestItem,
     ProviderRequestPage,
+    ProviderServiceDriverAssignment,
+    ProviderServiceDriverAssignmentRequest,
     ServiceRequestCreate,
     ServiceRequestCreated,
 )
@@ -88,7 +91,13 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
     driver_rows = session.execute(
         select(Usuario.first_name.label("first_name"), Usuario.last_name.label("last_name"))
         .join(Conductor, Conductor.user_id == Usuario.id)
-        .where(Conductor.employer_profile_id == profile_id)
+        .where(
+            or_(
+                Conductor.employer_profile_id == profile_id,
+                (Conductor.user_id == select(Perfil.owner_user_id).where(Perfil.id == profile_id).scalar_subquery())
+                & Conductor.employer_profile_id.is_(None),
+            )
+        )
         .order_by(Usuario.first_name.asc(), Usuario.last_name.asc(), Usuario.id.asc())
     ).mappings().all()
     service_rows = session.execute(
@@ -311,6 +320,43 @@ def accept_provider_request(request_id: UUID, current_user: CurrentUser, session
 @router.post("/provider/requests/{request_id}/reject", response_model=ProviderRequestDecision)
 def reject_provider_request(request_id: UUID, current_user: CurrentUser, session: Database) -> ProviderRequestDecision:
     return _decide_provider_request(request_id, "rejected", current_user, session)
+
+
+@router.put("/provider/services/{service_id}/driver", response_model=ProviderServiceDriverAssignment)
+def assign_provider_service_driver(
+    service_id: UUID,
+    payload: ProviderServiceDriverAssignmentRequest,
+    current_user: CurrentUser,
+    session: Database,
+) -> ProviderServiceDriverAssignment:
+    owner_account_id, profile_id = _owned_provider(session, current_user)
+    service = session.execute(
+        select(Servicio)
+        .where(Servicio.id == service_id, Servicio.profile_id == profile_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+
+    driver = session.execute(
+        select(Conductor)
+        .join(Usuario, Usuario.id == Conductor.user_id)
+        .join(RolUsuario, RolUsuario.id == Usuario.role_id)
+        .where(
+            Conductor.id == payload.driver_id,
+            or_(
+                (Conductor.employer_profile_id == profile_id) & (RolUsuario.code == "company_driver"),
+                Conductor.user_id == owner_account_id,
+            ),
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if driver is None:
+        raise HTTPException(status_code=404, detail="Driver not found for this provider profile.")
+
+    service.contracted_driver_id = driver.id
+    session.commit()
+    return ProviderServiceDriverAssignment(service_id=service.id, driver_id=driver.id)
 
 
 @router.get("/services", response_model=PublicServicePage)

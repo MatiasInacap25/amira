@@ -142,3 +142,13 @@ class ProviderRequestDecision(PublicResponse):
     request_id: UUID
     status: str
     chat_id: UUID | None
+
+
+class ProviderServiceDriverAssignmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", alias_generator=_to_camel, populate_by_name=True)
+    driver_id: UUID
+
+
+class ProviderServiceDriverAssignment(PublicResponse):
+    service_id: UUID
+    driver_id: UUID
