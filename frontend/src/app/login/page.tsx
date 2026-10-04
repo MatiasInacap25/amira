@@ -3,6 +3,7 @@ import { AuthPanel } from "@/components/auth/auth-panel";
 
 export const metadata: Metadata = { title: "Iniciar sesión | Amira" };
 
-export default function LoginPage() {
-  return <AuthPanel mode="login" />;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const params = await searchParams;
+  return <AuthPanel mode="login" invitationIntent={params.next === "/invitacion/conductor/aceptar"} />;
 }

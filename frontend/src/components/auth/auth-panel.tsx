@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Truck } from "lucide-react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { accountApiFetch } from "@/lib/auth/account-api";
+import { accountApiFetch, authenticatedApiFetch } from "@/lib/auth/account-api";
 import { safeNextPath } from "@/lib/auth/safe-next-path";
 import { createClient } from "@/lib/supabase/client";
 
@@ -16,6 +16,7 @@ type PhoneFactor = { id: string; phone?: string; status?: string };
 
 const AUTH_ERROR = "No pudimos completar la operación. Revisa los datos e intenta nuevamente.";
 const REGISTRATION_DRAFT_KEY = "amira-registration-draft";
+const DRIVER_INVITATION_KEY = "amira-driver-invitation";
 type RegistrationDraft = {
   email: string;
   phone: string;
@@ -52,7 +53,7 @@ function getSafeNext() {
   return safeNextPath(new URLSearchParams(window.location.search).get("next"));
 }
 
-export function AuthPanel({ mode, providerIntent = false }: { mode: AuthMode; providerIntent?: boolean }) {
+export function AuthPanel({ mode, providerIntent = false, invitationIntent = false }: { mode: AuthMode; providerIntent?: boolean; invitationIntent?: boolean }) {
   const router = useRouter();
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [configError, setConfigError] = useState("");
@@ -78,6 +79,11 @@ export function AuthPanel({ mode, providerIntent = false }: { mode: AuthMode; pr
   const [companyTaxId, setCompanyTaxId] = useState("");
   const [alsoDriver, setAlsoDriver] = useState(false);
   const [confirmedUser, setConfirmedUser] = useState<User | null>(null);
+  const [invitationToken] = useState(() => {
+    if (!invitationIntent || typeof window === "undefined") return "";
+    try { return window.sessionStorage.getItem(DRIVER_INVITATION_KEY) ?? ""; }
+    catch { return ""; }
+  });
 
   function clearRegistrationValues() {
     setEmail("");
@@ -204,7 +210,9 @@ export function AuthPanel({ mode, providerIntent = false }: { mode: AuthMode; pr
         };
         window.sessionStorage.setItem(REGISTRATION_DRAFT_KEY, JSON.stringify(registrationDraft));
         const callback = new URL("/auth/callback", window.location.origin);
-        callback.searchParams.set("next", providerIntent ? "/registro?step=account&intent=provider" : "/registro?step=account");
+        callback.searchParams.set("next", invitationIntent
+          ? "/registro?step=account&intent=invite"
+          : providerIntent ? "/registro?step=account&intent=provider" : "/registro?step=account");
         const { data, error: signupError } = await client.auth.signUp({
           email: email.trim(),
           password,
@@ -325,17 +333,18 @@ export function AuthPanel({ mode, providerIntent = false }: { mode: AuthMode; pr
       if (assuranceError || assurance.currentLevel !== "aal2") throw new Error("Completa la verificación SMS antes de crear tu cuenta.");
       const { data: sessionData, error: sessionError } = await client.auth.getSession();
       if (sessionError || !sessionData.session?.access_token) throw sessionError ?? new Error("La sesión expiró. Inicia sesión nuevamente.");
+      const provisionRole: AccountRole = invitationIntent ? "client" : role;
       const payload: Record<string, string | boolean> = {
-        role,
+        role: provisionRole,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         national_id: nationalId.trim(),
         birth_date: birthDate,
         phone: phone.trim(),
       };
-      if (role !== "client") payload.display_name = displayName.trim();
-      if (role === "company_owner") payload.company_tax_id = companyTaxId.trim();
-      if (role === "company_owner") payload.also_driver = alsoDriver;
+      if (provisionRole !== "client") payload.display_name = displayName.trim();
+      if (provisionRole === "company_owner") payload.company_tax_id = companyTaxId.trim();
+      if (provisionRole === "company_owner") payload.also_driver = alsoDriver;
       const response = await accountApiFetch("/api/account/provision", sessionData.session.access_token, process.env.NEXT_PUBLIC_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -360,12 +369,28 @@ export function AuthPanel({ mode, providerIntent = false }: { mode: AuthMode; pr
         throw new Error(detail);
       }
       window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
-      router.replace(getSafeNext());
+      if (invitationIntent && invitationToken) {
+        await submitInvitation(invitationToken, sessionData.session.access_token);
+        window.sessionStorage.removeItem(DRIVER_INVITATION_KEY);
+        router.replace("/servicios");
+      } else {
+        router.replace(getSafeNext());
+      }
     } catch (cause) {
       setError(messageFor(cause));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitInvitation(token: string, accessToken: string) {
+    const response = await authenticatedApiFetch(
+      "/api/driver-invitations/accept",
+      accessToken,
+      process.env.NEXT_PUBLIC_API_URL,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) },
+    );
+    if (!response.ok) throw new Error("La invitación no está disponible o no corresponde a esta cuenta.");
   }
 
   async function handleSignOut() {
@@ -505,13 +530,14 @@ export function AuthPanel({ mode, providerIntent = false }: { mode: AuthMode; pr
 
           {step === "account" && (
             <form className="auth-form" onSubmit={handleProvision}>
-              <label className="auth-field" htmlFor="auth-role">¿Cómo usarás Amira?
+              {!invitationIntent && <label className="auth-field" htmlFor="auth-role">¿Cómo usarás Amira?
                 <select id="auth-role" onChange={(event) => setRole(event.target.value as AccountRole)} value={role}>
                   {!providerIntent && <option value="client">Buscar un servicio de transporte</option>}
                   <option value="company_owner">Publicar como empresa transportista</option>
                   <option value="independent_driver">Ofrecer servicios como conductor independiente</option>
                 </select>
-              </label>
+              </label>}
+              {invitationIntent && <p className="auth-notice">Primero crearemos tu cuenta de cliente. La invitación la vinculará a la empresa solo después de que la aceptes.</p>}
               <div className="auth-name-fields">
                 <label className="auth-field" htmlFor="auth-first-name">Nombre<input autoComplete="given-name" id="auth-first-name" maxLength={120} onChange={(event) => setFirstName(event.target.value)} required value={firstName} /></label>
                 <label className="auth-field" htmlFor="auth-last-name">Apellido<input autoComplete="family-name" id="auth-last-name" maxLength={120} onChange={(event) => setLastName(event.target.value)} required value={lastName} /></label>

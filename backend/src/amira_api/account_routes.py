@@ -38,11 +38,7 @@ def transition_to_company(
     payload: CompanyTransitionRequest,
     current_user: CurrentUser,
     session: Database,
-    settings: Annotated[Settings, Depends(get_settings)],
 ) -> AccountResponse:
-    if settings.company_driver_type_id is None:
-        raise HTTPException(status_code=503, detail="Company-linked driver provisioning is not configured.")
-
     owner_result = session.execute(
         select(Usuario, RolUsuario.code)
         .join(RolUsuario, RolUsuario.id == Usuario.role_id)
@@ -54,9 +50,6 @@ def transition_to_company(
     owner, owner_role_code = owner_result
     if owner_role_code not in {"independent_driver", "company_owner"}:
         raise HTTPException(status_code=403, detail="Only a provider profile owner can add a company driver.")
-    if payload.driver_user_id == owner.id:
-        raise HTTPException(status_code=409, detail="The profile owner cannot be added as a second driver.")
-
     profile_result = session.execute(
         select(Perfil, RolPerfil.code)
         .join(RolPerfil, RolPerfil.id == Perfil.role_id)
@@ -73,8 +66,6 @@ def transition_to_company(
         ("company_owner", "company"),
     }:
         raise HTTPException(status_code=409, detail="Provider account and profile roles are inconsistent.")
-    if owner_role_code == "independent_driver" and profile.company_tax_id not in {None, payload.company_tax_id}:
-        raise HTTPException(status_code=409, detail="Company tax ID conflicts with existing profile data.")
     if owner_role_code == "company_owner" and profile.company_tax_id != payload.company_tax_id:
         raise HTTPException(status_code=409, detail="Company tax ID does not match the existing profile.")
 
@@ -90,41 +81,8 @@ def transition_to_company(
     company_owner_role = session.execute(
         select(RolUsuario).where(RolUsuario.code == "company_owner")
     ).scalar_one_or_none()
-    company_driver_role = session.execute(
-        select(RolUsuario).where(RolUsuario.code == "company_driver")
-    ).scalar_one_or_none()
-    driver_type = session.execute(
-        select(TipoConductor).where(TipoConductor.id == settings.company_driver_type_id)
-    ).scalar_one_or_none()
-    if None in (company_profile_role, company_owner_role, company_driver_role, driver_type):
-        raise HTTPException(status_code=503, detail="Company profile, account role, or driver type mapping is invalid.")
-
-    driver_result = session.execute(
-        select(Usuario, RolUsuario.code)
-        .join(RolUsuario, RolUsuario.id == Usuario.role_id)
-        .where(Usuario.id == payload.driver_user_id)
-        .with_for_update()
-    ).one_or_none()
-    if driver_result is None:
-        raise HTTPException(status_code=404, detail="The invited driver account was not found.")
-    driver_user, driver_role_code = driver_result
-    driver_profile = session.execute(
-        select(Perfil.id).where(Perfil.owner_user_id == driver_user.id)
-    ).scalar_one_or_none()
-    linked_driver = session.execute(
-        select(Conductor).where(Conductor.user_id == driver_user.id).with_for_update()
-    ).scalar_one_or_none()
-
-    if driver_role_code == "company_driver":
-        if driver_profile is not None or linked_driver is None or linked_driver.employer_profile_id != profile.id:
-            raise HTTPException(status_code=409, detail="Driver account is already linked elsewhere.")
-        if linked_driver.driver_type_id != driver_type.id:
-            raise HTTPException(status_code=409, detail="Existing linked driver type does not match configuration.")
-    elif driver_role_code == "client":
-        if driver_profile is not None or linked_driver is not None:
-            raise HTTPException(status_code=409, detail="Only an unlinked client account can become a company driver.")
-    else:
-        raise HTTPException(status_code=409, detail="Only an unlinked client account can become a company driver.")
+    if company_profile_role is None or company_owner_role is None:
+        raise HTTPException(status_code=503, detail="Company profile or account role is not configured.")
 
     try:
         if owner_role_code == "independent_driver":
@@ -133,13 +91,6 @@ def transition_to_company(
             profile.role_id = company_profile_role.id
             profile.company_tax_id = payload.company_tax_id
         owner_driver.employer_profile_id = profile.id
-        if driver_role_code == "client":
-            driver_user.role_id = company_driver_role.id
-            session.add(Conductor(
-                user_id=driver_user.id,
-                employer_profile_id=profile.id,
-                driver_type_id=driver_type.id,
-            ))
         session.commit()
     except Exception:
         session.rollback()

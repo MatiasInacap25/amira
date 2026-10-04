@@ -86,7 +86,6 @@ class AccountProvisionRequest(BaseModel):
 class CompanyTransitionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    driver_user_id: UUID
     company_tax_id: str = Field(min_length=9, max_length=16)
 
     @field_validator("company_tax_id")
