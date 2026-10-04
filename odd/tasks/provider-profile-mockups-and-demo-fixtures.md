@@ -117,3 +117,12 @@ Work-unit commits on `feature/auth-and-public-provider-profiles`:
 - `09cf3a1` — `docs: add provider profile mockups and local fixture`.
 
 Focused RED/GREEN evidence: `uv run pytest tests/test_company_transition.py tests/test_company_demo_fixture.py tests/test_provider_mockups.py tests/test_public_provider_routes.py tests/test_provider_request_routes.py -q` — 36 passed, including owner-only chat/assignment, foreign-driver rejection, transition retry and commit-rollback tests. Full suite `uv run pytest -q` from `backend` — 102 passed. `graphify update .` succeeded (SQL AST plugin unavailable; SQL fixture not represented in graph); `git diff --check` succeeded. Pytest emitted a cache-write permission warning for the pre-existing `.pytest_cache`. Earlier RED for assignment failed with route-not-found as expected. No database was connected, no migration/fixture was run, and no remote or Auth operation occurred.
+
+## Verification correction follow-up (2026-10-03)
+
+The independent read-only verifier identified two confirmed in-scope blockers in the committed implementation. Reopen only these bounded corrections:
+
+- [x] Require an owner-driver assignment candidate to be either an independent owner's unlinked `Conductor` (`employer_profile_id IS NULL`) or a conductor linked to the same profile; add a regression test for a foreign-linked owner driver.
+- [x] Make the local fixture's nullable-column identity guards null-safe with `IS DISTINCT FROM` (or equivalent), and add a regression test for a NULL-valued conflicting row.
+
+Strict TDD evidence: the first focused run failed on both regressions (the assignment endpoint accepted the foreign-linked owner driver's canned result with HTTP 200; the fixture had no null-safe comparisons). After correction, the focused command `uv run pytest tests/test_public_provider_routes.py::test_company_owner_cannot_assign_their_driver_record_when_it_is_linked_to_another_profile tests/test_company_demo_fixture.py::test_nullable_fixture_identity_fields_detect_null_collisions -q` passed (2 passed). Full `uv run pytest` from `backend` passed (104 passed). `graphify update .` succeeded; its SQL extraction plugin is unavailable, so SQL did not contribute to the graph. `git diff --check` passed. Pytest emitted only the existing `.pytest_cache` permission warning. No database was connected and the fixture was not executed. A separate product/security question about unilateral promotion by UUID remains intentionally unresolved for the parent to ask the user.

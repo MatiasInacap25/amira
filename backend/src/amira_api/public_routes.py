@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import Session
 
@@ -345,8 +345,11 @@ def assign_provider_service_driver(
         .where(
             Conductor.id == payload.driver_id,
             or_(
-                (Conductor.employer_profile_id == profile_id) & (RolUsuario.code == "company_driver"),
-                Conductor.user_id == owner_account_id,
+                and_(Conductor.employer_profile_id == profile_id, RolUsuario.code == "company_driver"),
+                and_(
+                    Conductor.user_id == owner_account_id,
+                    or_(Conductor.employer_profile_id.is_(None), Conductor.employer_profile_id == profile_id),
+                ),
             ),
         )
         .with_for_update()

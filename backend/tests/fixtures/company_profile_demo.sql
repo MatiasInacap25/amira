@@ -27,47 +27,47 @@ BEGIN
     END IF;
 
     IF EXISTS (SELECT 1 FROM public."Usuario" WHERE "ID" = 'b3000000-0000-4000-8000-000000000001'
-        AND ("ID_Auth_Supabase" <> 'b3000000-0000-4000-8000-00000000000a'
-             OR "Correo" <> 'demo-compania@example.invalid' OR "Nombre" <> '[DEMO] Elena'
-             OR "Apellido" <> 'Dueña' OR "ID_Rol" <> owner_role)) THEN
+        AND ("ID_Auth_Supabase" IS DISTINCT FROM 'b3000000-0000-4000-8000-00000000000a'
+             OR "Correo" IS DISTINCT FROM 'demo-compania@example.invalid' OR "Nombre" IS DISTINCT FROM '[DEMO] Elena'
+             OR "Apellido" IS DISTINCT FROM 'Dueña' OR "ID_Rol" IS DISTINCT FROM owner_role)) THEN
         RAISE EXCEPTION 'Company demo owner ID conflicts with a non-fixture row';
     END IF;
     IF EXISTS (SELECT 1 FROM public."Perfil" WHERE "ID" = 'b3000000-0000-4000-8000-000000000002'
-        AND ("ID_user" <> 'b3000000-0000-4000-8000-000000000001'
-             OR "Nombre" <> '[DEMO] Logística del Valle' OR kind <> 'company'
-             OR "Rol_Perfil" <> company_role OR "Rut_Empresa" <> 'DEMO-76000000')) THEN
+        AND ("ID_user" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000001'
+             OR "Nombre" IS DISTINCT FROM '[DEMO] Logística del Valle' OR kind IS DISTINCT FROM 'company'
+             OR "Rol_Perfil" IS DISTINCT FROM company_role OR "Rut_Empresa" IS DISTINCT FROM 'DEMO-76000000')) THEN
         RAISE EXCEPTION 'Company demo profile ID conflicts with a non-fixture row';
     END IF;
     IF EXISTS (SELECT 1 FROM public."Usuario" WHERE "ID" = 'b3000000-0000-4000-8000-000000000003'
-        AND ("ID_Auth_Supabase" <> 'b3000000-0000-4000-8000-00000000000b'
-             OR "Correo" <> 'demo-mateo@example.invalid' OR "Nombre" <> '[DEMO] Mateo'
-             OR "Apellido" <> 'Silva' OR "ID_Rol" <> driver_role)) THEN
+        AND ("ID_Auth_Supabase" IS DISTINCT FROM 'b3000000-0000-4000-8000-00000000000b'
+             OR "Correo" IS DISTINCT FROM 'demo-mateo@example.invalid' OR "Nombre" IS DISTINCT FROM '[DEMO] Mateo'
+             OR "Apellido" IS DISTINCT FROM 'Silva' OR "ID_Rol" IS DISTINCT FROM driver_role)) THEN
         RAISE EXCEPTION 'First company demo driver ID conflicts with a non-fixture row';
     END IF;
     IF EXISTS (SELECT 1 FROM public."Usuario" WHERE "ID" = 'b3000000-0000-4000-8000-000000000004'
-        AND ("ID_Auth_Supabase" <> 'b3000000-0000-4000-8000-00000000000c'
-             OR "Correo" <> 'demo-lucia@example.invalid' OR "Nombre" <> '[DEMO] Lucía'
-             OR "Apellido" <> 'Rojas' OR "ID_Rol" <> driver_role)) THEN
+        AND ("ID_Auth_Supabase" IS DISTINCT FROM 'b3000000-0000-4000-8000-00000000000c'
+             OR "Correo" IS DISTINCT FROM 'demo-lucia@example.invalid' OR "Nombre" IS DISTINCT FROM '[DEMO] Lucía'
+             OR "Apellido" IS DISTINCT FROM 'Rojas' OR "ID_Rol" IS DISTINCT FROM driver_role)) THEN
         RAISE EXCEPTION 'Second company demo driver ID conflicts with a non-fixture row';
     END IF;
     IF EXISTS (SELECT 1 FROM public."Conductor" WHERE "ID" = 'b3000000-0000-4000-8000-000000000005'
-        AND ("ID_user" <> 'b3000000-0000-4000-8000-000000000003'
-             OR "ID_perfil" <> 'b3000000-0000-4000-8000-000000000002'
-             OR "Tipo_Conductor" <> driver_type OR "Rol" <> '[DEMO] Conductor'))
+        AND ("ID_user" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000003'
+             OR "ID_perfil" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000002'
+             OR "Tipo_Conductor" IS DISTINCT FROM driver_type OR "Rol" IS DISTINCT FROM '[DEMO] Conductor'))
        OR EXISTS (SELECT 1 FROM public."Conductor" WHERE "ID" = 'b3000000-0000-4000-8000-000000000006'
-        AND ("ID_user" <> 'b3000000-0000-4000-8000-000000000004'
-             OR "ID_perfil" <> 'b3000000-0000-4000-8000-000000000002'
-             OR "Tipo_Conductor" <> driver_type OR "Rol" <> '[DEMO] Conductora')) THEN
+        AND ("ID_user" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000004'
+             OR "ID_perfil" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000002'
+             OR "Tipo_Conductor" IS DISTINCT FROM driver_type OR "Rol" IS DISTINCT FROM '[DEMO] Conductora')) THEN
         RAISE EXCEPTION 'Company demo driver record IDs conflict with non-fixture rows';
     END IF;
     IF EXISTS (SELECT 1 FROM public."Vehiculo" WHERE "ID" = 'b3000000-0000-4000-8000-000000000007'
-        AND ("ID_Perfil" <> 'b3000000-0000-4000-8000-000000000002'
-             OR "Patente" <> 'DEMO-001' OR "Marca" <> 'Volvo' OR "Modelo" <> 'FH de muestra'
-             OR "Año" <> 2022 OR "Peso_maximo" <> 18000 OR "Imagen_Storage_Key" <> 'fixture-only/no-image'))
+        AND ("ID_Perfil" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000002'
+             OR "Patente" IS DISTINCT FROM 'DEMO-001' OR "Marca" IS DISTINCT FROM 'Volvo' OR "Modelo" IS DISTINCT FROM 'FH de muestra'
+             OR "Año" IS DISTINCT FROM 2022 OR "Peso_maximo" IS DISTINCT FROM 18000 OR "Imagen_Storage_Key" IS DISTINCT FROM 'fixture-only/no-image'))
        OR EXISTS (SELECT 1 FROM public."Vehiculo" WHERE "ID" = 'b3000000-0000-4000-8000-000000000008'
-        AND ("ID_Perfil" <> 'b3000000-0000-4000-8000-000000000002'
-             OR "Patente" <> 'DEMO-002' OR "Marca" <> 'Mercedes-Benz' OR "Modelo" <> 'Actros de muestra'
-             OR "Año" <> 2021 OR "Peso_maximo" <> 12000 OR "Imagen_Storage_Key" <> 'fixture-only/no-image')) THEN
+        AND ("ID_Perfil" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000002'
+             OR "Patente" IS DISTINCT FROM 'DEMO-002' OR "Marca" IS DISTINCT FROM 'Mercedes-Benz' OR "Modelo" IS DISTINCT FROM 'Actros de muestra'
+             OR "Año" IS DISTINCT FROM 2021 OR "Peso_maximo" IS DISTINCT FROM 12000 OR "Imagen_Storage_Key" IS DISTINCT FROM 'fixture-only/no-image')) THEN
         RAISE EXCEPTION 'Company demo vehicle IDs conflict with non-fixture rows';
     END IF;
 

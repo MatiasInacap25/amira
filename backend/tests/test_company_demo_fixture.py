@@ -31,3 +31,12 @@ def test_company_demo_fixture_only_seeds_two_linked_drivers_and_two_demo_vehicle
     assert "public.\"Rol_Perfil\"" in sql
     assert "UPDATE public.\"Perfil\"" not in sql
     assert "DELETE FROM" not in sql
+
+
+def test_nullable_fixture_identity_fields_detect_null_collisions():
+    sql = FIXTURE.read_text(encoding="utf-8")
+
+    assert '"Rut_Empresa" IS DISTINCT FROM' in sql
+    assert '"Rol" IS DISTINCT FROM' in sql
+    assert '"Año" IS DISTINCT FROM' in sql
+    assert '"Peso_maximo" IS DISTINCT FROM' in sql

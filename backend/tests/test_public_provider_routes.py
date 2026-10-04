@@ -281,6 +281,43 @@ def test_profile_owner_cannot_assign_a_driver_from_another_company():
     assert not session.committed
 
 
+def test_company_owner_cannot_assign_their_driver_record_when_it_is_linked_to_another_profile():
+    other_profile_id = UUID("4fab3c4d-8f5f-48ea-8ce2-c5187e8e97cd")
+    service = Servicio(id=uuid4(), profile_id=PROFILE_ID, contracted_driver_id=None)
+    foreign_linked_owner_driver = Conductor(
+        id=uuid4(),
+        user_id=ACCOUNT_ID,
+        employer_profile_id=other_profile_id,
+        driver_type_id=uuid4(),
+    )
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "company_owner")),
+        FakeResult(scalar=PROFILE_ID),
+        FakeResult(scalar=service),
+        # A database honors the ownership predicate and therefore does not return
+        # this otherwise matching owner record.
+        FakeResult(scalar=None),
+    ])
+
+    response = run_request(
+        "PUT",
+        f"/api/provider/services/{service.id}/driver",
+        session,
+        json_body={"driverId": str(foreign_linked_owner_driver.id)},
+    )
+
+    assert response.status_code == 404
+    assert service.contracted_driver_id is None
+    assert not session.committed
+    driver_query = session.statements[-1]
+    compiled_query = driver_query.compile(dialect=postgresql.dialect())
+    sql = str(compiled_query)
+    assert '"Conductor"."ID_user"' in sql
+    assert '"Conductor"."ID_perfil" IS NULL' in sql
+    assert '"Conductor"."ID_perfil" =' in sql
+    assert PROFILE_ID in compiled_query.params.values()
+
+
 def test_company_driver_cannot_assign_services_or_act_as_provider_owner():
     service = Servicio(id=uuid4(), profile_id=PROFILE_ID, contracted_driver_id=None)
     session = FakeSession([FakeResult(row=(ACCOUNT_ID, "company_driver"))])
