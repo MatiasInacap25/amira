@@ -1,1 +1,15 @@
 .atl/
+
+# Local development and agent tooling
+/.agents/
+/.codex/
+/.pnpm-store/
+/.superpowers/
+/node_modules/
+/graphify-out/
+/review-model-snapshot.json
+/review-resources/
+/NUL
+
+# Supabase local state
+/supabase/.temp/

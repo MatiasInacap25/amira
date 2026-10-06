@@ -73,6 +73,18 @@ class PublicProviderVehicle(PublicResponse):
     maximum_weight: Decimal | None
 
 
+class PublicProviderRating(PublicResponse):
+    rating: int
+    comment: str | None
+    created_at: datetime
+
+
+class PublicProviderRatingSummary(PublicResponse):
+    average_rating: float | None
+    rating_count: int
+    recent: list[PublicProviderRating]
+
+
 class PublicProviderProfile(PublicResponse):
     profile_id: UUID
     provider_name: str
@@ -83,6 +95,7 @@ class PublicProviderProfile(PublicResponse):
     drivers: list[PublicProviderDriver]
     services: list[PublicProviderService]
     vehicles: list[PublicProviderVehicle]
+    ratings: PublicProviderRatingSummary
 
 
 class ServiceRequestCreate(BaseModel):

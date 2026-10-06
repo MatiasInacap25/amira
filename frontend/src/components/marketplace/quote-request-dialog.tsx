@@ -24,6 +24,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
   const [success, setSuccess] = useState(false);
   const [signInPath, setSignInPath] = useState("/login");
   const [serviceId, setServiceId] = useState(selectedServiceId);
+  const selectedService = profile.services.find((service) => service.serviceTypeId === serviceId);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -34,13 +35,17 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (!selectedService) {
+      setError("Elige uno de los servicios publicados para continuar.");
+      return;
+    }
     const form = new FormData(event.currentTarget);
     const requestedAt = String(form.get("requestedAt") ?? "");
     const weight = String(form.get("estimatedWeight") ?? "").trim();
     const volume = String(form.get("estimatedVolume") ?? "").trim();
     const input: ServiceRequestInput = {
       profileId: profile.profileId,
-      serviceTypeId: serviceId,
+      serviceTypeId: selectedService.serviceTypeId,
       origin: String(form.get("origin") ?? "").trim(),
       destination: String(form.get("destination") ?? "").trim(),
       requestedAt: requestedAt ? new Date(requestedAt).toISOString() : null,
@@ -116,7 +121,8 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
         <form className="quote-request-form" onSubmit={submit}>
           <label className="marketplace-field" htmlFor="quote-service">
             <span>Servicio</span>
-            <select disabled={profile.services.length === 1} id="quote-service" onChange={(event) => setServiceId(event.target.value)} value={serviceId}>
+            <select disabled={profile.services.length === 1 && Boolean(profile.services.find((service) => service.serviceTypeId === selectedServiceId))} id="quote-service" onChange={(event) => { setServiceId(event.target.value); setError(""); }} required value={selectedService ? serviceId : ""}>
+              {!selectedService && <option value="">Elige un servicio</option>}
               {profile.services.map((service) => <option key={service.serviceTypeId} value={service.serviceTypeId}>{service.name}</option>)}
             </select>
           </label>
@@ -139,7 +145,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
           <p className="quote-request-note">Enviar la solicitud no confirma una reserva ni realiza un pago.</p>
           <div className="quote-dialog-actions">
             <button className="button button-secondary" disabled={busy} onClick={onClose} type="button">Cancelar</button>
-            <button className="button button-primary" disabled={busy || !selectedServiceId} type="submit">{busy ? "Enviando…" : "Enviar solicitud"}</button>
+            <button className="button button-primary" disabled={busy || !selectedService} type="submit">{busy ? "Enviando…" : "Enviar solicitud"}</button>
           </div>
         </form>
       )}

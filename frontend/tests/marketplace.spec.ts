@@ -186,22 +186,203 @@ test("public provider profile shows real names and services, while quote request
       location: "Santiago",
       ownerName: "Ana Pérez",
       drivers: [{ firstName: "Pedro", lastName: "Soto" }],
-      services: [{ serviceTypeId: "service-type-1", name: "Mudanzas" }],
+      services: [
+        { serviceTypeId: "service-type-1", name: "Mudanzas" },
+        { serviceTypeId: "service-type-2", name: "Fletes" },
+      ],
       vehicles: [{ brand: "Volvo", model: "FH", year: 2022, maximumWeight: "18000.00" }],
     },
   }));
   await page.goto("/prestadores/profile-test-1");
-  await expect(page.getByRole("heading", { name: "Transportes del Sur" }).first()).toBeVisible();
+  await expect(page.locator(".provider-profile-hero h1")).toHaveText("Transportes del Sur");
   await expect(page.getByText("Ana Pérez")).toBeVisible();
   await expect(page.getByText("Pedro Soto")).toBeVisible();
   await expect(page.getByText("Volvo FH")).toBeVisible();
-  await page.getByRole("button", { name: "Solicitar cotización" }).click();
+  const profileNavigation = page.locator(".provider-profile-nav");
+  await expect(profileNavigation.getByRole("link", { name: "Resumen" })).toHaveAttribute("href", "#resumen");
+  await expect(profileNavigation.getByRole("link", { name: "Flota" })).toHaveAttribute("href", "#flota");
+  await expect(profileNavigation.getByRole("link", { name: "Conductores" })).toHaveAttribute("href", "#conductores");
+  await expect(profileNavigation.getByRole("link", { name: "Servicios" })).toHaveAttribute("href", "#servicios");
+  const metrics = page.locator(".provider-profile-metrics > div");
+  await expect(metrics.nth(0).locator("strong")).toHaveText("1");
+  await expect(metrics.nth(0).locator("span")).toHaveText("vehículo");
+  await expect(metrics.nth(1).locator("strong")).toHaveText("1");
+  await expect(metrics.nth(1).locator("span")).toHaveText("conductor");
+  await expect(page.getByText("15+ años de experiencia")).toHaveCount(0);
+  const profileQuoteButton = page.getByRole("button", { name: "Solicitar cotización", exact: true });
+  await expect(profileQuoteButton).toHaveCount(1);
+  await expect(page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true })).toBeVisible();
+  await profileQuoteButton.click();
   await expect(page.getByRole("dialog", { name: "Cuéntanos qué necesitas" })).toBeVisible();
+  const serviceSelect = page.getByRole("dialog").getByLabel("Servicio");
+  const submitQuote = page.getByRole("button", { name: "Enviar solicitud" });
+  await expect(serviceSelect).toBeEnabled();
+  await expect(serviceSelect).toHaveValue("");
+  await expect(serviceSelect.locator("option").first()).toContainText("Elige un servicio");
+  await expect(submitQuote).toBeDisabled();
+  await serviceSelect.selectOption("service-type-2");
+  await expect(submitQuote).toBeEnabled();
+  await page.getByRole("button", { name: "Cancelar" }).click();
+  await profileQuoteButton.click();
+  await expect(serviceSelect).toHaveValue("");
+  await expect(submitQuote).toBeDisabled();
+  await serviceSelect.selectOption("service-type-2");
   await page.getByLabel("Origen").fill("Santiago");
   await page.getByLabel("Destino").fill("Valparaíso");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Inicia sesión con un correo confirmado");
   await expect(page.getByRole("dialog").getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fprestadores%2Fprofile-test-1");
+  await page.getByRole("button", { name: "Cerrar solicitud" }).click();
+  await page.setViewportSize({ width: 320, height: 760 });
+  await expect(page.getByRole("button", { name: "Solicitar cotización", exact: true })).toHaveCount(1);
+  await expect(page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true })).toBeVisible();
+  await expect(page.locator(".provider-profile-hero h1")).toBeVisible();
+  await expect(page.locator(".provider-profile-identity-details")).toContainText("Empresa");
+  await expect(page.locator(".provider-profile-identity-details")).toContainText("Santiago");
+  await expect(page.getByRole("link", { name: "Volver a servicios" })).toBeVisible();
+});
+
+test("provider profile skip target remains available while loading, failed, and retrying", async ({ page }) => {
+  let attempts = 0;
+  let allowSuccessfulRetry = false;
+  await page.route("**/api/providers/profile-retry", async (route) => {
+    attempts += 1;
+    if (!allowSuccessfulRetry) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.abort();
+      return;
+    }
+    await route.fulfill({ json: {
+      profileId: "profile-retry",
+      providerName: "Prestador recuperado",
+      kind: "company",
+      description: null,
+      location: "Valparaíso",
+      ownerName: "Alex Rojas",
+      drivers: [],
+      services: [],
+      vehicles: [],
+    } });
+  });
+  await page.goto("/prestadores/profile-retry");
+  const target = page.locator("#provider-profile-content");
+  await expect(page.getByRole("status")).toContainText("Cargando perfil");
+  await expect(target).toHaveCount(1);
+  await expect(target).toHaveAttribute("tabindex", "-1");
+  const skipLink = page.getByRole("link", { name: "Ir al perfil" });
+  await skipLink.focus();
+  await skipLink.press("Enter");
+  await expect(target).toBeFocused();
+  await expect(page.locator(".marketplace-error")).toContainText("No pudimos cargar este perfil");
+  await expect(page.locator("#provider-profile-content")).toHaveCount(1);
+  allowSuccessfulRetry = true;
+  await page.getByRole("button", { name: "Reintentar" }).click();
+  await expect(page.locator(".provider-profile-hero h1")).toHaveText("Prestador recuperado");
+  await expect(page.locator("#provider-profile-content")).toHaveCount(1);
+  expect(attempts).toBeGreaterThanOrEqual(2);
+});
+
+test("public provider profile keeps truthful empty states and fits a 320px viewport", async ({ page }) => {
+  await page.route("**/api/providers/profile-empty", async (route) => route.fulfill({
+    json: {
+      profileId: "profile-empty",
+      providerName: "Prestador sin inventario",
+      kind: "independent_driver",
+      description: null,
+      location: null,
+      ownerName: "Alex Rojas",
+      drivers: [],
+      services: [],
+      vehicles: [],
+    },
+  }));
+  await page.setViewportSize({ width: 320, height: 760 });
+  await page.goto("/prestadores/profile-empty");
+
+  await expect(page.locator(".provider-profile-mobile-nav")).toBeVisible();
+  await expect(page.getByText("Este prestador no ha informado vehículos.")).toBeVisible();
+  await expect(page.getByText("Este prestador no ha informado conductores vinculados.")).toBeVisible();
+  await expect(page.getByText("No hay servicios publicados")).toBeVisible();
+  const profileQuoteButton = page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true });
+  await expect(profileQuoteButton).toBeDisabled();
+  const dimensions = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
+  expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport);
+});
+
+test("public provider profile displays real ratings and keeps the review section usable on mobile", async ({ page }) => {
+  await page.route("**/api/providers/profile-rated", async (route) => route.fulfill({ json: {
+    profileId: "profile-rated",
+    providerName: "Transportes con valoraciones",
+    kind: "company",
+    description: null,
+    location: "Santiago",
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [],
+    vehicles: [],
+    ratings: {
+      averageRating: 4.25,
+      ratingCount: 27,
+      recent: [
+        { rating: 5, comment: "Coordinación clara y entrega puntual.", createdAt: "2026-10-04T00:00:00Z" },
+        { rating: 4, comment: null, createdAt: "2026-10-02T00:00:00Z" },
+      ],
+    },
+  } }));
+  await page.setViewportSize({ width: 320, height: 760 });
+  await page.goto("/prestadores/profile-rated");
+
+  const mobileNavigation = page.locator(".provider-profile-mobile-nav");
+  await expect(mobileNavigation.getByRole("link", { name: "Valoraciones" })).toHaveAttribute("href", "#valoraciones");
+  await mobileNavigation.getByRole("link", { name: "Valoraciones" }).click();
+  await expect(page.getByRole("heading", { name: "Valoraciones", level: 2 })).toBeVisible();
+  await expect(page.getByText("4,25 de 5", { exact: true })).toBeVisible();
+  await expect(page.getByText("27 valoraciones", { exact: true })).toBeVisible();
+  await expect(page.getByText("Coordinación clara y entrega puntual.")).toBeVisible();
+  await expect(page.getByText("4 de octubre de 2026")).toBeVisible();
+  await expect(page.getByText("Sin comentario")).toBeVisible();
+  await expect(page.getByText("Valoración de Cliente Demo")).toHaveCount(0);
+  const dimensions = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
+  expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport);
+});
+
+test("public provider profile distinguishes an authoritative empty rating summary", async ({ page }) => {
+  await page.route("**/api/providers/profile-no-ratings", async (route) => route.fulfill({ json: {
+    profileId: "profile-no-ratings",
+    providerName: "Prestador sin valoraciones",
+    kind: "company",
+    description: null,
+    location: null,
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [],
+    vehicles: [],
+    ratings: { averageRating: null, ratingCount: 0, recent: [] },
+  } }));
+  await page.goto("/prestadores/profile-no-ratings");
+
+  await expect(page.getByRole("heading", { name: "Valoraciones", level: 2 })).toBeVisible();
+  await expect(page.getByText("Este prestador aún no tiene valoraciones.")).toBeVisible();
+  await expect(page.getByText("0 de 5", { exact: true })).toHaveCount(0);
+});
+
+test("public provider profile does not claim there are no ratings when an older API omits them", async ({ page }) => {
+  await page.route("**/api/providers/profile-old-api", async (route) => route.fulfill({ json: {
+    profileId: "profile-old-api",
+    providerName: "Prestador API anterior",
+    kind: "company",
+    description: null,
+    location: null,
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [],
+    vehicles: [],
+  } }));
+  await page.goto("/prestadores/profile-old-api");
+
+  await expect(page.getByRole("heading", { name: "Valoraciones", level: 2 })).toBeVisible();
+  await expect(page.getByText("Las valoraciones no están disponibles en este momento.")).toBeVisible();
+  await expect(page.getByText("Este prestador aún no tiene valoraciones.")).toHaveCount(0);
 });
 
 test("shared-route search renders loading, empty, and failure feedback", async ({ page }) => {

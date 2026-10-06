@@ -25,12 +25,15 @@ from amira_api.models import (
     TipoServicio,
     Usuario,
     Vehiculo,
+    Valoracion,
     Viaje,
 )
 from amira_api.public_schemas import (
     PublicRouteStop,
     PublicProviderDriver,
     PublicProviderProfile,
+    PublicProviderRating,
+    PublicProviderRatingSummary,
     PublicProviderService,
     PublicProviderVehicle,
     PublicServiceItem,
@@ -119,6 +122,31 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
         .where(Vehiculo.profile_id == profile_id)
         .order_by(Vehiculo.brand.asc(), Vehiculo.model.asc(), Vehiculo.year.asc().nulls_last())
     ).mappings().all()
+    eligible_ratings = (
+        Valoracion.user_id == Servicio.customer_id,
+        Servicio.profile_id == profile_id,
+        Servicio.completed_at.is_not(None),
+    )
+    rating_summary = session.execute(
+        select(
+            func.avg(Valoracion.rating).label("average_rating"),
+            func.count(Valoracion.id).label("rating_count"),
+        )
+        .join(Servicio, Servicio.id == Valoracion.service_id)
+        .where(*eligible_ratings)
+    ).mappings().one_or_none()
+    rating_rows = session.execute(
+        select(
+            Valoracion.rating.label("rating"),
+            Valoracion.comment.label("comment"),
+            Valoracion.created_at.label("created_at"),
+        )
+        .join(Servicio, Servicio.id == Valoracion.service_id)
+        .where(*eligible_ratings)
+        .order_by(Valoracion.created_at.desc(), Valoracion.id.desc())
+        .limit(20)
+    ).mappings().all()
+    rating_count = int(rating_summary["rating_count"] or 0) if rating_summary else 0
 
     return PublicProviderProfile(
         profile_id=profile["profile_id"],
@@ -134,6 +162,11 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
         drivers=[PublicProviderDriver(**row) for row in driver_rows],
         services=[PublicProviderService(**row) for row in service_rows],
         vehicles=[PublicProviderVehicle(**row) for row in vehicle_rows],
+        ratings=PublicProviderRatingSummary(
+            average_rating=(float(rating_summary["average_rating"]) if rating_summary and rating_count else None),
+            rating_count=rating_count,
+            recent=[PublicProviderRating(**row) for row in rating_rows],
+        ),
     )
 
 

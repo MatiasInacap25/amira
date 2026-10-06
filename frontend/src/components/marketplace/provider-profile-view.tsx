@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, MapPin, Truck } from "lucide-react";
+import { ArrowLeft, MapPin, Package, Truck, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
@@ -10,7 +10,6 @@ import { getProviderProfile } from "@/lib/marketplace-api";
 
 export function ProviderProfileView({ profileId }: { profileId: string }) {
   const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
-  const [selectedServiceId, setSelectedServiceId] = useState("");
   const query = useQuery({
     queryKey: ["provider-profile", profileId],
     queryFn: ({ signal }) => getProviderProfile(profileId, signal),
@@ -18,26 +17,25 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
     staleTime: 30_000,
   });
 
-  function requestQuote(serviceTypeId: string) {
-    setSelectedServiceId(serviceTypeId);
+  function requestQuote() {
     setQuoteDialogOpen(true);
   }
+
+  const profile = query.data;
+  const sections = [
+    { id: "resumen", label: "Resumen" },
+    { id: "flota", label: "Flota" },
+    { id: "conductores", label: "Conductores" },
+    { id: "servicios", label: "Servicios" },
+    { id: "valoraciones", label: "Valoraciones" },
+  ];
 
   return (
     <>
       <MarketplaceHeader />
       <main className="marketplace-main provider-profile-page" id="contenido">
         <a className="skip-link" href="#provider-profile-content">Ir al perfil</a>
-        <section aria-labelledby="provider-profile-title" className="marketplace-hero provider-profile-hero">
-          <div className="marketplace-hero-inner">
-            <p className="eyebrow"><span className="eyebrow-dot" /> PERFIL DE PRESTADOR</p>
-            <h1 id="provider-profile-title">{query.data?.providerName ?? "Información del prestador"}</h1>
-            <p>Conoce los servicios publicados y envía una solicitud para conversar condiciones con el prestador.</p>
-            <Link className="marketplace-back-link" href="/servicios"><ArrowLeft aria-hidden="true" size={16} /> Volver a servicios</Link>
-          </div>
-        </section>
-
-        <div className="marketplace-content" id="provider-profile-content">
+        <div className="provider-profile-stage" id="provider-profile-content" tabIndex={-1}>
           {query.isPending && <div aria-label="Cargando perfil" aria-busy="true" className="marketplace-state" role="status"><span aria-hidden="true" className="state-spinner" />Cargando perfil…</div>}
           {query.isError && (
             <div className="marketplace-state marketplace-error" role="alert">
@@ -46,67 +44,121 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
               <button className="button button-secondary" onClick={() => void query.refetch()} type="button">Reintentar</button>
             </div>
           )}
-          {query.data && (
-            <div className="provider-profile-layout">
-              <section aria-labelledby="provider-about-title" className="provider-profile-card">
-                <div className="provider-profile-heading">
-                  <span aria-hidden="true" className="provider-mark"><Truck size={23} strokeWidth={1.8} /></span>
-                  <div><p className="eyebrow">{query.data.kind === "company" ? "EMPRESA" : "CONDUCTOR INDEPENDIENTE"}</p><h2 id="provider-about-title">{query.data.providerName}</h2></div>
+          {profile && (
+            <div className="provider-profile-shell">
+            <aside className="provider-profile-sidebar">
+              <Link className="provider-profile-back" href="/servicios"><ArrowLeft aria-hidden="true" size={15} /> Volver a servicios</Link>
+              <div className="provider-sidebar-identity">
+                <span aria-hidden="true" className="provider-mark"><Truck size={23} strokeWidth={1.8} /></span>
+                <p className="provider-sidebar-provider-name">{profile.providerName}</p>
+              </div>
+              <nav aria-label="Secciones del perfil" className="provider-profile-nav">
+                {sections.map((section) => <a href={`#${section.id}`} key={section.id}>{section.label}</a>)}
+              </nav>
+            </aside>
+
+            <div className="provider-profile-content">
+              <nav aria-label="Secciones del perfil" className="provider-profile-mobile-nav">
+                <Link href="/servicios"><ArrowLeft aria-hidden="true" size={14} /> Volver a servicios</Link>
+                {sections.map((section) => <a href={`#${section.id}`} key={section.id}>{section.label}</a>)}
+              </nav>
+
+              <section aria-labelledby="provider-profile-title" className="provider-profile-hero" id="resumen">
+                <div className="provider-profile-hero-copy">
+                  <p className="eyebrow">PERFIL DE PRESTADOR</p>
+                  <h1 id="provider-profile-title">{profile.providerName}</h1>
+                  <div className="provider-profile-identity-details">
+                    <span>{profile.kind === "company" ? "Empresa" : "Conductor independiente"}</span>
+                    {profile.location && <span><MapPin aria-hidden="true" size={14} />{profile.location}</span>}
+                  </div>
+                  {profile.description && <p className="provider-profile-description">{profile.description}</p>}
+                  <p className="provider-owner-name">{profile.ownerName}</p>
+                  <button className="button button-primary provider-profile-hero-quote" disabled={!profile.services.length} onClick={requestQuote} type="button">Solicitar cotización</button>
                 </div>
-                {query.data.description && <p className="provider-profile-description">{query.data.description}</p>}
-                {query.data.location && <p className="provider-profile-location"><MapPin aria-hidden="true" size={16} />{query.data.location}</p>}
-                <p className="provider-owner-name"><span>Responsable del perfil</span>{query.data.ownerName}</p>
-                {query.data.drivers.length > 0 && (
-                  <div className="provider-team">
-                    <h3>Conductores vinculados</h3>
-                    <ul>{query.data.drivers.map((driver) => <li key={`${driver.firstName}-${driver.lastName}`}>{driver.firstName} {driver.lastName}</li>)}</ul>
-                  </div>
-                )}
+                <div aria-label="Inventario informado" className="provider-profile-metrics">
+                  <div><Truck aria-hidden="true" size={19} /><strong>{profile.vehicles.length}</strong><span>{profile.vehicles.length === 1 ? "vehículo" : "vehículos"}</span></div>
+                  <div><Users aria-hidden="true" size={19} /><strong>{profile.drivers.length}</strong><span>{profile.drivers.length === 1 ? "conductor" : "conductores"}</span></div>
+                  <div><Package aria-hidden="true" size={19} /><strong>{profile.services.length}</strong><span>{profile.services.length === 1 ? "servicio" : "servicios"}</span></div>
+                </div>
               </section>
 
-              <section aria-labelledby="provider-services-title" className="provider-profile-section">
-                <div className="provider-section-heading"><p className="eyebrow">SERVICIOS PUBLICADOS</p><h2 id="provider-services-title">¿Qué necesitas transportar?</h2></div>
-                {query.data.services.length === 0 ? (
-                  <div className="marketplace-state marketplace-empty" role="status"><h3>No hay servicios publicados</h3><p>Este prestador todavía no ofrece servicios para solicitar.</p></div>
-                ) : (
-                  <div className="provider-services-list">
-                    {query.data.services.map((service) => (
-                      <article className="provider-service-item" key={service.serviceTypeId}>
-                        <div><h3>{service.name}</h3><p>Solicita una cotización para coordinar detalles y disponibilidad.</p></div>
-                        <button className="button button-primary" onClick={() => requestQuote(service.serviceTypeId)} type="button">Solicitar cotización</button>
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              {query.data.vehicles.length > 0 && (
-                <section aria-labelledby="provider-vehicles-title" className="provider-profile-section provider-vehicles-section">
-                  <div className="provider-section-heading"><p className="eyebrow">FLOTA</p><h2 id="provider-vehicles-title">Vehículos informados</h2></div>
-                  <ul className="provider-vehicle-list">
-                    {query.data.vehicles.map((vehicle, index) => (
+              <section aria-labelledby="provider-vehicles-title" className="provider-profile-section" id="flota">
+                <div className="provider-section-heading"><div><p className="eyebrow">FLOTA</p><h2 id="provider-vehicles-title">Vehículos informados</h2></div><span>{profile.vehicles.length} registrados</span></div>
+                {profile.vehicles.length ? (
+                  <ul className="provider-vehicle-grid">
+                    {profile.vehicles.map((vehicle, index) => (
                       <li key={`${vehicle.brand}-${vehicle.model}-${vehicle.year ?? "n-a"}-${index}`}>
-                        <Truck aria-hidden="true" size={20} />
-                        <span><strong>{vehicle.brand} {vehicle.model}</strong><small>{[vehicle.year, vehicle.maximumWeight ? `Carga máxima ${vehicle.maximumWeight} kg` : null].filter(Boolean).join(" · ") || "Datos del vehículo"}</small></span>
+                        <span aria-hidden="true" className="provider-item-icon"><Truck size={22} /></span>
+                        <strong>{vehicle.brand} {vehicle.model}</strong>
+                        <small>{[vehicle.year, vehicle.maximumWeight ? `Carga máxima ${vehicle.maximumWeight} kg` : null].filter(Boolean).join(" · ") || "Sin más datos informados"}</small>
                       </li>
                     ))}
                   </ul>
-                </section>
-              )}
+                ) : <div className="provider-profile-empty"><Truck aria-hidden="true" size={19} /><p>Este prestador no ha informado vehículos.</p></div>}
+              </section>
+
+              <section aria-labelledby="provider-drivers-title" className="provider-profile-section" id="conductores">
+                <div className="provider-section-heading"><div><p className="eyebrow">EQUIPO</p><h2 id="provider-drivers-title">Conductores vinculados</h2></div><span>{profile.drivers.length} informados</span></div>
+                {profile.drivers.length ? (
+                  <ul className="provider-driver-grid">
+                    {profile.drivers.map((driver, index) => <li key={`${driver.firstName}-${driver.lastName}-${index}`}><span aria-hidden="true" className="provider-driver-avatar">{driver.firstName.charAt(0)}{driver.lastName.charAt(0)}</span><span><strong>{driver.firstName} {driver.lastName}</strong><small>Conductor vinculado al perfil</small></span></li>)}
+                  </ul>
+                ) : <div className="provider-profile-empty"><Users aria-hidden="true" size={19} /><p>Este prestador no ha informado conductores vinculados.</p></div>}
+              </section>
+
+              <section aria-labelledby="provider-services-title" className="provider-profile-section" id="servicios">
+                <div className="provider-section-heading"><div><p className="eyebrow">SERVICIOS PUBLICADOS</p><h2 id="provider-services-title">¿Qué necesitas transportar?</h2></div><span>{profile.services.length} publicados</span></div>
+                {profile.services.length ? (
+                  <div className="provider-services-list">
+                    {profile.services.map((service) => (
+                      <article className="provider-service-item" key={service.serviceTypeId}>
+                        <div><span aria-hidden="true" className="provider-item-icon"><Package size={20} /></span><h3>{service.name}</h3><p>Solicita una cotización para coordinar detalles y disponibilidad.</p></div>
+                      </article>
+                    ))}
+                  </div>
+                ) : <div className="marketplace-state marketplace-empty" role="status"><h3>No hay servicios publicados</h3><p>Este prestador todavía no ofrece servicios para solicitar.</p></div>}
+              </section>
+              <section aria-labelledby="provider-ratings-title" className="provider-profile-section" id="valoraciones">
+                <div className="provider-section-heading"><div><p className="eyebrow">EXPERIENCIAS DE CLIENTES</p><h2 id="provider-ratings-title">Valoraciones</h2></div><span>{profile.ratings ? `${profile.ratings.ratingCount} ${profile.ratings.ratingCount === 1 ? "valoración" : "valoraciones"}` : "Datos no disponibles"}</span></div>
+                {!profile.ratings ? (
+                  <div className="provider-profile-empty"><p>Las valoraciones no están disponibles en este momento.</p></div>
+                ) : profile.ratings.ratingCount === 0 ? (
+                  <div className="provider-profile-empty"><p>Este prestador aún no tiene valoraciones.</p></div>
+                ) : (
+                  <>
+                    <div aria-label={`${profile.ratings.ratingCount} valoraciones`} className="provider-rating-summary">
+                      <strong>{profile.ratings.averageRating === null ? "Promedio no disponible" : `${formatRating(profile.ratings.averageRating)} de 5`}</strong>
+                      <span>Promedio de clientes con servicios completados</span>
+                    </div>
+                    {profile.ratings.recent.length ? (
+                      <ul className="provider-rating-list">
+                        {profile.ratings.recent.map((rating, index) => (
+                          <li key={`${rating.createdAt}-${rating.rating}-${index}`}>
+                            <div><strong>{rating.rating} de 5</strong><time dateTime={rating.createdAt}>{formatRatingDate(rating.createdAt)}</time></div>
+                            <p>{rating.comment?.trim() || "Sin comentario"}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="provider-rating-empty-recent">No hay comentarios recientes.</p>}
+                  </>
+                )}
+              </section>
+              <p className="marketplace-transparency">Enviar una solicitud no crea una reserva ni realiza un pago. El prestador debe responder y acordar las condiciones.</p>
             </div>
+          </div>
           )}
-          <p className="marketplace-transparency">Enviar una solicitud no crea una reserva ni realiza un pago. El prestador debe responder y acordar las condiciones.</p>
         </div>
       </main>
       <MarketplaceFooter />
-      {query.data && quoteDialogOpen && (
-        <QuoteRequestDialog
-          onClose={() => setQuoteDialogOpen(false)}
-          open={quoteDialogOpen}
-          profile={query.data}
-          selectedServiceId={selectedServiceId}
-        />
-      )}
+      {profile && quoteDialogOpen && <QuoteRequestDialog onClose={() => setQuoteDialogOpen(false)} open={quoteDialogOpen} profile={profile} selectedServiceId="" />}
     </>
   );
+}
+
+function formatRating(value: number) {
+  return new Intl.NumberFormat("es-CL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function formatRatingDate(value: string) {
+  return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(value));
 }

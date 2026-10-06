@@ -126,3 +126,53 @@ The independent read-only verifier identified two confirmed in-scope blockers in
 - [x] Make the local fixture's nullable-column identity guards null-safe with `IS DISTINCT FROM` (or equivalent), and add a regression test for a NULL-valued conflicting row.
 
 Strict TDD evidence: the first focused run failed on both regressions (the assignment endpoint accepted the foreign-linked owner driver's canned result with HTTP 200; the fixture had no null-safe comparisons). After correction, the focused command `uv run pytest tests/test_public_provider_routes.py::test_company_owner_cannot_assign_their_driver_record_when_it_is_linked_to_another_profile tests/test_company_demo_fixture.py::test_nullable_fixture_identity_fields_detect_null_collisions -q` passed (2 passed). Full `uv run pytest` from `backend` passed (104 passed). `graphify update .` succeeded; its SQL extraction plugin is unavailable, so SQL did not contribute to the graph. `git diff --check` passed. Pytest emitted only the existing `.pytest_cache` permission warning. No database was connected and the fixture was not executed. A separate product/security question about unilateral promotion by UUID remains intentionally unresolved for the parent to ask the user.
+
+## Security finding — direct driver promotion must be removed
+
+The independent verifier found that `POST /api/account/company/transition` currently lets an authenticated profile owner promote an arbitrary existing `client` account identified by UUID into `company_driver`; it does not require an invitation acceptance or other consent from that user. This endpoint is not safe for production use and its direct UUID promotion must be removed. The user has resolved the consent question below.
+
+## Decision update — driver invitation acceptance is required
+
+On 2026-10-04, the user confirmed that the driver must accept an owner-issued invitation before the account is linked to the company or its role changes. Do not allow an owner to promote or modify an arbitrary client account by UUID alone. The prior approved account/auth task also settles a 7-day expiry, signup-from-invitation, owner list/revoke/reissue, one-use hashed/email-bound tokens, and automatic Resend delivery as a future configured adapter; no live provider credentials or operations are authorized, so use a fake mailer in tests and do not send real email.
+
+Add a bounded follow-up task:
+- [x] PPM-6 ? Complete owner-issued, email-bound invitation acceptance: independent profiles remain independent while pending; first acceptance atomically transitions owner/profile and provisions the invited driver; subsequent accepts only add drivers. Acceptance throttling, clean-checkout router isolation, and owner RUT UI are included. Work-unit commit: `0041237`.
+
+The direct-UUID promotion path was removed by the first PPM-6 implementation. The company transition must not leave an independent profile converted before the invitee accepts; complete that state change atomically on the first acceptance.
+
+PPM-6 first-pass checks (2026-10-04): backend `uv run pytest` passed (115 tests); frontend `npm run lint` passed; full Playwright E2E passed (37 tests) using repository fakes and installed Chrome; isolated webpack build, graphify, and diff checks passed. Independent review found a clean-checkout import failure (`main.py` depends on an untracked `fallback_routes.py`), non-atomic independent-to-company conversion before driver acceptance, and missing rate limiting on acceptance. Thus the feature is not complete despite those test results. Fake tests verify token hashing, email normalization, expiry, wrong identity, replay, rollback, row locking, reissue and configured-delivery failure. Email confirmation uses a server-verified Auth `/user` result and fails closed without a matching confirmed identity. No live Auth/Resend request or database operation was run. Native RDD status remains parent-managed.
+
+To preserve the approved “same profile becomes a company when the second driver joins” rule without leaving an empty company on decline/expiry, keep pending invitation metadata private and leave the owner/profile independent until a target invitee accepts. The first acceptance then atomically upgrades owner/profile, reuses the owner Conductor, and links the accepting driver. A subsequent accepted invitation only adds another company driver.
+
+## Migration ancestry blocker — user decision required before changing history
+
+Independent verification of clean commit `0041237` found that tracked migration `20261003_0001_activate_demo_profile_publication.py` has `down_revision = 20260928_0004`, but `20260928_0004_email_fallback_proofs.py` is untracked and absent from the commit. The new invitation-attempt migration follows `20261003_0001`, so a clean checkout cannot resolve the full Alembic history. Do not include or stage the unrelated email-fallback migration/files to hide this dependency. Because changing the parent of an already committed migration can be unsafe if it was applied to production, ask the user whether `20261003_0001` or the email-fallback migration was applied remotely before altering migration history. No remote query or migration apply has been performed in this task.
+
+
+## PPM-6 correction progress (2026-10-04)
+
+- [x] Pending invitations keep an independent owner/profile independent; the required company RUT is retained only in the private profile field and is normalized before storage.
+- [x] First valid acceptance atomically upgrades that same profile and owner, reuses/links the owner Conductor, consumes the invite, and creates exactly one linked company-driver Conductor; later invites only add drivers. The direct company transition endpoint is removed.
+- [x] Acceptance attempts are rate-limited by authenticated user/session using a server-private, RLS-protected attempt table; no token or email is stored in attempt rows.
+- [x] Owner UI collects the pending company RUT and explains that conversion occurs only after acceptance.
+- [x] Backend `uv run pytest -q -p no:cacheprovider`: 119 passed; frontend lint passed; Playwright E2E: 37/37 with the preinstalled Chrome binary; isolated Next webpack production build passed; `graphify update .` and `git diff --check` passed.
+- [x] Clean-checkout archive import and full backend suite verified after the correction commit: `uv run pytest -q -p no:cacheprovider` ? 119 passed.
+
+## PPM-7 — Repair clean migration ancestry (2026-10-04)
+
+User reports that none of the migrations under discussion have been applied. This is user-provided deployment status, not a remote verification. Local history repair is authorized as continuation; applying or inspecting Supabase is not.
+
+- [ ] PPM-7: Inspect tracked migration dependencies, reproduce the missing ancestor with a regression test, repair only the tracked local chain, and verify clean Alembic history/offline SQL plus the backend suite. Preserve the unrelated untracked email-fallback migration and all dirty auth overlays. Commit only this bounded fix and its regression.
+- Route: delegated direct; preparation for a write and migration/test analysis require a bounded worker. Strict TDD: RED → GREEN → REFACTOR, `uv run pytest` from `backend`.
+- Acceptance: committed migrations resolve without untracked files, a single committed head is present, and no live database or remote operation occurs.
+- Native review ownership blocker remains unavailable; require writer self-checks, independent verification, and parent spot-check.
+- PPM-6 implementation checks remain valid, but release readiness is pending PPM-7. Next step: repair and validate the clean committed migration chain.
+
+## PPM-7 verified closure (2026-10-04)
+
+- [x] PPM-7 completed in `bea1be3` (`fix: restore tracked Alembic migration ancestry`): publication migration now follows tracked `20260928_0003`, which introduces its required `Perfil.public_activated_at` column. The unrelated untracked fallback migration was not included or edited.
+- Strict TDD: tracked-only regression failed with missing parent `20260928_0004` before repair, then passed. Writer full backend suite: 120 passed. Parent spot-check `uv run pytest tests/test_tracked_migration_graph.py -q -p no:cacheprovider`: 1 passed.
+- Independent verifier: PASS for local repair. Isolated clean archive of `bea1be3` resolves five revisions and one head `20261003_0002`; offline SQL generated all five upgrades with a dummy localhost URL and a guard against database connection. Full backend: 120 passed, existing pytest-cache permission warning only. Graphify and diff checks passed.
+- Important remaining local state: dirty migration directory still has TWO heads (`20260928_0004` and `20261003_0002`) because the unrelated fallback migration remains untracked. Do not use bare `alembic upgrade head` on that directory until the fallback work is deliberately integrated. The regression reads tracked worktree files; independent archive verification provides proof for committed bytes.
+- Native RDD assessment is unassessable/high due untracked inventory; preflight safely refused before mutation due Git authority directory ownership. No receipt claimed; writer checks, fresh independent verification, and parent spot-check are recorded instead. No ownership/settings changes made.
+- No Supabase, Auth, email-provider or database connection/application occurred. No fixtures applied. Deployment and deliberate fallback migration integration remain pending, outside this local repair. Dirty task documentation and unrelated auth overlays remain unstaged.

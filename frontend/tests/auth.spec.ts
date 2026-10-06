@@ -322,7 +322,10 @@ test("verified client can submit a quote request with the current MFA access tok
       location: "Santiago",
       ownerName: "Ana Pérez",
       drivers: [],
-      services: [{ serviceTypeId: "service-type-1", name: "Mudanzas" }],
+      services: [
+        { serviceTypeId: "service-type-1", name: "Mudanzas" },
+        { serviceTypeId: "service-type-2", name: "Fletes" },
+      ],
       vehicles: [],
     },
   }));
@@ -344,7 +347,12 @@ test("verified client can submit a quote request with the current MFA access tok
   await page.getByLabel("Código de verificación").fill("246810");
   await page.getByRole("button", { name: "Verificar teléfono" }).click();
   await expect(page).toHaveURL(/\/prestadores\/profile-test-1$/);
-  await page.getByRole("button", { name: "Solicitar cotización" }).click();
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true }).click();
+  const serviceSelect = page.getByRole("dialog").getByLabel("Servicio");
+  await expect(serviceSelect).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Enviar solicitud" })).toBeDisabled();
+  await serviceSelect.selectOption("service-type-2");
+  await expect(page.getByRole("button", { name: "Enviar solicitud" })).toBeEnabled();
   await page.getByLabel("Origen").fill("Santiago");
   await page.getByLabel("Destino").fill("Valparaíso");
   await page.getByLabel("Peso estimado (kg)").fill("250.5");
@@ -355,7 +363,7 @@ test("verified client can submit a quote request with the current MFA access tok
   expect(sentRequest.authorization).toBe(`Bearer ${accessToken("aal2", "refreshed-aal2-token")}`);
   expect(sentRequest.body).toMatchObject({
     profileId: "profile-test-1",
-    serviceTypeId: "service-type-1",
+    serviceTypeId: "service-type-2",
     origin: "Santiago",
     destination: "Valparaíso",
     estimatedWeight: "250.5",

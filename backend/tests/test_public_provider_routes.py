@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import httpx
@@ -104,6 +104,8 @@ def test_public_profile_returns_real_provider_and_linked_driver_names_but_only_a
         FakeResult(rows=[{"first_name": "Pedro", "last_name": "Soto"}]),
         FakeResult(rows=[{"service_type_id": SERVICE_TYPE_ID, "name": "Mudanzas"}]),
         FakeResult(rows=[{"brand": "Volvo", "model": "FH", "year": 2022, "maximum_weight": "18000.00"}]),
+        FakeResult(row={"average_rating": 4.5, "rating_count": 2}),
+        FakeResult(rows=[{"rating": 5, "comment": "Buen servicio", "created_at": datetime(2026, 10, 4, tzinfo=timezone.utc)}]),
     ])
 
     response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
@@ -120,10 +122,83 @@ def test_public_profile_returns_real_provider_and_linked_driver_names_but_only_a
         "drivers": [{"firstName": "Pedro", "lastName": "Soto"}],
         "services": [{"serviceTypeId": str(SERVICE_TYPE_ID), "name": "Mudanzas"}],
         "vehicles": [{"brand": "Volvo", "model": "FH", "year": 2022, "maximumWeight": "18000.00"}],
+        "ratings": {
+            "averageRating": 4.5,
+            "ratingCount": 2,
+            "recent": [{"rating": 5, "comment": "Buen servicio", "createdAt": "2026-10-04T00:00:00Z"}],
+        },
     }
-    for private_field in ("nationalId", "birthDate", "email", "phone", "authUserId", "companyTaxId", "plate", "imageStorageKey", "logoStorageKey"):
+    for private_field in ("nationalId", "birthDate", "email", "phone", "authUserId", "companyTaxId", "plate", "imageStorageKey", "logoStorageKey", "userId", "serviceId", "customerId", "ratingId"):
         assert private_field not in response.text
     assert "user-chosen" not in response.text
+
+
+def test_public_profile_ratings_aggregate_all_eligible_rows_and_bound_recent_reviews():
+    recent = [
+        {"rating": (index % 5) + 1, "comment": None if index == 0 else f"Comentario {index}", "created_at": datetime(2026, 10, 4, tzinfo=timezone.utc) - timedelta(days=index)}
+        for index in range(20)
+    ]
+    session = FakeSession([
+        FakeResult(row=PROFILE),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": 4.25, "rating_count": 27}),
+        FakeResult(rows=recent),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    assert response.json()["ratings"] == {
+        "averageRating": 4.25,
+        "ratingCount": 27,
+        "recent": [
+            {"rating": item["rating"], "comment": item["comment"], "createdAt": item["created_at"].isoformat().replace("+00:00", "Z")}
+            for item in recent
+        ],
+    }
+    aggregate_sql = str(session.statements[4].compile(dialect=postgresql.dialect()))
+    recent_query = session.statements[5].compile(dialect=postgresql.dialect())
+    recent_sql = str(recent_query)
+    recent_projection = recent_sql.split("FROM", maxsplit=1)[0]
+    assert '"Valoracion"."Rating"' in recent_projection
+    assert '"Valoracion"."Comentario"' in recent_projection
+    assert '"Valoracion"."Fecha_Registro"' in recent_projection
+    assert '"Valoracion"."ID_Usuario"' not in recent_projection
+    assert '"Valoracion"."ID_Servicio"' not in recent_projection
+    for query in (aggregate_sql, recent_sql):
+        assert '"Servicio"."ID_Perfil" = ' in query
+        assert '"Servicio"."Fecha_Finalizacion" IS NOT NULL' in query
+        assert '"Valoracion"."ID_Usuario" = "Servicio"."ID_Cliente"' in query
+    assert 'ORDER BY "Valoracion"."Fecha_Registro" DESC, "Valoracion"."ID" DESC' in recent_sql
+    assert "LIMIT" in recent_sql
+    assert len(response.json()["ratings"]["recent"]) == 20
+
+
+def test_public_profile_with_no_eligible_ratings_returns_an_authoritative_empty_summary():
+    session = FakeSession([
+        FakeResult(row=PROFILE),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": None, "rating_count": 0}),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    assert response.json()["ratings"] == {"averageRating": None, "ratingCount": 0, "recent": []}
+
+
+def test_non_public_profile_is_rejected_before_rating_queries():
+    session = FakeSession([FakeResult(row=None)])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 404
+    assert len(session.statements) == 1
 
 
 def test_independent_driver_public_name_uses_real_name_not_profile_handle():
@@ -138,6 +213,8 @@ def test_independent_driver_public_name_uses_real_name_not_profile_handle():
         FakeResult(row=profile),
         FakeResult(rows=[{"first_name": "Pedro", "last_name": "Soto"}]),
         FakeResult(rows=[{"service_type_id": SERVICE_TYPE_ID, "name": "Fletes"}]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": None, "rating_count": 0}),
         FakeResult(rows=[]),
     ])
 
