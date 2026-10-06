@@ -26,7 +26,7 @@ The staged candidate mixed marketplace/profile work with an incomplete email fal
 - [x] GHP-1 Remove email fallback runtime and behavior-test changes from the staged candidate while preserving applied migration history.
 - [x] GHP-2 Add root ignore rules and stage only intended project/deployment files; exclude local artifacts and secrets.
 - [x] GHP-3 Re-review the corrected staged candidate and record all passed, blocked, and pending checks.
-- [ ] GHP-4 Commit the curated candidate and publish it to the authorized GitHub branch without including excluded email runtime or unrelated working-tree changes.
+- [x] GHP-4 Commit the curated candidate and publish it to the authorized GitHub branch without including excluded email runtime or unrelated working-tree changes.
 
 ## Progress and Evidence
 - Current candidate contains 16 staged files; see the staged diff for its current line totals. Email fallback runtime files are left unstaged.
@@ -39,10 +39,12 @@ The staged candidate mixed marketplace/profile work with an incomplete email fal
 - Frontend lint/build passed; E2E was partially blocked by missing Chromium; backend/Alembic checks were blocked by missing Python/uv.
 - User authorization received to publish the curated candidate to `MatiasInacap25/amira` on `codex/github-upload`; no remote database migration is authorized.
 - The remote `main` currently contains only its initial README commit and has unrelated history from the local project. The upload branch will include that initial commit without changing `main`.
+- Candidate work-unit commit: `5ea228b` (`feat: prepare provider demo for cloud deployment`).
+- Published branch: `codex/github-upload`; verified remote ref at `b1bfb1454a3e308e83c439b9f0448e7e59d1cfc6`. `main` was not modified.
 - Engram mirror: pending; Engram tools are unavailable in this session.
 
 ## Next Step
-Commit and push GHP-4, then verify the remote branch points to the expected commit. Do not modify `main` or run Supabase migrations.
+Share the branch with collaborators for preview. Do not modify `main`, merge a PR, or run Supabase migrations without separate authorization.
 
 ## Relevant Files
 - `backend/alembic/versions/20260928_0004_email_fallback_proofs.py` — revision already applied in Supabase; preserve as history.
