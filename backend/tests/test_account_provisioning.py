@@ -57,7 +57,13 @@ class FakeSession:
 
 
 def identity():
-    return AuthenticatedUser(id=USER_ID, email="person@example.test", session_id=str(SESSION_ID), assurance="aal2")
+    return AuthenticatedUser(
+        id=USER_ID,
+        email="person@example.test",
+        session_id=SESSION_ID,
+        assurance="aal2",
+        authentication_methods=frozenset({"password"}),
+    )
 
 
 def role(code, role_id):

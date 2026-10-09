@@ -170,12 +170,18 @@ class EmailFallbackChallenge(Base):
     __table_args__ = (
         CheckConstraint("attempt_count >= 0", name="ck_email_fallback_attempt_count_nonnegative"),
         Index("ix_email_fallback_user_expiry", "user_id", "expires_at"),
+        Index("ix_email_fallback_auth_session_created", "auth_user_id", "auth_session_id", "created_at"),
     )
 
     id: Mapped[UUID] = mapped_column("id", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    user_id: Mapped[UUID] = mapped_column("user_id", ForeignKey("Usuario.ID", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[UUID | None] = mapped_column("user_id", ForeignKey("Usuario.ID", ondelete="CASCADE"), nullable=True)
+    auth_user_id: Mapped[UUID] = mapped_column("auth_user_id", Uuid(as_uuid=True), nullable=False)
     auth_session_id: Mapped[str] = mapped_column("auth_session_id", String(128), nullable=False)
     code_hash: Mapped[str] = mapped_column("code_hash", String(128), nullable=False)
+    activated_at: Mapped[datetime | None] = mapped_column("activated_at", DateTime(timezone=True))
+    proof_hash: Mapped[str | None] = mapped_column("proof_hash", String(128))
+    proof_expires_at: Mapped[datetime | None] = mapped_column("proof_expires_at", DateTime(timezone=True))
+    proof_consumed_at: Mapped[datetime | None] = mapped_column("proof_consumed_at", DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column("expires_at", DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column("consumed_at", DateTime(timezone=True))

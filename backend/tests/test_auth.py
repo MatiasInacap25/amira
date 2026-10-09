@@ -8,6 +8,7 @@ from fastapi import Depends
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.main import app
 from amira_api.settings import Settings, get_settings
+from amira_api.db import get_db_session
 
 
 PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -40,6 +41,7 @@ def make_token(**overrides):
         "session_id": SESSION_ID,
         "aal": "aal2",
         "role": "authenticated",
+        "amr": [{"method": "password", "timestamp": int(now.timestamp())}],
         "email": "person@example.test",
         "is_anonymous": False,
     }
@@ -60,6 +62,7 @@ def auth_app(monkeypatch, token: str | None, *, fallback_verifier=None, proof: s
 
     app.add_api_route("/auth-test", endpoint, methods=["GET"])
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, supabase_jwt_issuer=ISSUER)
+    app.dependency_overrides[get_db_session] = lambda: object()
 
     async def request():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
@@ -122,7 +125,12 @@ def test_aal1_requires_server_verified_fallback_proof(monkeypatch):
     token = make_token(aal="aal1")
 
     assert auth_app(monkeypatch, token).status_code == 403
-    response = auth_app(monkeypatch, token, fallback_verifier=lambda claims, proof: proof == "verified", proof="verified")
+    response = auth_app(
+        monkeypatch,
+        token,
+        fallback_verifier=lambda claims, proof, session, settings: proof == "verified",
+        proof="verified",
+    )
     assert response.status_code == 200
     assert response.json()["assurance"] == "email_fallback"
 
