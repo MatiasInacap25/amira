@@ -17,6 +17,9 @@ branch_labels = None
 depends_on = None
 
 RLS_TABLES = ("Regiones", "Comunas")
+# Display order of regions, north to south (Regiones.Orden is the 1-based position here).
+REGION_ORDER = ("15", "01", "02", "03", "04", "05", "13", "06", "07", "16", "08", "09", "14", "10", "11", "12")
+
 # (code, name) ordered by CUT code.
 REGIONS = [
     ("01", "Tarapacá"),
@@ -425,7 +428,7 @@ def upgrade() -> None:
     )
     op.bulk_insert(
         regions_table,
-        [{"Codigo": code, "Nombre": name, "Orden": index} for index, (code, name) in enumerate(REGIONS, start=1)],
+        [{"Codigo": code, "Nombre": name, "Orden": REGION_ORDER.index(code) + 1} for code, name in REGIONS],
     )
     op.bulk_insert(
         communes_table,

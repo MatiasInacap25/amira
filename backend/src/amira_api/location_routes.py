@@ -36,7 +36,7 @@ def list_locations(
         )
         .select_from(Region)
         .outerjoin(Commune, Commune.region_code == Region.code)
-        .order_by(Region.code.asc(), Region.order.asc())
+        .order_by(Region.order.asc(), Region.code.asc())
     ).mappings().all()
 
     regions: dict[str, LocationRegion] = {}

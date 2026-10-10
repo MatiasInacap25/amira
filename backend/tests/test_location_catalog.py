@@ -87,7 +87,7 @@ def test_catalog_contains_seed_communes_used_by_demo_providers() -> None:
 
 
 def test_locations_endpoint_returns_nested_regions_with_spanish_sorted_communes() -> None:
-    # Rows arrive ordered by region code, as the SQL ORDER BY guarantees.
+    # Rows arrive ordered by Regiones.Orden (north to south), as the SQL ORDER BY guarantees.
     rows = [
         {"region_code": "01", "region_name": "Tarapacá", "commune_code": "01101", "commune_name": "Iquique"},
         {"region_code": "13", "region_name": "Metropolitana de Santiago", "commune_code": "13201", "commune_name": "Ñuñoa"},
@@ -133,4 +133,26 @@ def test_demo_provider_backfill_codes_exist_in_the_catalog() -> None:
     assert dict(module.DEMO_COMMUNE_BACKFILL) == {"Santiago": "13101", "Valparaíso": "05101"}
     assert set(dict(module.DEMO_COMMUNE_BACKFILL).values()) <= catalog_codes
     assert module.down_revision == "20261010_0001"
+
+
+def test_regions_are_seeded_north_to_south_and_orden_matches_that_position() -> None:
+    spec = importlib.util.spec_from_file_location("location_catalog_order", MIGRATION_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.REGION_ORDER == ("15", "01", "02", "03", "04", "05", "13", "06", "07", "16", "08", "09", "14", "10", "11", "12")
+    assert sorted(module.REGION_ORDER) == sorted(code for code, _ in module.REGIONS)
+    for position, code in enumerate(module.REGION_ORDER, start=1):
+        assert module.REGION_ORDER.index(code) + 1 == position
+
+
+def test_locations_endpoint_orders_regions_by_orden_not_by_code() -> None:
+    session_rows = [
+        {"region_code": "15", "region_name": "Arica y Parinacota", "commune_code": "15101", "commune_name": "Arica"},
+        {"region_code": "01", "region_name": "Tarapacá", "commune_code": "01101", "commune_name": "Iquique"},
+    ]
+    response = run_get("/api/locations", session_rows)
+
+    assert [region["code"] for region in response.json()["regions"]] == ["15", "01"]
 
