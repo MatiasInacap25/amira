@@ -1,13 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, CalendarDays, MapPin, Route, Truck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Route, Truck } from "lucide-react";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { getSharedRoutes, type SharedRouteFilters } from "@/lib/marketplace-api";
 
-const initialFilters: SharedRouteFilters = { origin: "", destination: "", departureFrom: "", departureTo: "", offset: 0 };
+const initialFilters: SharedRouteFilters = { originCommuneCode: "", destinationCommuneCode: "", departureFrom: "", departureTo: "", offset: 0 };
+const emptyLocation: RegionCommuneValue = { regionCode: "", communeCode: "" };
 
 function formatDeparture(value: string | null | undefined) {
   if (!value) return "Fecha por confirmar";
@@ -20,6 +22,8 @@ export default function SharedRoutesPage() {
   const [filters, setFilters] = useState(initialFilters);
   const [query, setQuery] = useState(initialFilters);
   const [dateError, setDateError] = useState("");
+  const [originLocation, setOriginLocation] = useState<RegionCommuneValue>(emptyLocation);
+  const [destinationLocation, setDestinationLocation] = useState<RegionCommuneValue>(emptyLocation);
   const routesQuery = useQuery({
     queryKey: ["shared-routes", query],
     queryFn: ({ signal }) => getSharedRoutes(query, signal),
@@ -34,7 +38,12 @@ export default function SharedRoutesPage() {
       return;
     }
     setDateError("");
-    const nextFilters = { ...filters, offset: 0 };
+    const nextFilters = {
+      ...filters,
+      originCommuneCode: originLocation.communeCode,
+      destinationCommuneCode: destinationLocation.communeCode,
+      offset: 0,
+    };
     setFilters(nextFilters);
     setQuery(nextFilters);
   }
@@ -70,14 +79,22 @@ export default function SharedRoutesPage() {
               <div><h2>Buscar viajes en ruta</h2><p>Filtra por origen, destino y fecha de salida.</p></div>
             </div>
             <div className="filter-fields route-filter-fields">
-              <label className="marketplace-field" htmlFor="route-origin">
-                <span>Origen</span>
-                <span className="marketplace-input-icon"><MapPin aria-hidden="true" size={16} /><input autoComplete="address-level2" id="route-origin" onChange={(event) => setFilters({ ...filters, origin: event.target.value })} placeholder="Comuna o ciudad" value={filters.origin} /></span>
-              </label>
-              <label className="marketplace-field" htmlFor="route-destination">
-                <span>Destino</span>
-                <span className="marketplace-input-icon"><MapPin aria-hidden="true" size={16} /><input autoComplete="address-level2" id="route-destination" onChange={(event) => setFilters({ ...filters, destination: event.target.value })} placeholder="Comuna o ciudad" value={filters.destination} /></span>
-              </label>
+              <RegionCommuneSelect
+                communeLabel="Comuna de origen"
+                idPrefix="route-origin"
+                onChange={setOriginLocation}
+                optional
+                regionLabel="Región de origen"
+                value={originLocation}
+              />
+              <RegionCommuneSelect
+                communeLabel="Comuna de destino"
+                idPrefix="route-destination"
+                onChange={setDestinationLocation}
+                optional
+                regionLabel="Región de destino"
+                value={destinationLocation}
+              />
               <label className="marketplace-field" htmlFor="departure-from">
                 <span>Desde la fecha</span>
                 <span className="marketplace-input-icon"><CalendarDays aria-hidden="true" size={16} /><input aria-describedby={dateError ? "route-date-error" : undefined} aria-invalid={dateError ? true : undefined} id="departure-from" onChange={(event) => { setFilters({ ...filters, departureFrom: event.target.value }); setDateError(""); }} type="date" value={filters.departureFrom} /></span>

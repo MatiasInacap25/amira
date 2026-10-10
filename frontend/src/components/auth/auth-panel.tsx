@@ -5,16 +5,30 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Truck } from "lucide-react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { accountApiFetch, authenticatedApiFetch } from "@/lib/auth/account-api";
 import { safeNextPath } from "@/lib/auth/safe-next-path";
+import { formatRut, normalizeRut } from "@/lib/validation/rut";
 import { createClient } from "@/lib/supabase/client";
 
 type AuthMode = "login" | "register";
 type AuthStep = "loading" | "credentials" | "email-pending" | "enroll" | "verify" | "account";
 type AccountRole = "client" | "company_owner" | "independent_driver";
 type PhoneFactor = { id: string; phone?: string; status?: string };
+type FieldKey = "phone" | "nationalId" | "companyTaxId";
+type FieldErrors = Partial<Record<FieldKey, string>>;
 
 const AUTH_ERROR = "No pudimos completar la operación. Revisa los datos e intenta nuevamente.";
+const PHONE_DEFAULT = "+56";
+const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
+const PHONE_ERROR = "Ingresa un número internacional con código de país, por ejemplo +56912345678.";
+const RUT_ERROR = "El RUT no es válido. Revisa el dígito verificador.";
+// Only fields that render an inline error; other 422 entries keep the generic message.
+const FIELD_BY_API_NAME: Record<string, FieldKey> = {
+  phone: "phone",
+  national_id: "nationalId",
+  company_tax_id: "companyTaxId",
+};
 const REGISTRATION_DRAFT_KEY = "amira-registration-draft";
 const DRIVER_INVITATION_KEY = "amira-driver-invitation";
 type RegistrationDraft = {
@@ -40,8 +54,30 @@ function messageFor(error: unknown) {
   if (/independent driver provisioning is not configured/i.test(raw)) return "El registro de conductor independiente todavía requiere configuración. Contacta al equipo de Amira para continuar.";
   if (/^El registro como conductor vinculado/.test(raw)) return raw;
   if (/API todavía no está configurada correctamente/i.test(raw)) return raw;
-  if (/^Confirma tu correo|^La sesión |^Completa la verificación|^Completa tu correo|^Ingresa un número|^La API todavía|^El registro de conductor|^Ya existe una cuenta|^Revisa los campos|^El servicio no está disponible/.test(raw)) return raw;
+  if (/^Confirma tu correo|^La sesión |^Completa la verificación|^Completa tu correo|^Ingresa un número|^La API todavía|^El registro de conductor|^Ya existe una cuenta|^Revisa los campos|^El servicio no está disponible|^Elige una región/.test(raw)) return raw;
   return AUTH_ERROR;
+}
+
+// Maps FastAPI 422 `detail[].loc` entries to the form fields they describe; unknown fields stay generic.
+async function fieldErrorsFromResponse(response: Response): Promise<FieldErrors> {
+  try {
+    const body = await response.json() as { detail?: unknown };
+    if (!Array.isArray(body.detail)) return {};
+    const next: FieldErrors = {};
+    for (const item of body.detail as Array<{ loc?: unknown; msg?: unknown }>) {
+      const loc = Array.isArray(item.loc) ? item.loc : [];
+      const field = FIELD_BY_API_NAME[String(loc[loc.length - 1])];
+      if (field && typeof item.msg === "string") next[field] = item.msg;
+    }
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return <span className="auth-field-error" id={id}>{message}</span>;
 }
 
 function isEmailConfirmed(user: User | null | undefined): user is User {
@@ -65,7 +101,8 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(PHONE_DEFAULT);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [nationalId, setNationalId] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -78,6 +115,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
   const [displayName, setDisplayName] = useState("");
   const [companyTaxId, setCompanyTaxId] = useState("");
   const [alsoDriver, setAlsoDriver] = useState(false);
+  const [regionCommune, setRegionCommune] = useState<RegionCommuneValue>({ regionCode: "", communeCode: "" });
   const [confirmedUser, setConfirmedUser] = useState<User | null>(null);
   const [invitationToken] = useState(() => {
     if (!invitationIntent || typeof window === "undefined") return "";
@@ -89,7 +127,8 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     setEmail("");
     setPassword("");
     setPasswordConfirm("");
-    setPhone("");
+    setPhone(PHONE_DEFAULT);
+    setFieldErrors({});
     setNationalId("");
     setBirthDate("");
     setFirstName("");
@@ -98,6 +137,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     setDisplayName("");
     setCompanyTaxId("");
     setAlsoDriver(false);
+    setRegionCommune({ regionCode: "", communeCode: "" });
     setPhoneVerified(false);
   }
 
@@ -200,8 +240,16 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     setBusy(true);
     setError("");
     setNotice("");
+    setFieldErrors({});
     try {
       if (mode === "register") {
+        const identityErrors: FieldErrors = {};
+        if (!PHONE_PATTERN.test(phone.replace(/[\s()-]/g, ""))) identityErrors.phone = PHONE_ERROR;
+        if (!normalizeRut(nationalId)) identityErrors.nationalId = RUT_ERROR;
+        if (Object.keys(identityErrors).length > 0) {
+          setFieldErrors(identityErrors);
+          throw new Error("Revisa los campos marcados para continuar.");
+        }
         if (password !== passwordConfirm) throw new Error("Las contraseñas no coinciden.");
         const registrationDraft: RegistrationDraft = {
           email: email.trim(), phone: phone.trim(), firstName: firstName.trim(), lastName: lastName.trim(),
@@ -260,9 +308,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     setError("");
     try {
       const normalizedPhone = phone.replace(/[\s()-]/g, "");
-      if (!/^\+[1-9]\d{7,14}$/.test(normalizedPhone)) {
-        throw new Error("Ingresa un número internacional con código de país, por ejemplo +56912345678.");
-      }
+      if (!PHONE_PATTERN.test(normalizedPhone)) throw new Error(PHONE_ERROR);
       const { data, error: enrollError } = await client.auth.mfa.enroll({ factorType: "phone", phone: normalizedPhone, friendlyName: "Amira SMS" });
       if (enrollError) throw enrollError;
       setFactorId(data.id);
@@ -319,7 +365,18 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     if (!client || busy || !isEmailConfirmed(confirmedUser)) return;
     setBusy(true);
     setError("");
+    setFieldErrors({});
     try {
+      const provisionRole: AccountRole = invitationIntent ? "client" : role;
+      const nationalRut = normalizeRut(nationalId);
+      const companyRut = provisionRole === "company_owner" ? normalizeRut(companyTaxId) : null;
+      const accountErrors: FieldErrors = {};
+      if (!nationalRut) accountErrors.nationalId = RUT_ERROR;
+      if (provisionRole === "company_owner" && !companyRut) accountErrors.companyTaxId = RUT_ERROR;
+      if (Object.keys(accountErrors).length > 0) {
+        setFieldErrors(accountErrors);
+        throw new Error("Revisa los campos marcados para continuar.");
+      }
       const { data: verified, error: verifyError } = await client.auth.getUser();
       if (verifyError || !isEmailConfirmed(verified.user) || verified.user.id !== confirmedUser.id) {
         await client.auth.signOut();
@@ -333,17 +390,18 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
       if (assuranceError || assurance.currentLevel !== "aal2") throw new Error("Completa la verificación SMS antes de crear tu cuenta.");
       const { data: sessionData, error: sessionError } = await client.auth.getSession();
       if (sessionError || !sessionData.session?.access_token) throw sessionError ?? new Error("La sesión expiró. Inicia sesión nuevamente.");
-      const provisionRole: AccountRole = invitationIntent ? "client" : role;
+      if (provisionRole !== "client" && !regionCommune.communeCode) throw new Error("Elige una región y una comuna para continuar.");
       const payload: Record<string, string | boolean> = {
         role: provisionRole,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        national_id: nationalId.trim(),
+        national_id: nationalRut ?? "",
         birth_date: birthDate,
         phone: phone.trim(),
       };
       if (provisionRole !== "client") payload.display_name = displayName.trim();
-      if (provisionRole === "company_owner") payload.company_tax_id = companyTaxId.trim();
+      if (provisionRole !== "client") payload.commune_code = regionCommune.communeCode;
+      if (companyRut) payload.company_tax_id = companyRut;
       if (provisionRole === "company_owner") payload.also_driver = alsoDriver;
       const response = await accountApiFetch("/api/account/provision", sessionData.session.access_token, process.env.NEXT_PUBLIC_API_URL, {
         method: "POST",
@@ -351,6 +409,13 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
+        if (response.status === 422) {
+          const apiFieldErrors = await fieldErrorsFromResponse(response);
+          if (Object.keys(apiFieldErrors).length > 0) {
+            setFieldErrors(apiFieldErrors);
+            throw new Error("Revisa los campos marcados para continuar.");
+          }
+        }
         let detail = "No pudimos crear tu cuenta. Revisa los datos e intenta nuevamente.";
         try {
           const body = await response.json() as { detail?: string };
@@ -454,11 +519,13 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                   </label>
                 </div>
                 <label className="auth-field" htmlFor="auth-phone">Teléfono móvil
-                  <input autoComplete="tel" id="auth-phone" inputMode="tel" onChange={(event) => setPhone(event.target.value)} placeholder="+56912345678" required type="tel" value={phone} />
+                  <input aria-describedby={fieldErrors.phone ? "auth-phone-error" : undefined} aria-invalid={fieldErrors.phone ? true : undefined} autoComplete="tel" id="auth-phone" inputMode="tel" onChange={(event) => setPhone(event.target.value)} placeholder="+56912345678" required type="tel" value={phone} />
                   <span className="auth-help">Incluye el código de país. Este número también se verificará por SMS.</span>
+                  <FieldError id="auth-phone-error" message={fieldErrors.phone} />
                 </label>
                 <label className="auth-field" htmlFor="auth-national-id">RUT personal
-                  <input autoComplete="off" id="auth-national-id" maxLength={16} onChange={(event) => setNationalId(event.target.value)} placeholder="12.345.678-5" required value={nationalId} />
+                  <input aria-describedby={fieldErrors.nationalId ? "auth-national-id-error" : undefined} aria-invalid={fieldErrors.nationalId ? true : undefined} autoComplete="off" id="auth-national-id" maxLength={16} onBlur={() => setNationalId((current) => formatRut(current) ?? current)} onChange={(event) => setNationalId(event.target.value)} placeholder="12.345.678-5" required value={nationalId} />
+                  <FieldError id="auth-national-id-error" message={fieldErrors.nationalId} />
                 </label>
                 <label className="auth-field" htmlFor="auth-birth-date">Fecha de nacimiento
                   <input autoComplete="bday" id="auth-birth-date" max={new Date().toISOString().slice(0, 10)} min="1900-01-01" onChange={(event) => setBirthDate(event.target.value)} required type="date" value={birthDate} />
@@ -472,7 +539,8 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                   </label>
                   {role === "company_owner" && <>
                     <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa
-                      <input autoComplete="off" id="auth-company-tax-id" maxLength={16} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} />
+                      <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={16} onBlur={() => setCompanyTaxId((current) => formatRut(current) ?? current)} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} />
+                      <FieldError id="auth-company-tax-id-error" message={fieldErrors.companyTaxId} />
                     </label>
                     <label className="auth-checkbox" htmlFor="auth-also-driver">
                       <input checked={alsoDriver} id="auth-also-driver" onChange={(event) => setAlsoDriver(event.target.checked)} type="checkbox" />
@@ -547,14 +615,19 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                 <span className="auth-help">Este es el número que acabas de verificar por SMS.</span>
               </label>
               <label className="auth-field" htmlFor="auth-account-national-id">RUT personal
-                <input autoComplete="off" id="auth-account-national-id" maxLength={16} onChange={(event) => setNationalId(event.target.value)} required value={nationalId} />
+                <input aria-describedby={fieldErrors.nationalId ? "auth-account-national-id-error" : undefined} aria-invalid={fieldErrors.nationalId ? true : undefined} autoComplete="off" id="auth-account-national-id" maxLength={16} onBlur={() => setNationalId((current) => formatRut(current) ?? current)} onChange={(event) => setNationalId(event.target.value)} required value={nationalId} />
+                <FieldError id="auth-account-national-id-error" message={fieldErrors.nationalId} />
               </label>
               <label className="auth-field" htmlFor="auth-account-birth-date">Fecha de nacimiento
                 <input autoComplete="bday" id="auth-account-birth-date" max={new Date().toISOString().slice(0, 10)} min="1900-01-01" onChange={(event) => setBirthDate(event.target.value)} required type="date" value={birthDate} />
               </label>
               {role !== "client" && <label className="auth-field" htmlFor="auth-display-name">Nombre público del prestador<input autoComplete="organization" id="auth-display-name" maxLength={160} onChange={(event) => setDisplayName(event.target.value)} required value={displayName} /></label>}
+              {!invitationIntent && role !== "client" && <RegionCommuneSelect idPrefix="auth-account" onChange={setRegionCommune} required value={regionCommune} />}
               {role === "company_owner" && <>
-                <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa<input autoComplete="off" id="auth-company-tax-id" maxLength={16} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} /></label>
+                <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa
+                  <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={16} onBlur={() => setCompanyTaxId((current) => formatRut(current) ?? current)} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} />
+                  <FieldError id="auth-company-tax-id-error" message={fieldErrors.companyTaxId} />
+                </label>
                 <label className="auth-checkbox" htmlFor="auth-account-also-driver">
                   <input checked={alsoDriver} id="auth-account-also-driver" onChange={(event) => setAlsoDriver(event.target.checked)} type="checkbox" />
                   También quiero registrarme como conductor de mi propia empresa para reservar servicios.

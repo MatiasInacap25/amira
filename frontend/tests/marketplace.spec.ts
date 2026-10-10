@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { mockCatalogs } from "./support/catalog-fixtures";
+
+test.beforeEach(async ({ page }) => {
+  await mockCatalogs(page);
+});
 
 const servicesResponse = {
   items: [
@@ -41,21 +46,26 @@ test("service search sends only supported filters and displays API results witho
   await expect(page.getByLabel("Categoría")).toHaveJSProperty("tagName", "SELECT");
   await expect.poll(() => page.getByLabel("Categoría").locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))).toEqual([
     "",
-    "mudanza",
-    "mercadería",
-    "flete",
+    "mudanzas",
+    "carga-compartida",
+    "mercaderia",
+    "fletes",
     "escombros",
-    "grúa",
+    "grua",
   ]);
   await page.getByLabel("Buscar por servicio o prestador").fill("camioneta");
-  await page.getByLabel("Categoría").selectOption("mudanza");
-  await page.getByLabel("Comuna o ciudad").fill("Santiago");
+  await page.getByLabel("Categoría").selectOption("mudanzas");
+  await page.getByLabel("Región").selectOption("13");
+  await page.getByLabel("Comuna").selectOption("13101");
   await page.getByRole("button", { name: "Buscar servicios" }).click();
 
   await expect.poll(() => requestedUrl).toContain("q=camioneta");
   const query = new URL(requestedUrl).searchParams;
-  expect(query.get("category")).toBe("mudanza");
-  expect(query.get("location")).toBe("Santiago");
+  expect(query.get("serviceType")).toBe("mudanzas");
+  expect(query.get("regionCode")).toBe("13");
+  expect(query.get("communeCode")).toBe("13101");
+  expect(query.has("category")).toBe(false);
+  expect(query.has("location")).toBe(false);
   expect(query.has("origin")).toBe(false);
   expect(query.has("destination")).toBe(false);
   await expect(page.getByText("No se muestran calificaciones ni verificaciones que Amira no ofrece.")).toBeVisible();
@@ -66,23 +76,44 @@ test("service search sends only supported filters and displays API results witho
   await expect(page.getByRole("button", { name: /reservar|contratar/i })).toHaveCount(0);
 });
 
-test("accented service category labels send accent-preserving API filters", async ({ page }) => {
-  let requestedCategory: string | null = null;
+test("catalog category names keep their accents while the API filter uses the slug", async ({ page }) => {
+  let requestedServiceType: string | null = null;
   await page.route("**/api/services?*", async (route) => {
-    requestedCategory = new URL(route.request().url()).searchParams.get("category");
+    requestedServiceType = new URL(route.request().url()).searchParams.get("serviceType");
     await route.fulfill({ json: servicesResponse });
   });
 
   await page.goto("/servicios");
   const category = page.getByLabel("Categoría");
-  for (const [label, expectedCategory] of [
-    ["Transporte de mercadería", "mercadería"],
-    ["Servicios de grúa", "grúa"],
+  for (const [label, expectedSlug] of [
+    ["Transporte de mercadería", "mercaderia"],
+    ["Servicios de grúa", "grua"],
   ]) {
     await category.selectOption({ label });
     await page.getByRole("button", { name: "Buscar servicios" }).click();
-    await expect.poll(() => requestedCategory).toBe(expectedCategory);
+    await expect.poll(() => requestedServiceType).toBe(expectedSlug);
   }
+});
+
+test("service search reads its filters from the URL and the commune stays disabled until a region is chosen", async ({ page }) => {
+  let requestedUrl = "";
+  await page.route("**/api/services?*", async (route) => {
+    requestedUrl = route.request().url();
+    await route.fulfill({ json: servicesResponse });
+  });
+
+  await page.goto("/servicios?serviceType=fletes&regionCode=05&communeCode=05101");
+  await expect(page.getByLabel("Categoría")).toHaveValue("fletes");
+  await expect(page.getByLabel("Región")).toHaveValue("05");
+  await expect(page.getByLabel("Comuna")).toHaveValue("05101");
+  await expect.poll(() => requestedUrl).toContain("communeCode=05101");
+  const query = new URL(requestedUrl).searchParams;
+  expect(query.get("serviceType")).toBe("fletes");
+  expect(query.get("regionCode")).toBe("05");
+
+  await page.getByLabel("Región").selectOption("");
+  await expect(page.getByLabel("Comuna")).toBeDisabled();
+  await expect(page.getByLabel("Comuna")).toHaveValue("");
 });
 
 test("provider quote dialog only offers matching services and allows choosing between them", async ({ page }) => {
@@ -141,6 +172,8 @@ test("shared-route search sends supported filters and shows ordered stops withou
           providerName: "Transportista de prueba",
           origin: "Santiago",
           destination: "Concepción",
+          originCommuneCode: "13101",
+          destinationCommuneCode: "08101",
           departureAt: "2026-10-12T09:00:00-03:00",
           stops: [
             { stopNumber: 1, estimatedAt: "2026-10-12T11:00:00-03:00" },
@@ -155,8 +188,10 @@ test("shared-route search sends supported filters and shows ordered stops withou
   });
 
   await page.goto("/rutas-compartidas");
-  await page.getByLabel("Origen").fill("Santiago");
-  await page.getByLabel("Destino").fill("Concepción");
+  await page.getByLabel("Región de origen").selectOption("13");
+  await page.getByLabel("Comuna de origen").selectOption("13101");
+  await page.getByLabel("Región de destino").selectOption("08");
+  await page.getByLabel("Comuna de destino").selectOption("08101");
   await page.getByLabel("Desde la fecha").fill("2026-10-10");
   await page.getByLabel("Hasta la fecha").fill("2026-10-20");
   await page.getByRole("button", { name: "Buscar rutas" }).click();
@@ -164,8 +199,10 @@ test("shared-route search sends supported filters and shows ordered stops withou
   const query = new URL(requestedUrl).searchParams;
   expect(query.get("departureFrom")).toContain("2026-10-10T00:00:00");
   expect(query.get("departureFrom")).toMatch(/[+-]\d{2}:\d{2}$/);
-  expect(query.get("origin")).toBe("Santiago");
-  expect(query.get("destination")).toBe("Concepción");
+  expect(query.get("originCommuneCode")).toBe("13101");
+  expect(query.get("destinationCommuneCode")).toBe("08101");
+  expect(query.has("origin")).toBe(false);
+  expect(query.has("destination")).toBe(false);
   expect(query.get("departureTo")).toContain("2026-10-20T23:59:59.999");
   expect(query.get("departureTo")).toMatch(/[+-]\d{2}:\d{2}$/);
   await expect(page.getByRole("heading", { name: "Santiago a Concepción" })).toBeVisible();
@@ -227,8 +264,10 @@ test("public provider profile shows real names and services, while quote request
   await expect(serviceSelect).toHaveValue("");
   await expect(submitQuote).toBeDisabled();
   await serviceSelect.selectOption("service-type-2");
-  await page.getByLabel("Origen").fill("Santiago");
-  await page.getByLabel("Destino").fill("Valparaíso");
+  await page.getByLabel("Región de origen").selectOption("13");
+  await page.getByLabel("Comuna de origen").selectOption("13101");
+  await page.getByLabel("Región de destino").selectOption("05");
+  await page.getByLabel("Comuna de destino").selectOption("05101");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Inicia sesión con un correo confirmado");
   await expect(page.getByRole("dialog").getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fprestadores%2Fprofile-test-1");
@@ -240,6 +279,42 @@ test("public provider profile shows real names and services, while quote request
   await expect(page.locator(".provider-profile-identity-details")).toContainText("Empresa");
   await expect(page.locator(".provider-profile-identity-details")).toContainText("Santiago");
   await expect(page.getByRole("link", { name: "Volver a servicios" })).toBeVisible();
+});
+
+test("quote request uses commune codes for origin and destination and rejects past requested dates", async ({ page }) => {
+  await page.route("**/api/providers/profile-quote", async (route) => route.fulfill({ json: {
+    profileId: "profile-quote",
+    providerName: "Fletes Costa",
+    kind: "independent_driver",
+    description: null,
+    location: "Valparaíso",
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [{ serviceTypeId: "service-type-2", name: "Fletes" }],
+    vehicles: [],
+  } }));
+  await page.goto("/prestadores/profile-quote");
+  await page.getByRole("button", { name: "Solicitar cotización", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await expect(dialog.getByLabel("Comuna de origen")).toBeDisabled();
+  await expect(dialog.getByLabel("Comuna de destino")).toBeDisabled();
+  await expect(dialog.getByLabel("Dirección de origen (opcional)")).toBeVisible();
+  await expect(dialog.getByLabel("Fecha deseada")).toHaveAttribute("min", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+  await dialog.getByLabel("Servicio").selectOption("service-type-2");
+  await dialog.getByLabel("Región de origen").selectOption("13");
+  await expect(dialog.getByLabel("Comuna de origen")).toBeEnabled();
+  await dialog.getByLabel("Comuna de origen").selectOption("13114");
+  await dialog.getByLabel("Región de destino").selectOption("05");
+  await dialog.getByLabel("Comuna de destino").selectOption("05101");
+  await dialog.getByLabel("Dirección de origen (opcional)").fill("Av. Matta 123");
+  await dialog.getByLabel("Fecha deseada").fill("2020-01-01T10:00");
+  const underflow = await dialog.getByLabel("Fecha deseada").evaluate((element) => (element as HTMLInputElement).validity.rangeUnderflow);
+  expect(underflow).toBe(true);
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog.getByRole("heading", { name: "Cuéntanos qué necesitas" })).toBeVisible();
 });
 
 test("provider profile skip target remains available while loading, failed, and retrying", async ({ page }) => {
@@ -395,7 +470,8 @@ test("shared-route search renders loading, empty, and failure feedback", async (
   await expect(page.getByRole("status")).toContainText("No encontramos rutas");
 
   await page.route("**/api/shared-routes?*", (route) => route.abort());
-  await page.getByLabel("Origen").fill("Santiago");
+  await page.getByLabel("Región de origen").selectOption("13");
+  await page.getByLabel("Comuna de origen").selectOption("13101");
   await page.getByRole("button", { name: "Buscar rutas" }).click();
   await expect(page.locator(".marketplace-error")).toContainText("No pudimos cargar las rutas");
 });

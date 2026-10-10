@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { mockCatalogs } from "./support/catalog-fixtures";
 
 test.beforeEach(async ({ page }) => {
+  await mockCatalogs(page);
   await page.goto("/");
 });
 
@@ -18,18 +20,16 @@ test("desktop navigation targets the matching business sections", async ({ page 
   await expect(navigation.getByRole("link", { name: "Para transportistas" })).toHaveAttribute("href", "#transportistas");
 });
 
-test("validates a local service search and presents an honest demo result", async ({ page }) => {
+test("validates the required service type before navigating to the service search", async ({ page }) => {
+  await expect(page.getByLabel("Tipo de servicio").locator("option")).toHaveCount(7);
   await page.getByRole("button", { name: "Buscar servicio" }).click();
   await expect(page.locator(".form-alert")).toContainText("Selecciona un servicio");
   await expect(page.getByLabel("Tipo de servicio")).toHaveAttribute("aria-describedby", "search-error-title");
   await expect(page.locator(".form-alert a")).toHaveAttribute("href", "#service-type");
 
-  await page.getByLabel("Tipo de servicio").selectOption("mudanza");
-  await page.getByLabel("Origen").fill("Santiago");
-  await page.getByLabel("Destino").fill("Providencia");
+  await page.getByLabel("Tipo de servicio").selectOption("mudanzas");
   await page.getByRole("button", { name: "Buscar servicio" }).click();
-  await expect(page.getByRole("status")).toContainText("demostración");
-  await expect(page.getByText("Sin prestadores reales conectados todavía")).toBeVisible();
+  await expect(page).toHaveURL(/\/servicios\?serviceType=mudanzas$/);
 });
 
 test("category cards select the matching service in the request form", async ({ page }) => {
@@ -37,12 +37,12 @@ test("category cards select the matching service in the request form", async ({ 
   await expect(page.getByLabel("Tipo de servicio")).toHaveValue("escombros");
 });
 
-test("escombro requests need an origin but no destination", async ({ page }) => {
+test("home search sends the service type and commune codes to the service search", async ({ page }) => {
   await page.getByLabel("Tipo de servicio").selectOption("escombros");
-  await expect(page.getByLabel("Destino")).toBeDisabled();
-  await page.getByLabel("Origen").fill("Ñuñoa");
+  await page.getByLabel("Región").selectOption("13");
+  await page.getByLabel("Comuna").selectOption("13114");
   await page.getByRole("button", { name: "Buscar servicio" }).click();
-  await expect(page.locator(".search-results")).toContainText("desde Ñuñoa");
+  await expect(page).toHaveURL(/\/servicios\?serviceType=escombros&regionCode=13&communeCode=13114$/);
 });
 
 test("FAQ disclosures can be opened using their native keyboard control", async ({ page }) => {

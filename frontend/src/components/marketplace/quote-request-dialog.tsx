@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { createServiceRequest, type ProviderProfile, type ServiceRequestInput } from "@/lib/marketplace-api";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,9 +13,17 @@ type Props = {
   onClose: () => void;
 };
 
+const emptyLocation: RegionCommuneValue = { regionCode: "", communeCode: "" };
+
 function signInHref() {
   const next = `${window.location.pathname}${window.location.search}`;
   return `/login?next=${encodeURIComponent(next)}`;
+}
+
+// datetime-local expects local "YYYY-MM-DDTHH:mm" values; the browser compares them as local time.
+function localDateTimeNow(now = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
 export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }: Props) {
@@ -24,6 +33,8 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
   const [success, setSuccess] = useState(false);
   const [signInPath, setSignInPath] = useState("/login");
   const [serviceId, setServiceId] = useState(selectedServiceId);
+  const [originLocation, setOriginLocation] = useState<RegionCommuneValue>(emptyLocation);
+  const [destinationLocation, setDestinationLocation] = useState<RegionCommuneValue>(emptyLocation);
   const selectedService = profile.services.find((service) => service.serviceTypeId === serviceId);
 
   useEffect(() => {
@@ -39,15 +50,25 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
       setError("Elige uno de los servicios publicados para continuar.");
       return;
     }
+    if (!originLocation.communeCode || !destinationLocation.communeCode) {
+      setError("Elige la comuna de origen y de destino para continuar.");
+      return;
+    }
     const form = new FormData(event.currentTarget);
     const requestedAt = String(form.get("requestedAt") ?? "");
+    if (requestedAt && new Date(requestedAt).getTime() < Date.now()) {
+      setError("La fecha deseada no puede estar en el pasado.");
+      return;
+    }
     const weight = String(form.get("estimatedWeight") ?? "").trim();
     const volume = String(form.get("estimatedVolume") ?? "").trim();
     const input: ServiceRequestInput = {
       profileId: profile.profileId,
       serviceTypeId: selectedService.serviceTypeId,
-      origin: String(form.get("origin") ?? "").trim(),
-      destination: String(form.get("destination") ?? "").trim(),
+      originCommuneCode: originLocation.communeCode,
+      destinationCommuneCode: destinationLocation.communeCode,
+      origin: String(form.get("origin") ?? "").trim() || null,
+      destination: String(form.get("destination") ?? "").trim() || null,
       requestedAt: requestedAt ? new Date(requestedAt).toISOString() : null,
       estimatedWeight: weight || null,
       estimatedVolume: volume || null,
@@ -127,9 +148,25 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
             </select>
           </label>
           <div className="quote-request-grid">
-            <label className="marketplace-field" htmlFor="quote-origin"><span>Origen</span><input autoComplete="address-level2" id="quote-origin" maxLength={300} name="origin" required /></label>
-            <label className="marketplace-field" htmlFor="quote-destination"><span>Destino</span><input autoComplete="address-level2" id="quote-destination" maxLength={300} name="destination" required /></label>
-            <label className="marketplace-field" htmlFor="quote-date"><span>Fecha deseada</span><input id="quote-date" name="requestedAt" type="datetime-local" /></label>
+            <RegionCommuneSelect
+              communeLabel="Comuna de origen"
+              idPrefix="quote-origin"
+              onChange={setOriginLocation}
+              regionLabel="Región de origen"
+              required
+              value={originLocation}
+            />
+            <label className="marketplace-field" htmlFor="quote-origin-address"><span>Dirección de origen (opcional)</span><input autoComplete="street-address" id="quote-origin-address" maxLength={300} name="origin" /></label>
+            <RegionCommuneSelect
+              communeLabel="Comuna de destino"
+              idPrefix="quote-destination"
+              onChange={setDestinationLocation}
+              regionLabel="Región de destino"
+              required
+              value={destinationLocation}
+            />
+            <label className="marketplace-field" htmlFor="quote-destination-address"><span>Dirección de destino (opcional)</span><input autoComplete="street-address" id="quote-destination-address" maxLength={300} name="destination" /></label>
+            <label className="marketplace-field" htmlFor="quote-date"><span>Fecha deseada</span><input id="quote-date" min={localDateTimeNow()} name="requestedAt" type="datetime-local" /></label>
             <label className="marketplace-field" htmlFor="quote-weight"><span>Peso estimado (kg)</span><input id="quote-weight" min="0" name="estimatedWeight" step="0.01" type="number" /></label>
             <label className="marketplace-field" htmlFor="quote-volume"><span>Volumen estimado (m³)</span><input id="quote-volume" min="0" name="estimatedVolume" step="0.001" type="number" /></label>
             <label className="marketplace-field" htmlFor="quote-measurements"><span>Medidas de la carga</span><input id="quote-measurements" maxLength={2000} name="cargoMeasurements" /></label>

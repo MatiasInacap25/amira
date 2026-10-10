@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { locationsResponse } from "./support/catalog-fixtures";
 
 const user = {
   id: "user-test-1",
@@ -28,7 +29,7 @@ function session(aal: "aal1" | "aal2" = "aal1", tokenId?: string, expiresIn = 36
   };
 }
 
-async function installAuthMocks(page: Page, options: { accountExists?: boolean; refresh?: boolean; existingPhone?: boolean; companyDriverUnavailable?: boolean } = {}) {
+async function installAuthMocks(page: Page, options: { accountExists?: boolean; refresh?: boolean; existingPhone?: boolean; companyDriverUnavailable?: boolean; validationError?: boolean } = {}) {
   const events: Array<{ path: string; method: string; body?: Record<string, unknown>; authorization?: string }> = [];
   let factorExists = options.existingPhone ?? false;
   let factorPhone = factorExists ? "+56912345678" : "";
@@ -95,6 +96,7 @@ async function installAuthMocks(page: Page, options: { accountExists?: boolean; 
     await route.fulfill({ status: 404, json: { msg: `Unexpected fake Auth request: ${method} ${path}` } });
   });
 
+  await page.route("**/api/locations", async (route) => route.fulfill({ json: locationsResponse }));
   await page.route("**/api/account/me", async (route) => {
     events.push({ path: "/api/account/me", method: "GET", authorization: route.request().headers()["authorization"] });
     if (provisioned) await route.fulfill({ json: { user_id: "account-test-1", role: "client", profile_id: null } });
@@ -106,6 +108,10 @@ async function installAuthMocks(page: Page, options: { accountExists?: boolean; 
     events.push({ path: "/api/account/provision", method: "POST", body, authorization: request.headers()["authorization"] });
     if (options.refresh && request.headers()["authorization"] !== `Bearer ${accessToken("aal2", "refreshed-aal2-token")}`) {
       await route.fulfill({ status: 401, json: { detail: "Expected refreshed verification token." } });
+      return;
+    }
+    if (options.validationError) {
+      await route.fulfill({ status: 422, json: { detail: [{ loc: ["body", "national_id"], msg: "El RUT no es válido. Revisa el dígito verificador.", type: "value_error" }] } });
       return;
     }
     if (body.role === "independent_driver") {
@@ -138,6 +144,11 @@ async function fillAccountPrivateDetails(page: Page) {
   await expect(page.locator("#auth-account-phone")).toHaveValue("+56912345678");
   await page.locator("#auth-account-national-id").fill("12.345.678-5");
   await page.locator("#auth-account-birth-date").fill("1990-01-01");
+}
+
+async function selectProviderCommune(page: Page) {
+  await page.getByLabel("Región").selectOption("13");
+  await page.getByLabel("Comuna").selectOption("13101");
 }
 
 test("registration waits for email confirmation before asking for account details", async ({ page }) => {
@@ -189,6 +200,7 @@ test("login requires SMS, retries a rejected challenge, and provisions only afte
   await page.getByRole("button", { name: "Verificar teléfono" }).click();
   await expect(page.locator(".auth-error")).toContainText("El código no es válido o venció");
   await page.getByRole("button", { name: "Enviar otro código" }).click();
+  await expect(page.getByLabel("Código de verificación")).toHaveValue("");
   await page.getByLabel("Código de verificación").fill("246810");
   await page.getByRole("button", { name: "Verificar teléfono" }).click();
   await expect(page.getByLabel("¿Cómo usarás Amira?")).toBeVisible();
@@ -199,7 +211,7 @@ test("login requires SMS, retries a rejected challenge, and provisions only afte
   await expect(page).toHaveURL(/\/servicios$/);
   const provisionRequest = mocks.events.find((event) => event.path === "/api/account/provision");
   expect(provisionRequest?.authorization).toBe(`Bearer ${accessToken("aal2", "refreshed-aal2-token")}`);
-  expect(provisionRequest?.body).toEqual({ role: "client", first_name: "Camila", last_name: "Rojas", national_id: "12.345.678-5", birth_date: "1990-01-01", phone: "+56912345678" });
+  expect(provisionRequest?.body).toEqual({ role: "client", first_name: "Camila", last_name: "Rojas", national_id: "12345678-5", birth_date: "1990-01-01", phone: "+56912345678" });
   expect(mocks.events.some((event) => event.method === "POST" && event.path === "/factors" && event.body?.phone === "+56912345678")).toBe(true);
   expect(mocks.events.filter((event) => event.path === "/factors/factor-sms-1/challenge")).toHaveLength(2);
 });
@@ -220,10 +232,85 @@ test("confirmed registration supports company fields and surfaces unavailable dr
   await fillAccountPrivateDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Transportes Sur");
   await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
+  await selectProviderCommune(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
   const company = mocks.events.find((event) => event.path === "/api/account/provision");
-  expect(company?.body).toEqual({ role: "company_owner", first_name: "Ana", last_name: "Pérez", national_id: "12.345.678-5", birth_date: "1990-01-01", phone: "+56912345678", display_name: "Transportes Sur", company_tax_id: "76.123.456-0", also_driver: false });
+  expect(company?.body).toEqual({ role: "company_owner", first_name: "Ana", last_name: "Pérez", national_id: "12345678-5", birth_date: "1990-01-01", phone: "+56912345678", display_name: "Transportes Sur", company_tax_id: "76123456-0", also_driver: false, commune_code: "13101" });
+});
+
+test("registration validates phone and RUT inline before creating the account", async ({ page }) => {
+  const mocks = await installAuthMocks(page);
+  await page.goto("/registro");
+  await expect(page.locator("#auth-phone")).toHaveValue("+56");
+  await page.locator("#auth-first-name").fill("Camila");
+  await page.locator("#auth-last-name").fill("Rojas");
+  await page.locator("#auth-phone").fill("912345678");
+  await page.locator("#auth-national-id").fill("12.345.678-6");
+  await page.locator("#auth-birth-date").fill("1990-01-01");
+  await page.getByLabel("Correo electrónico").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.locator("#auth-password-confirm").fill("un-password-seguro");
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
+
+  await expect(page.locator("#auth-phone")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#auth-phone-error")).toContainText("Ingresa un número internacional");
+  await expect(page.locator("#auth-national-id")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#auth-national-id-error")).toContainText("El RUT no es válido");
+  expect(mocks.events.some((event) => event.path === "/signup")).toBe(false);
+});
+
+test("API validation errors appear inline next to the field they describe", async ({ page }) => {
+  await installAuthMocks(page, { existingPhone: true, validationError: true });
+  await page.goto("/login");
+  await page.getByLabel("Correo electrónico").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await page.getByLabel("Código de verificación").fill("246810");
+  await page.getByRole("button", { name: "Verificar teléfono" }).click();
+  await expect(page.getByLabel("¿Cómo usarás Amira?")).toBeVisible();
+  await page.locator("#auth-first-name").fill("Camila");
+  await page.getByLabel("Apellido").fill("Rojas");
+  await fillAccountPrivateDetails(page);
+  await page.getByRole("button", { name: "Completar registro" }).click();
+
+  await expect(page.locator("#auth-account-national-id")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#auth-account-national-id-error")).toContainText("El RUT no es válido. Revisa el dígito verificador.");
+});
+
+test("provider account requires a region and commune before provisioning and sends the commune code", async ({ page }) => {
+  const mocks = await installAuthMocks(page, { existingPhone: true });
+  await page.goto("/login");
+  await page.getByLabel("Correo electrónico").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await page.getByLabel("Código de verificación").fill("246810");
+  await page.getByRole("button", { name: "Verificar teléfono" }).click();
+  await page.getByLabel("¿Cómo usarás Amira?").selectOption("independent_driver");
+  await page.locator("#auth-first-name").fill("Pedro");
+  await page.getByLabel("Apellido").fill("Soto");
+  await fillAccountPrivateDetails(page);
+  await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
+
+  const region = page.getByLabel("Región");
+  const commune = page.getByLabel("Comuna");
+  await expect(region).toBeEnabled();
+  await expect(region).toHaveAttribute("required", "");
+  await expect(commune).toBeDisabled();
+  await page.getByRole("button", { name: "Completar registro" }).click();
+  await expect(page.getByLabel("Nombre público del prestador")).toHaveValue("Fletes Pedro");
+  expect(mocks.events.some((event) => event.path === "/api/account/provision")).toBe(false);
+
+  await region.selectOption("13");
+  await expect(commune).toBeEnabled();
+  await expect(commune.locator("option")).toHaveCount(3);
+  await expect(commune.locator("option").nth(1)).toHaveText("Santiago");
+  await expect(commune.locator("option").nth(2)).toHaveText("Puente Alto");
+  await commune.selectOption("13114");
+  await page.getByRole("button", { name: "Completar registro" }).click();
+  await expect(page.locator(".auth-error")).toContainText("todavía requiere configuración");
+  const request = mocks.events.find((event) => event.path === "/api/account/provision");
+  expect(request?.body).toMatchObject({ role: "independent_driver", commune_code: "13114" });
 });
 
 test("independent-driver provisioning failure gives an actionable message", async ({ page }) => {
@@ -241,6 +328,7 @@ test("independent-driver provisioning failure gives an actionable message", asyn
   await page.getByLabel("Apellido").fill("Soto");
   await fillAccountPrivateDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
+  await selectProviderCommune(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page.locator(".auth-error")).toContainText("todavía requiere configuración");
   await expect(page.getByLabel("Nombre público del prestador")).toHaveValue("Fletes Pedro");
@@ -261,6 +349,7 @@ test("company owner can retain company account when linked-driver configuration 
   await page.getByLabel("Nombre público del prestador").fill("Transportes Sur");
   await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
   await page.locator("#auth-account-also-driver").check();
+  await selectProviderCommune(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page.locator(".auth-error")).toContainText("La cuenta de empresa puede continuar sin activar esa opción");
   const request = mocks.events.find((event) => event.path === "/api/account/provision");
@@ -353,8 +442,10 @@ test("verified client can submit a quote request with the current MFA access tok
   await expect(page.getByRole("button", { name: "Enviar solicitud" })).toBeDisabled();
   await serviceSelect.selectOption("service-type-2");
   await expect(page.getByRole("button", { name: "Enviar solicitud" })).toBeEnabled();
-  await page.getByLabel("Origen").fill("Santiago");
-  await page.getByLabel("Destino").fill("Valparaíso");
+  await page.getByLabel("Región de origen").selectOption("13");
+  await page.getByLabel("Comuna de origen").selectOption("13101");
+  await page.getByLabel("Región de destino").selectOption("05");
+  await page.getByLabel("Comuna de destino").selectOption("05101");
   await page.getByLabel("Peso estimado (kg)").fill("250.5");
   await page.getByLabel("Detalles de la solicitud").fill("Retiro de muebles.");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
@@ -364,8 +455,10 @@ test("verified client can submit a quote request with the current MFA access tok
   expect(sentRequest.body).toMatchObject({
     profileId: "profile-test-1",
     serviceTypeId: "service-type-2",
-    origin: "Santiago",
-    destination: "Valparaíso",
+    originCommuneCode: "13101",
+    destinationCommuneCode: "05101",
+    origin: null,
+    destination: null,
     estimatedWeight: "250.5",
     description: "Retiro de muebles.",
   });

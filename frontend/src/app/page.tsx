@@ -13,51 +13,56 @@ import {
   Menu,
   MessageCircle,
   Package,
+  Route,
   Shield,
   Truck,
   UsersRound,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
+import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
+import { getServiceTypes } from "@/lib/marketplace-api";
 
-const services = [
-  {
-    id: "mudanza",
-    name: "Mudanzas",
+// Presentational copy keyed by catalog slug. Names and availability come from GET /api/service-types.
+const serviceCopy: Record<string, { description: string; tag: string; icon: LucideIcon }> = {
+  mudanzas: {
     description: "Hogares y oficinas. Muebles, electrodomésticos y cajas.",
     tag: "Hogar y oficina",
     icon: Box,
   },
-  {
-    id: "mercaderia",
-    name: "Transporte de mercadería",
+  mercaderia: {
     description: "Envíos comerciales para pymes, distribuidores y talleres.",
     tag: "Para empresas",
     icon: Package,
   },
-  {
-    id: "flete",
-    name: "Fletes y traslados",
+  "carga-compartida": {
+    description: "Espacio para cargas parciales en viajes con ruta publicada.",
+    tag: "Viajes compartidos",
+    icon: Route,
+  },
+  fletes: {
     description: "Cargas puntuales, materiales y compras de gran volumen.",
     tag: "Carga general",
     icon: Truck,
   },
-  {
-    id: "escombros",
-    name: "Recolección de escombros",
+  escombros: {
     description: "Retiro de restos de obra y material de construcción.",
     tag: "Obra y remodelación",
     icon: ClipboardList,
   },
-  {
-    id: "grua",
-    name: "Servicios de grúa",
+  grua: {
     description: "Traslado de vehículos y movimiento de maquinaria ligera.",
     tag: "Asistencia y carga",
     icon: ArrowUpRight,
   },
-] as const;
+};
+
+const fallbackCopy = { description: "", tag: "", icon: Truck };
+const SERVICE_TYPES_STALE_TIME = 60 * 60 * 1000;
 
 const steps = [
   {
@@ -176,45 +181,39 @@ function Brand() {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [service, setService] = useState("");
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
+  const [location, setLocation] = useState<RegionCommuneValue>({ regionCode: "", communeCode: "" });
   const [searchError, setSearchError] = useState("");
-  const [searchSubmitted, setSearchSubmitted] = useState(false);
   const [demoNotice, setDemoNotice] = useState("");
   const errorRef = useRef<HTMLDivElement>(null);
-
-  const destinationOptional = service === "escombros";
+  const serviceTypesQuery = useQuery({
+    queryKey: ["service-types"],
+    queryFn: ({ signal }) => getServiceTypes(signal),
+    retry: false,
+    staleTime: SERVICE_TYPES_STALE_TIME,
+  });
+  const serviceTypes = serviceTypesQuery.data?.items ?? [];
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSearchSubmitted(false);
     if (!service) {
       setSearchError("Selecciona un servicio para continuar.");
       requestAnimationFrame(() => errorRef.current?.focus());
       return;
     }
-    if (!origin.trim()) {
-      setSearchError("Ingresa una comuna o ciudad de retiro.");
-      requestAnimationFrame(() => errorRef.current?.focus());
-      return;
-    }
-    if (!destinationOptional && !destination.trim()) {
-      setSearchError("Ingresa una comuna o ciudad de entrega.");
-      requestAnimationFrame(() => errorRef.current?.focus());
-      return;
-    }
 
     setSearchError("");
-    setSearchSubmitted(true);
+    const params = new URLSearchParams({ serviceType: service });
+    if (location.regionCode) params.set("regionCode", location.regionCode);
+    if (location.communeCode) params.set("communeCode", location.communeCode);
+    router.push(`/servicios?${params.toString()}`);
   }
 
-  function selectService(serviceId: string) {
-    setService(serviceId);
-    if (serviceId === "escombros") setDestination("");
+  function selectService(serviceSlug: string) {
+    setService(serviceSlug);
     setSearchError("");
-    setSearchSubmitted(false);
     document.getElementById("buscar")?.scrollIntoView({ behavior: "smooth", block: "center" });
     document.getElementById("service-type")?.focus({ preventScroll: true });
   }
@@ -290,34 +289,20 @@ export default function HomePage() {
             </div>
             {searchError && (
               <div aria-labelledby="search-error-title" className="form-alert" ref={errorRef} role="alert" tabIndex={-1}>
-                <span aria-hidden="true">!</span><p id="search-error-title"><a href={searchError.includes("servicio") ? "#service-type" : searchError.includes("retiro") ? "#origin" : "#destination"}>{searchError}</a></p>
+                <span aria-hidden="true">!</span><p id="search-error-title"><a href="#service-type">{searchError}</a></p>
               </div>
             )}
             <div className="search-fields">
               <label className="field field-service" htmlFor="service-type">
                 <span>Tipo de servicio</span>
-                <span className="select-wrap"><select aria-describedby={searchError.includes("servicio") ? "search-error-title" : undefined} aria-invalid={searchError && !service ? "true" : undefined} id="service-type" onChange={(event) => { setService(event.target.value); if (event.target.value === "escombros") setDestination(""); setSearchError(""); setSearchSubmitted(false); }} value={service}>
+                <span className="select-wrap"><select aria-describedby={searchError ? "search-error-title" : undefined} aria-invalid={searchError && !service ? "true" : undefined} id="service-type" onChange={(event) => { setService(event.target.value); setSearchError(""); }} value={service}>
                   <option value="">Selecciona una categoría</option>
-                  {services.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  {serviceTypes.map((item) => <option key={item.id} value={item.slug}>{item.name}</option>)}
                 </select><ChevronDown aria-hidden="true" size={16} /></span>
               </label>
-              <label className="field" htmlFor="origin">
-                <span>Origen</span>
-                <span className="input-wrap"><MapPin aria-hidden="true" size={16} /><input aria-describedby={searchError.includes("retiro") ? "search-error-title" : undefined} aria-invalid={searchError.includes("retiro") ? "true" : undefined} autoComplete="address-level2" id="origin" onChange={(event) => setOrigin(event.target.value)} placeholder="Comuna o ciudad" value={origin} /></span>
-              </label>
-              <label className="field" htmlFor="destination">
-                <span>Destino <span className="optional-label">{destinationOptional ? "Opcional" : ""}</span></span>
-                <span className="input-wrap"><MapPin aria-hidden="true" size={16} /><input aria-describedby={searchError.includes("entrega") ? "search-error-title" : undefined} aria-invalid={searchError.includes("entrega") ? "true" : undefined} autoComplete="off" disabled={destinationOptional} id="destination" onChange={(event) => setDestination(event.target.value)} placeholder={destinationOptional ? "No se requiere destino" : "Comuna o ciudad"} value={destination} /></span>
-              </label>
+              <RegionCommuneSelect idPrefix="home-search-location" onChange={setLocation} optional value={location} />
               <button className="button button-primary search-submit" type="submit">Buscar servicio <ArrowRight aria-hidden="true" size={17} /></button>
             </div>
-            {searchSubmitted && (
-              <div aria-live="polite" className="search-results" role="status">
-                <div className="results-title"><span className="results-icon"><Check aria-hidden="true" size={17} /></span><div><strong>Vista de demostración</strong><span>Solicitud de {services.find((item) => item.id === service)?.name.toLocaleLowerCase()} desde {origin.trim()}{destination.trim() && !destinationOptional ? ` hacia ${destination.trim()}` : ""}.</span></div></div>
-                <p>Sin prestadores reales conectados todavía. Esta búsqueda no envía tus datos ni solicita cotizaciones.</p>
-                <a className="text-link" href="#prestadores">Conocer ejemplos de perfiles <ArrowRight aria-hidden="true" size={15} /></a>
-              </div>
-            )}
             <p className="search-footnote">¿Tienes un camión o camioneta de carga? <a href="#transportistas">Registra tu vehículo y encuentra nuevos clientes aquí <ArrowUpRight aria-hidden="true" size={13} /></a></p>
           </form>
         </section>
@@ -337,15 +322,18 @@ export default function HomePage() {
             <Link className="text-link" href="/servicios">Explorar servicios <ArrowRight aria-hidden="true" size={15} /></Link>
           </div>
           <div className="service-grid">
-            {services.map(({ id, name, description, tag, icon: Icon }, index) => (
-              <button aria-label={`${name}: ${description}`} className={`service-card service-card-${index + 1}`} key={id} onClick={() => selectService(id)} type="button">
+            {serviceTypes.map(({ id, slug, name }, index) => {
+              const { description, tag, icon: Icon } = serviceCopy[slug] ?? fallbackCopy;
+              return (
+              <button aria-label={description ? `${name}: ${description}` : name} className={`service-card service-card-${index + 1}`} key={id} onClick={() => selectService(slug)} type="button">
                 <span className="service-icon"><Icon aria-hidden="true" size={22} strokeWidth={1.8} /></span>
                 <span className="service-tag">{tag}</span>
                 <strong>{name}</strong>
                 <span className="service-description">{description}</span>
                 <span aria-hidden="true" className="service-arrow"><ArrowUpRight size={17} /></span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </section>
 

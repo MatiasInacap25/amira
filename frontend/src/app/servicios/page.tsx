@@ -3,28 +3,48 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, MapPin, Search, Truck } from "lucide-react";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
 import { QuoteRequestDialog } from "@/components/marketplace/quote-request-dialog";
+import { RegionCommuneSelect } from "@/components/marketplace/region-commune-select";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
-import { getServices, type ProviderProfile, type ServiceFilters } from "@/lib/marketplace-api";
+import { getServiceTypes, getServices, type ProviderProfile, type ServiceFilters } from "@/lib/marketplace-api";
 
-const categories = [
-  { value: "mudanza", label: "Mudanzas" },
-  { value: "mercadería", label: "Transporte de mercadería" },
-  { value: "flete", label: "Fletes y traslados" },
-  { value: "escombros", label: "Recolección de escombros" },
-  { value: "grúa", label: "Servicios de grúa" },
-];
+const SERVICE_TYPES_STALE_TIME = 60 * 60 * 1000;
 
-const initialFilters: ServiceFilters = { q: "", category: "", location: "", offset: 0 };
+function filtersFromParams(params: URLSearchParams): ServiceFilters {
+  return {
+    q: "",
+    serviceType: params.get("serviceType") ?? "",
+    regionCode: params.get("regionCode") ?? "",
+    communeCode: params.get("communeCode") ?? "",
+    offset: 0,
+  };
+}
 
 export default function ServicesPage() {
+  return (
+    <Suspense fallback={null}>
+      <ServicesSearch />
+    </Suspense>
+  );
+}
+
+function ServicesSearch() {
+  const searchParams = useSearchParams();
+  const [initialFilters] = useState(() => filtersFromParams(searchParams));
   const [filters, setFilters] = useState(initialFilters);
   const [query, setQuery] = useState(initialFilters);
   const [quote, setQuote] = useState<{
     profile: Pick<ProviderProfile, "profileId" | "providerName" | "services">;
     selectedServiceId: string;
   } | null>(null);
+  const serviceTypesQuery = useQuery({
+    queryKey: ["service-types"],
+    queryFn: ({ signal }) => getServiceTypes(signal),
+    retry: false,
+    staleTime: SERVICE_TYPES_STALE_TIME,
+  });
   const servicesQuery = useQuery({
     queryKey: ["services", query],
     queryFn: ({ signal }) => getServices(query, signal),
@@ -46,6 +66,7 @@ export default function ServicesPage() {
   }
 
   const page = servicesQuery.data;
+  const serviceTypes = serviceTypesQuery.data?.items ?? [];
   const canGoBack = Boolean(page && page.offset > 0);
   const canGoForward = Boolean(page && page.offset + page.items.length < page.total);
 
@@ -72,21 +93,24 @@ export default function ServicesPage() {
             <div className="filter-fields service-filter-fields">
               <label className="marketplace-field" htmlFor="service-query">
                 <span>Buscar por servicio o prestador</span>
-                <input autoComplete="off" id="service-query" onChange={(event) => setFilters({ ...filters, q: event.target.value })} placeholder="Por ejemplo, mudanza" value={filters.q} />
+                <input autoComplete="off" id="service-query" onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))} placeholder="Por ejemplo, mudanza" value={filters.q} />
               </label>
               <label className="marketplace-field" htmlFor="service-category">
                 <span>Categoría</span>
-                <select id="service-category" onChange={(event) => setFilters({ ...filters, category: event.target.value })} value={filters.category}>
+                <select id="service-category" onChange={(event) => setFilters((current) => ({ ...current, serviceType: event.target.value }))} value={filters.serviceType}>
                   <option value="">Todas las categorías</option>
-                  {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                  {serviceTypes.map((serviceType) => <option key={serviceType.id} value={serviceType.slug}>{serviceType.name}</option>)}
                 </select>
               </label>
-              <label className="marketplace-field" htmlFor="service-location">
-                <span>Comuna o ciudad</span>
-                <span className="marketplace-input-icon"><MapPin aria-hidden="true" size={16} /><input autoComplete="address-level2" id="service-location" onChange={(event) => setFilters({ ...filters, location: event.target.value })} placeholder="Por ejemplo, Santiago" value={filters.location} /></span>
-              </label>
+              <RegionCommuneSelect
+                idPrefix="service-location"
+                onChange={(location) => setFilters((current) => ({ ...current, ...location }))}
+                optional
+                value={{ regionCode: filters.regionCode, communeCode: filters.communeCode }}
+              />
               <button className="button button-primary filter-submit" type="submit"><Search aria-hidden="true" size={16} /> Buscar servicios</button>
             </div>
+            {serviceTypesQuery.isError && <p className="filter-validation" role="alert">No pudimos cargar las categorías. Puedes buscar sin filtrar por categoría.</p>}
           </form>
 
           <section aria-labelledby="results-title" className="marketplace-results" id="resultados">

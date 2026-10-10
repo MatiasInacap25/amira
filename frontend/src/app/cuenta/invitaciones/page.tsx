@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authenticatedApiFetch } from "@/lib/auth/account-api";
+import { formatRut, normalizeRut } from "@/lib/validation/rut";
 import { createClient } from "@/lib/supabase/client";
 
 type Invitation = { id: string; email: string; created_at: string; expires_at: string; status: "pending" | "expired" | "revoked" | "accepted" };
@@ -14,6 +15,7 @@ export default function CompanyInvitationsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [email, setEmail] = useState("");
   const [companyTaxId, setCompanyTaxId] = useState("");
+  const [companyTaxIdError, setCompanyTaxIdError] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
@@ -63,11 +65,17 @@ export default function CompanyInvitationsPage() {
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBusy(true); setError(""); setNotice("");
+    setError(""); setNotice("");
+    const companyRut = companyTaxId.trim() ? normalizeRut(companyTaxId) : null;
+    if (companyTaxId.trim() && !companyRut) {
+      setCompanyTaxIdError("El RUT no es válido. Revisa el dígito verificador.");
+      return;
+    }
+    setBusy(true);
     try {
       const response = await api("/api/company/profiles/me/driver-invitations", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, ...(companyTaxId.trim() ? { company_tax_id: companyTaxId.trim() } : {}) }),
+        body: JSON.stringify({ email, ...(companyRut ? { company_tax_id: companyRut } : {}) }),
       });
       if (!response.ok) throw new Error("No pudimos enviar la invitación. Revisa la dirección o intenta más tarde.");
       setEmail(""); setNotice("Invitación enviada. El vínculo vence en siete días."); await reload();
@@ -103,7 +111,8 @@ export default function CompanyInvitationsPage() {
               <input id="driver-invitation-email" autoComplete="email" type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
             <label className="auth-field" htmlFor="driver-invitation-company-tax-id">RUT de empresa (requerido solo para el primer conductor)
-              <input id="driver-invitation-company-tax-id" autoComplete="off" maxLength={16} value={companyTaxId} onChange={(event) => setCompanyTaxId(event.target.value)} />
+              <input aria-describedby={companyTaxIdError ? "driver-invitation-company-tax-id-error" : undefined} aria-invalid={companyTaxIdError ? true : undefined} id="driver-invitation-company-tax-id" autoComplete="off" maxLength={16} onBlur={() => setCompanyTaxId((current) => formatRut(current) ?? current)} onChange={(event) => { setCompanyTaxId(event.target.value); setCompanyTaxIdError(""); }} value={companyTaxId} />
+              {companyTaxIdError && <span className="auth-field-error" id="driver-invitation-company-tax-id-error">{companyTaxIdError}</span>}
             </label>
             <button className="auth-submit" disabled={busy || !token} type="submit">{busy ? "Procesando…" : "Enviar invitación"}</button>
           </form>

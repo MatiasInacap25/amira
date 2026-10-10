@@ -1,11 +1,39 @@
 import { authenticatedApiFetch, resolveApiBaseUrl } from "@/lib/auth/account-api";
 
+export type LocationCommune = {
+  code: string;
+  name: string;
+};
+
+export type LocationRegion = {
+  code: string;
+  name: string;
+  communes: LocationCommune[];
+};
+
+export type LocationCatalog = {
+  regions: LocationRegion[];
+};
+
+export type ServiceType = {
+  id: string;
+  slug: string;
+  name: string;
+};
+
+export type ServiceTypeCatalog = {
+  items: ServiceType[];
+};
+
 export type ServiceProfile = {
   profileId: string;
   providerName: string;
   category: string;
   description?: string | null;
   location?: string | null;
+  communeCode?: string | null;
+  communeName?: string | null;
+  regionName?: string | null;
   logoUrl?: string | null;
   services: Array<{ serviceTypeId: string; name: string }>;
 };
@@ -21,6 +49,8 @@ export type SharedRoute = {
   providerName: string;
   origin: string;
   destination: string;
+  originCommuneCode?: string | null;
+  destinationCommuneCode?: string | null;
   departureAt?: string | null;
   stops?: SharedRouteStop[] | null;
 };
@@ -45,8 +75,10 @@ export type ProviderProfile = {
 export type ServiceRequestInput = {
   profileId: string;
   serviceTypeId: string;
-  origin: string;
-  destination: string;
+  originCommuneCode: string;
+  destinationCommuneCode: string;
+  origin: string | null;
+  destination: string | null;
   requestedAt: string | null;
   estimatedWeight: string | null;
   estimatedVolume: string | null;
@@ -84,14 +116,15 @@ export type PagedResponse<T> = {
 
 export type ServiceFilters = {
   q: string;
-  category: string;
-  location: string;
+  serviceType: string;
+  regionCode: string;
+  communeCode: string;
   offset: number;
 };
 
 export type SharedRouteFilters = {
-  origin: string;
-  destination: string;
+  originCommuneCode: string;
+  destinationCommuneCode: string;
   departureFrom: string;
   departureTo: string;
   offset: number;
@@ -108,6 +141,14 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, { headers: { Accept: "application/json" }, cache: "no-store", signal });
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response.json() as Promise<T>;
+}
+
+export function getLocations(signal?: AbortSignal) {
+  return getJson<LocationCatalog>("/api/locations", signal);
+}
+
+export function getServiceTypes(signal?: AbortSignal) {
+  return getJson<ServiceTypeCatalog>("/api/service-types", signal);
 }
 
 export function getProviderProfile(profileId: string, signal?: AbortSignal) {
@@ -146,15 +187,16 @@ export async function decideProviderRequest(requestId: string, decision: "accept
 export function getServices(filters: ServiceFilters, signal?: AbortSignal) {
   const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(filters.offset) });
   addNonEmpty(params, "q", filters.q);
-  addNonEmpty(params, "category", filters.category);
-  addNonEmpty(params, "location", filters.location);
+  addNonEmpty(params, "serviceType", filters.serviceType);
+  addNonEmpty(params, "regionCode", filters.regionCode);
+  addNonEmpty(params, "communeCode", filters.communeCode);
   return getJson<PagedResponse<ServiceProfile>>(`/api/services?${params.toString()}`, signal);
 }
 
 export function getSharedRoutes(filters: SharedRouteFilters, signal?: AbortSignal) {
   const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(filters.offset) });
-  addNonEmpty(params, "origin", filters.origin);
-  addNonEmpty(params, "destination", filters.destination);
+  addNonEmpty(params, "originCommuneCode", filters.originCommuneCode);
+  addNonEmpty(params, "destinationCommuneCode", filters.destinationCommuneCode);
   addNonEmpty(params, "departureFrom", dateBoundary(filters.departureFrom, "00:00:00"));
   addNonEmpty(params, "departureTo", dateBoundary(filters.departureTo, "23:59:59.999"));
   return getJson<PagedResponse<SharedRoute>>(`/api/shared-routes?${params.toString()}`, signal);

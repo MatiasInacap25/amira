@@ -433,7 +433,11 @@ h1, h2, h3, p { margin-top: 0; }
 .filter-heading h2 { margin: 1px 0 3px; color: #1d4655; font-size: 19px; letter-spacing: -.025em; }
 .filter-heading p { margin: 0; color: #687b82; font-size: 13px; }
 .filter-fields { display: grid; grid-template-columns: minmax(170px, 1.2fr) minmax(180px, 1fr) minmax(170px, 1fr) auto; align-items: end; gap: 13px; }
-.route-filter-fields { grid-template-columns: repeat(4, minmax(130px, 1fr)) auto; }
+.route-filter-fields { grid-template-columns: repeat(4, minmax(130px, 1fr)); }
+.service-filter-fields { grid-template-columns: minmax(170px, 1.2fr) repeat(3, minmax(150px, 1fr)) auto; }
+.marketplace-field-status { grid-column: 1 / -1; margin: 0; color: #284956; font-size: 13px; font-weight: 600; }
+.marketplace-field-error { color: #9b2c2c; }
+.auth-field-error { color: #9b2c2c; font-size: 12px; font-weight: 600; }
 .marketplace-field { display: grid; min-width: 0; gap: 7px; color: #284956; font-size: 12px; font-weight: 700; }
 .marketplace-field input, .marketplace-field select { width: 100%; min-width: 0; height: 48px; padding: 0 13px; border: 1px solid #d4dfe1; border-radius: 8px; outline: 0; background: #fbfcfc; color: #244653; font-size: 14px; font-weight: 450; }
 .marketplace-field input:focus, .marketplace-field select:focus { border-color: #438096; box-shadow: 0 0 0 3px rgba(40, 122, 160, .14); }
@@ -495,6 +499,7 @@ h1, h2, h3, p { margin-top: 0; }
 @media (max-width: 980px) {
   .filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .route-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .service-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filter-submit { grid-column: 1 / -1; width: 100%; }
   .service-results-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
