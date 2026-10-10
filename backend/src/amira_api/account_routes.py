@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from amira_api.account_schemas import AccountProvisionRequest, AccountResponse, AccountRole, AccountRoleCode
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
-from amira_api.models import Conductor, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
+from amira_api.models import Commune, Conductor, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
 from amira_api.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -50,6 +50,20 @@ def provision_account(
         ).scalar_one_or_none()
         if company_driver_type is None:
             raise HTTPException(status_code=503, detail="Company-linked driver type mapping is invalid.")
+
+    if payload.commune_code is not None:
+        commune_exists = session.execute(select(Commune.code).where(Commune.code == payload.commune_code)).scalar_one_or_none()
+        if commune_exists is None:
+            raise HTTPException(
+                status_code=422,
+                detail=[
+                    {
+                        "loc": ["body", "commune_code"],
+                        "msg": "Selecciona una comuna válida del catálogo.",
+                        "type": "value_error",
+                    }
+                ],
+            )
 
     role_code = payload.role.value
     account_role = session.execute(select(RolUsuario).where(RolUsuario.code == role_code)).scalar_one_or_none()
@@ -121,6 +135,7 @@ def provision_account(
                 role_id=profile_role.id,
                 kind=kind,
                 company_tax_id=payload.company_tax_id,
+                commune_code=payload.commune_code,
             )
             session.add(profile)
             try:
@@ -141,8 +156,12 @@ def provision_account(
             or profile.name != payload.display_name
             or profile.company_tax_id != payload.company_tax_id
             or profile.role_id != profile_role.id
+            or (profile.commune_code is not None and profile.commune_code != payload.commune_code)
         ):
             raise HTTPException(status_code=409, detail="Profile details do not match the existing account.")
+        if profile.commune_code is None:
+            # Profiles created before the commune catalog can complete their location exactly once.
+            profile.commune_code = payload.commune_code
         profile_id = profile.id
 
         if payload.role == AccountRole.INDEPENDENT_DRIVER:
@@ -150,7 +169,12 @@ def provision_account(
                 raise HTTPException(status_code=503, detail="Independent driver provisioning is not configured.")
             driver = session.execute(select(Conductor).where(Conductor.user_id == user.id)).scalar_one_or_none()
             if driver is None:
-                driver = Conductor(user_id=user.id, employer_profile_id=None, driver_type_id=settings.independent_driver_type_id)
+                driver = Conductor(
+                    user_id=user.id,
+                    employer_profile_id=None,
+                    driver_type_id=settings.independent_driver_type_id,
+                    commune_code=payload.commune_code,
+                )
                 session.add(driver)
                 try:
                     session.flush()
@@ -161,6 +185,8 @@ def provision_account(
                         raise HTTPException(status_code=409, detail="Driver provisioning conflicted; retry safely.") from None
             elif driver.employer_profile_id is not None or driver.driver_type_id != settings.independent_driver_type_id:
                 raise HTTPException(status_code=409, detail="Existing driver record does not match independent-driver role.")
+            elif driver.commune_code is None:
+                driver.commune_code = payload.commune_code
         elif payload.role == AccountRole.COMPANY_OWNER:
             driver = session.execute(select(Conductor).where(Conductor.user_id == user.id)).scalar_one_or_none()
             if payload.also_driver:
@@ -171,6 +197,7 @@ def provision_account(
                         user_id=user.id,
                         employer_profile_id=profile.id,
                         driver_type_id=company_driver_type.id,
+                        commune_code=payload.commune_code,
                     )
                     session.add(driver)
                     try:

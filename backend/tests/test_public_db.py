@@ -51,11 +51,12 @@ def test_database_engine_forces_psycopg_tls_and_bounded_timeouts(monkeypatch) ->
 def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
     migration = load_public_migration()
 
-    assert len(Base.metadata.tables) == 29
+    assert len(Base.metadata.tables) == 31
     assert (
         (set(migration.PUBLIC_TABLES) - {"alembic_version"})
         | set(load_auth_migration().RLS_TABLES)
         | {"DriverInvitationAttempt"}
+        | set(load_location_migration().RLS_TABLES)
     ) == set(Base.metadata.tables)
     assert "alembic_version" in migration.PUBLIC_TABLES
 
@@ -70,6 +71,15 @@ def test_demo_seed_is_labeled_and_does_not_create_auth_or_payment_records() -> N
     assert 'INSERT INTO auth.users' not in source
     assert 'INSERT INTO public."Pago"' not in source
     assert 'INSERT INTO public."Desembolso"' not in source
+
+
+def load_location_migration():
+    migration_path = Path(__file__).parents[1] / "alembic" / "versions" / "20261010_0001_location_catalog.py"
+    spec = spec_from_file_location("location_catalog_migration", migration_path)
+    migration = module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(migration)
+    return migration
 
 
 def load_auth_migration():

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from amira_api.account_routes import router as account_router
 from amira_api.fallback_routes import router as fallback_router
 from amira_api.invitation_routes import router as invitation_router
+from amira_api.location_routes import router as location_router
 from amira_api.public_routes import router as public_router
 from amira_api.settings import get_settings
 
@@ -12,6 +13,7 @@ app = FastAPI(title=settings.app_name)
 app.include_router(account_router)
 app.include_router(fallback_router)
 app.include_router(invitation_router)
+app.include_router(location_router)
 app.include_router(public_router)
 
 app.add_middleware(

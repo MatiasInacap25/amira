@@ -23,8 +23,8 @@ Set `CORS_ORIGINS` to a comma-separated list of exact browser origins, including
 
 ## Public browse API
 
-- `GET /api/services?q=&category=&location=&limit=20&offset=0` returns provider/service catalog entries.
-- `GET /api/shared-routes?origin=&destination=&departureFrom=&departureTo=&limit=20&offset=0` returns published routes that accept requests, with ordered stop numbers and estimated times.
+- `GET /api/services?q=&regionCode=&communeCode=&limit=20&offset=0` returns provider/service catalog entries. `regionCode` (2 digits) and `communeCode` (5 digits) are official CUT codes from `GET /api/locations`.
+- `GET /api/shared-routes?originCommuneCode=&destinationCommuneCode=&departureFrom=&departureTo=&limit=20&offset=0` returns published routes that accept requests, with ordered stop numbers and estimated times. Route items expose `originCommuneCode`/`destinationCommuneCode`, which are null for legacy rows created before the commune catalog.
 
 Both endpoints return `{items, total, limit, offset}`, cap page size at 50 and offset at 5000, and validate filter lengths. Responses intentionally omit account identity, company tax IDs, raw storage keys, full stop addresses, vehicles/drivers, customer requests, chats, payments, and payout references. Route results expose only published origin/destination cities; intermediate stops include sequence and time but no address because the current schema has no separate public-locality field. Service entries are based on `Servicios_Disponibles`; the current schema has no separate visibility status for that association. Logo URLs remain null until a safe public asset URL mechanism is implemented. Departure filters must be timezone-aware ISO-8601 datetimes.
 

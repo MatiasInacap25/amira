@@ -35,7 +35,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM public."Perfil" WHERE "ID" = 'b3000000-0000-4000-8000-000000000002'
         AND ("ID_user" IS DISTINCT FROM 'b3000000-0000-4000-8000-000000000001'
              OR "Nombre" IS DISTINCT FROM '[DEMO] Logística del Valle' OR kind IS DISTINCT FROM 'company'
-             OR "Rol_Perfil" IS DISTINCT FROM company_role OR "Rut_Empresa" IS DISTINCT FROM 'DEMO-76000000')) THEN
+             OR "Rol_Perfil" IS DISTINCT FROM company_role OR "Rut_Empresa" IS DISTINCT FROM '76000000-0')) THEN
         RAISE EXCEPTION 'Company demo profile ID conflicts with a non-fixture row';
     END IF;
     IF EXISTS (SELECT 1 FROM public."Usuario" WHERE "ID" = 'b3000000-0000-4000-8000-000000000003'
@@ -81,7 +81,7 @@ BEGIN
     INSERT INTO public."Perfil" ("ID", "ID_user", "Nombre", "Descripcion", "Rol_Perfil", "Ubicacion", "Rut_Empresa", kind, public_activated_at)
     VALUES ('b3000000-0000-4000-8000-000000000002', 'b3000000-0000-4000-8000-000000000001',
         '[DEMO] Logística del Valle', '[DEMO] Perfil sintético para pruebas locales.', company_role,
-        'Santiago, Región Metropolitana', 'DEMO-76000000', 'company', now())
+        'Santiago, Región Metropolitana', '76000000-0', 'company', now())
     ON CONFLICT ("ID") DO NOTHING;
 
     INSERT INTO public."Conductor" ("ID", "ID_user", "ID_perfil", "Rol", "Tipo_Conductor", "Ubicacion")

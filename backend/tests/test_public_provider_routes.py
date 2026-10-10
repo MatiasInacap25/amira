@@ -246,7 +246,7 @@ def test_quote_request_requires_authentication():
         "profileId": str(PROFILE_ID),
         "serviceTypeId": str(SERVICE_TYPE_ID),
         "origin": "Santiago",
-        "destination": "Valparaíso",
+        "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101",
     }, authenticated=False, reject_unauthenticated=True)
 
     assert response.status_code == 401
@@ -256,12 +256,13 @@ def test_quote_request_uses_server_account_actor_and_creates_only_request():
     session = FakeSession([
         FakeResult(row=(ACCOUNT_ID, "client")),
         FakeResult(scalar=SERVICE_TYPE_ID),
+        FakeResult(rows=[("13101",), ("05101",)]),
     ])
     body = {
         "profileId": str(PROFILE_ID),
         "serviceTypeId": str(SERVICE_TYPE_ID),
         "origin": " Santiago ",
-        "destination": "Valparaíso",
+        "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101",
         "requestedAt": "2026-11-08T10:00:00-03:00",
         "estimatedWeight": "250.50",
         "estimatedVolume": "2.125",
@@ -283,6 +284,8 @@ def test_quote_request_uses_server_account_actor_and_creates_only_request():
     assert created.service_type_id == SERVICE_TYPE_ID
     assert created.origin == "Santiago"
     assert created.destination == "Valparaíso"
+    assert created.origin_commune_code == "13101"
+    assert created.destination_commune_code == "05101"
     assert created.status == "pending"
     assert created.requested_trip_id is None
     assert created.is_exclusive is False
@@ -298,7 +301,7 @@ def test_non_customer_roles_cannot_create_quote_requests(role):
         "profileId": str(PROFILE_ID),
         "serviceTypeId": str(SERVICE_TYPE_ID),
         "origin": "Santiago",
-        "destination": "Valparaíso",
+        "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101",
     })
 
     assert response.status_code == 403
@@ -316,7 +319,7 @@ def test_quote_request_rejects_unavailable_profile_service_without_persisting():
         "profileId": str(PROFILE_ID),
         "serviceTypeId": str(SERVICE_TYPE_ID),
         "origin": "Santiago",
-        "destination": "Valparaíso",
+        "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101",
     })
 
     assert response.status_code == 404
@@ -406,12 +409,24 @@ def test_company_driver_cannot_assign_services_or_act_as_provider_owner():
     assert not session.committed
 
 
+BASE_QUOTE_BODY = {
+    "profileId": str(PROFILE_ID),
+    "serviceTypeId": str(SERVICE_TYPE_ID),
+    "originCommuneCode": "13101",
+    "destinationCommuneCode": "05101",
+}
+
+
 @pytest.mark.parametrize("body", [
-    {"profileId": str(PROFILE_ID), "serviceTypeId": str(SERVICE_TYPE_ID), "origin": " ", "destination": "Valparaíso"},
-    {"profileId": str(PROFILE_ID), "serviceTypeId": str(SERVICE_TYPE_ID), "origin": "Santiago", "destination": " "},
-    {"profileId": str(PROFILE_ID), "serviceTypeId": str(SERVICE_TYPE_ID), "origin": "Santiago", "destination": "Valparaíso", "estimatedWeight": -1},
-    {"profileId": str(PROFILE_ID), "serviceTypeId": str(SERVICE_TYPE_ID), "origin": "Santiago", "destination": "Valparaíso", "requestedAt": "2026-11-08T10:00:00"},
-    {"profileId": str(PROFILE_ID), "serviceTypeId": str(SERVICE_TYPE_ID), "origin": "Santiago", "destination": "Valparaíso", "customerId": str(AUTH_USER_ID)},
+    {**BASE_QUOTE_BODY, "originCommuneCode": None},
+    {key: value for key, value in BASE_QUOTE_BODY.items() if key != "destinationCommuneCode"},
+    {**BASE_QUOTE_BODY, "destinationCommuneCode": "5101"},
+    {**BASE_QUOTE_BODY, "originCommuneCode": "13A01"},
+    {**BASE_QUOTE_BODY, "origin": "x" * 301},
+    {**BASE_QUOTE_BODY, "estimatedWeight": -1},
+    {**BASE_QUOTE_BODY, "requestedAt": "2026-11-08T10:00:00"},
+    {**BASE_QUOTE_BODY, "requestedAt": "2020-01-01T10:00:00+00:00"},
+    {**BASE_QUOTE_BODY, "customerId": str(AUTH_USER_ID)},
 ])
 def test_quote_request_validates_required_fields_and_rejects_client_controlled_actor(body):
     session = FakeSession()
@@ -421,3 +436,34 @@ def test_quote_request_validates_required_fields_and_rejects_client_controlled_a
     assert response.status_code == 422
     assert session.added == []
     assert not session.committed
+
+
+def test_quote_request_treats_blank_street_address_as_absent_and_keeps_commune_codes():
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(scalar=SERVICE_TYPE_ID),
+        FakeResult(rows=[("13101",), ("05101",)]),
+    ])
+
+    response = run_request("POST", "/api/service-requests", session, json_body={**BASE_QUOTE_BODY, "origin": "  "})
+
+    assert response.status_code == 201
+    created = session.added[0]
+    assert created.origin is None
+    assert created.origin_commune_code == "13101"
+
+
+def test_quote_request_rejects_commune_codes_missing_from_the_catalog_without_persisting():
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(scalar=SERVICE_TYPE_ID),
+        FakeResult(rows=[("13101",)]),
+    ])
+
+    response = run_request("POST", "/api/service-requests", session, json_body=BASE_QUOTE_BODY | {"destinationCommuneCode": "99999"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "destinationCommuneCode"]
+    assert session.added == []
+    assert not session.committed
+

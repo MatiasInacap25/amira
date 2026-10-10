@@ -12,9 +12,11 @@ from sqlalchemy.orm import Session
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
 from amira_api.models import (
-    Conductor,
     Chat,
     ChatParticipante,
+    Commune,
+    Conductor,
+    Region,
     FormularioServicio,
     ParadaViaje,
     Perfil,
@@ -38,6 +40,8 @@ from amira_api.public_schemas import (
     PublicProviderVehicle,
     PublicServiceItem,
     PublicServicePage,
+    PublicServiceType,
+    PublicServiceTypePage,
     PublicSharedRoute,
     PublicSharedRoutePage,
     ProviderRequestDecision,
@@ -206,12 +210,30 @@ def create_service_request(
     if matching_service is None:
         raise HTTPException(status_code=404, detail="Provider or available service not found.")
 
+    catalog_codes = {
+        row[0]
+        for row in session.execute(
+            select(Commune.code).where(Commune.code.in_({payload.origin_commune_code, payload.destination_commune_code}))
+        ).all()
+    }
+    for field, code in (
+        ("originCommuneCode", payload.origin_commune_code),
+        ("destinationCommuneCode", payload.destination_commune_code),
+    ):
+        if code not in catalog_codes:
+            raise HTTPException(
+                status_code=422,
+                detail=[{"loc": ["body", field], "msg": "Selecciona una comuna válida del catálogo.", "type": "value_error"}],
+            )
+
     request = FormularioServicio(
         id=uuid4(),
         profile_id=payload.profile_id,
         service_type_id=matching_service,
         origin=payload.origin,
         destination=payload.destination,
+        origin_commune_code=payload.origin_commune_code,
+        destination_commune_code=payload.destination_commune_code,
         estimated_weight=payload.estimated_weight,
         estimated_volume=payload.estimated_volume,
         requested_at=payload.requested_at,
@@ -395,19 +417,30 @@ def assign_provider_service_driver(
     return ProviderServiceDriverAssignment(service_id=service.id, driver_id=driver.id)
 
 
+@router.get("/service-types", response_model=PublicServiceTypePage)
+def list_service_types(session: Annotated[Session, Depends(get_db_session)]) -> PublicServiceTypePage:
+    rows = session.execute(
+        select(TipoServicio.id.label("id"), TipoServicio.slug.label("slug"), TipoServicio.name.label("name"))
+        .order_by(TipoServicio.name.asc(), TipoServicio.id.asc())
+    ).mappings().all()
+    return PublicServiceTypePage(items=[PublicServiceType(**row) for row in rows])
+
+
 @router.get("/services", response_model=PublicServicePage)
 def list_services(
     session: Annotated[Session, Depends(get_db_session)],
     q: Annotated[str | None, Query(max_length=120)] = None,
-    category: Annotated[str | None, Query(max_length=120)] = None,
-    location: Annotated[str | None, Query(max_length=200)] = None,
+    service_type: Annotated[
+        str | None,
+        Query(alias="serviceType", max_length=120, pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$"),
+    ] = None,
+    region_code: Annotated[str | None, Query(alias="regionCode", pattern=r"^\d{2}$")] = None,
+    commune_code: Annotated[str | None, Query(alias="communeCode", pattern=r"^\d{5}$")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> PublicServicePage:
     filters = [Perfil.public_activated_at.is_not(None)]
     query = _clean_filter(q)
-    category_filter = _clean_filter(category)
-    location_filter = _clean_filter(location)
 
     if query:
         pattern = _contains(query)
@@ -420,10 +453,12 @@ def list_services(
                 TipoServicio.name.ilike(pattern, escape="\\"),
             )
         )
-    if category_filter:
-        filters.append(TipoServicio.name.ilike(_contains(category_filter), escape="\\"))
-    if location_filter:
-        filters.append(Perfil.location.ilike(_contains(location_filter), escape="\\"))
+    if service_type:
+        filters.append(TipoServicio.slug == service_type)
+    if region_code:
+        filters.append(Region.code == region_code)
+    if commune_code:
+        filters.append(Commune.code == commune_code)
 
     total = session.execute(
         select(func.count(func.distinct(Perfil.id)))
@@ -431,6 +466,8 @@ def list_services(
         .join(Usuario, Usuario.id == Perfil.owner_user_id)
         .join(ServicioDisponible, ServicioDisponible.profile_id == Perfil.id)
         .join(TipoServicio, TipoServicio.id == ServicioDisponible.service_type_id)
+        .outerjoin(Commune, Commune.code == Perfil.commune_code)
+        .outerjoin(Region, Region.code == Commune.region_code)
         .where(*filters)
     ).scalar_one()
 
@@ -443,7 +480,13 @@ def list_services(
             ).label("provider_name"),
             func.min(TipoServicio.name).label("category"),
             Perfil.description.label("description"),
-            Perfil.location.label("location"),
+            case(
+                (Commune.name.is_not(None), Commune.name + ", " + Region.name),
+                else_=None,
+            ).label("location"),
+            Commune.code.label("commune_code"),
+            Commune.name.label("commune_name"),
+            Region.name.label("region_name"),
             func.json_agg(
                 aggregate_order_by(
                     func.json_build_object(
@@ -458,13 +501,17 @@ def list_services(
         .join(Usuario, Usuario.id == Perfil.owner_user_id)
         .join(ServicioDisponible, ServicioDisponible.profile_id == Perfil.id)
         .join(TipoServicio, TipoServicio.id == ServicioDisponible.service_type_id)
+        .outerjoin(Commune, Commune.code == Perfil.commune_code)
+        .outerjoin(Region, Region.code == Commune.region_code)
         .where(*filters)
         .group_by(
             Perfil.id,
             Perfil.kind,
             Perfil.name,
             Perfil.description,
-            Perfil.location,
+            Commune.code,
+            Commune.name,
+            Region.name,
             Usuario.first_name,
             Usuario.last_name,
         )
@@ -480,32 +527,48 @@ def list_services(
 @router.get("/shared-routes", response_model=PublicSharedRoutePage)
 def list_shared_routes(
     session: Annotated[Session, Depends(get_db_session)],
-    origin: Annotated[str | None, Query(max_length=300)] = None,
-    destination: Annotated[str | None, Query(max_length=300)] = None,
+    origin_commune_code: Annotated[str | None, Query(alias="originCommuneCode", pattern=r"^\d{5}$")] = None,
+    destination_commune_code: Annotated[str | None, Query(alias="destinationCommuneCode", pattern=r"^\d{5}$")] = None,
     departure_from: Annotated[datetime | None, Query(alias="departureFrom")] = None,
     departure_to: Annotated[datetime | None, Query(alias="departureTo")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> PublicSharedRoutePage:
     if departure_from and departure_to and departure_from > departure_to:
-        raise HTTPException(status_code=422, detail="departureFrom must not be after departureTo.")
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "loc": ["query", "departureFrom"],
+                    "msg": "La salida inicial no puede ser posterior a la salida final.",
+                    "type": "departure_window_inverted",
+                }
+            ],
+        )
     if any(
         value is not None and (value.tzinfo is None or value.utcoffset() is None)
         for value in (departure_from, departure_to)
     ):
-        raise HTTPException(status_code=422, detail="Departure filters must include a timezone.")
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "loc": ["query", "departureFrom"],
+                    "msg": "Las fechas de salida deben incluir zona horaria.",
+                    "type": "departure_timezone",
+                }
+            ],
+        )
 
     filters = [
         Viaje.is_published.is_(True),
         Viaje.accepts_requests.is_(True),
         Viaje.profile_id.in_(select(Perfil.id).where(Perfil.public_activated_at.is_not(None))),
     ]
-    origin_filter = _clean_filter(origin)
-    destination_filter = _clean_filter(destination)
-    if origin_filter:
-        filters.append(Viaje.origin.ilike(_contains(origin_filter), escape="\\"))
-    if destination_filter:
-        filters.append(Viaje.destination.ilike(_contains(destination_filter), escape="\\"))
+    if origin_commune_code:
+        filters.append(Viaje.origin_commune_code == origin_commune_code)
+    if destination_commune_code:
+        filters.append(Viaje.destination_commune_code == destination_commune_code)
     if departure_from:
         filters.append(Viaje.departure_at >= departure_from)
     if departure_to:
@@ -524,6 +587,8 @@ def list_shared_routes(
             ).label("provider_name"),
             Viaje.origin.label("origin"),
             Viaje.destination.label("destination"),
+            Viaje.origin_commune_code.label("origin_commune_code"),
+            Viaje.destination_commune_code.label("destination_commune_code"),
             Viaje.departure_at.label("departure_at"),
         )
         .join(Perfil, Perfil.id == Viaje.profile_id)

@@ -21,6 +21,7 @@ DRIVER_TYPE_ID = UUID("b2000000-0000-4000-8000-000000000010")
 PERSONAL_RUT = "12345678-5"
 COMPANY_RUT = "76123456-0"
 PHONE = "+56912345678"
+COMMUNE_CODE = "13101"
 
 
 class Result:
@@ -77,9 +78,10 @@ def profile_role(code, role_id):
 def test_company_owner_provisioning_creates_profile_but_never_driver():
     company_role = role("company_owner", USER_ROLE_ID)
     profile_kind = profile_role("company", PROFILE_ROLE_ID)
-    session = FakeSession([company_role, None, profile_kind, None, None])
+    session = FakeSession([COMMUNE_CODE, company_role, None, profile_kind, None, None])
     payload = AccountProvisionRequest(
         role="company_owner",
+        commune_code=COMMUNE_CODE,
         first_name="Casey",
         last_name="Owner",
         national_id=PERSONAL_RUT,
@@ -129,9 +131,10 @@ def test_repeated_company_owner_provisioning_is_idempotent():
         kind="company",
         company_tax_id=COMPANY_RUT,
     )
-    session = FakeSession([account_role, user, profile_kind, profile, None])
+    session = FakeSession([COMMUNE_CODE, account_role, user, profile_kind, profile, None])
     payload = AccountProvisionRequest(
         role="company_owner",
+        commune_code=COMMUNE_CODE,
         first_name="Casey",
         last_name="Owner",
         national_id=PERSONAL_RUT,
@@ -191,9 +194,10 @@ def test_independent_driver_gets_null_employer_and_explicit_configured_type():
     driver_type = DRIVER_TYPE_ID
     account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
     profile_kind = profile_role("independent_driver", UUID("b2000000-0000-4000-8000-000000000006"))
-    session = FakeSession([account_role, None, profile_kind, None, None])
+    session = FakeSession([COMMUNE_CODE, account_role, None, profile_kind, None, None])
     payload = AccountProvisionRequest(
         role="independent_driver",
+        commune_code=COMMUNE_CODE,
         first_name="Casey",
         last_name="Driver",
         national_id=PERSONAL_RUT,
@@ -213,9 +217,10 @@ def test_independent_driver_gets_null_employer_and_explicit_configured_type():
 def test_independent_driver_fails_closed_without_explicit_type_mapping():
     account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
     profile_kind = profile_role("independent_driver", UUID("b2000000-0000-4000-8000-000000000006"))
-    session = FakeSession([account_role, None, profile_kind, None])
+    session = FakeSession([COMMUNE_CODE, account_role, None, profile_kind, None])
     payload = AccountProvisionRequest(
         role="independent_driver",
+        commune_code=COMMUNE_CODE,
         first_name="Casey",
         last_name="Driver",
         national_id=PERSONAL_RUT,
@@ -243,6 +248,7 @@ def test_role_specific_profile_fields_are_validated():
 def test_chilean_personal_and_company_ruts_are_validated_and_normalized():
     payload = AccountProvisionRequest(
         role="company_owner",
+        commune_code=COMMUNE_CODE,
         first_name="Casey",
         last_name="Owner",
         national_id="12.345.678-5",
@@ -287,9 +293,10 @@ def test_company_owner_can_opt_into_a_company_linked_driver_without_exposing_pri
     profile_kind = profile_role("company", PROFILE_ROLE_ID)
     company_driver_type_id = UUID("b2000000-0000-4000-8000-000000000020")
     company_driver_type = TipoConductor(id=company_driver_type_id, name="trusted configured type")
-    session = FakeSession([company_driver_type, company_role, None, profile_kind, None, None])
+    session = FakeSession([company_driver_type, COMMUNE_CODE, company_role, None, profile_kind, None, None])
     payload = AccountProvisionRequest(
         role="company_owner",
+        commune_code=COMMUNE_CODE,
         first_name="Casey",
         last_name="Owner",
         national_id=PERSONAL_RUT,
@@ -318,6 +325,7 @@ def test_company_driver_opt_in_fails_closed_when_trusted_mapping_missing_or_inva
     session = FakeSession([None])
     payload = AccountProvisionRequest(
         role="company_owner",
+        commune_code=COMMUNE_CODE,
         first_name="Casey",
         last_name="Owner",
         national_id=PERSONAL_RUT,
@@ -350,3 +358,62 @@ def test_non_company_roles_cannot_use_company_driver_toggle(role_name):
             display_name="Casey Transport" if role_name == "independent_driver" else None,
             also_driver=True,
         )
+
+
+def test_provider_accounts_require_a_catalog_commune_and_clients_cannot_send_one():
+    common = {"first_name": "Casey", "last_name": "Owner", "national_id": PERSONAL_RUT, "birth_date": date(1990, 1, 1), "phone": PHONE}
+    with pytest.raises(ValueError):
+        AccountProvisionRequest(role="company_owner", display_name="Casey Logistics", company_tax_id=COMPANY_RUT, **common)
+    with pytest.raises(ValueError):
+        AccountProvisionRequest(role="independent_driver", display_name="Casey Transport", commune_code="1310", **common)
+    with pytest.raises(ValueError):
+        AccountProvisionRequest(role="client", commune_code=COMMUNE_CODE, **common)
+
+
+def test_unknown_commune_is_rejected_with_validation_shape_before_any_record_is_created():
+    account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
+    session = FakeSession([None, account_role])
+    payload = AccountProvisionRequest(
+        role="independent_driver",
+        first_name="Casey",
+        last_name="Driver",
+        national_id=PERSONAL_RUT,
+        birth_date=date(1990, 1, 1),
+        phone=PHONE,
+        display_name="Casey Transport",
+        commune_code="99999",
+    )
+
+    with pytest.raises(HTTPException) as error:
+        provision_account(payload, identity(), session, Settings(_env_file=None, independent_driver_type_id=DRIVER_TYPE_ID), Response())
+
+    assert error.value.status_code == 422
+    assert error.value.detail[0]["loc"] == ["body", "commune_code"]
+    assert error.value.detail[0]["type"] == "value_error"
+    assert error.value.detail[0]["msg"]
+    assert session.added == []
+    assert session.commits == 0
+
+
+def test_provider_profile_and_independent_driver_store_the_selected_commune_code():
+    account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
+    profile_kind = profile_role("independent_driver", UUID("b2000000-0000-4000-8000-000000000006"))
+    session = FakeSession([COMMUNE_CODE, account_role, None, profile_kind, None, None])
+    payload = AccountProvisionRequest(
+        role="independent_driver",
+        first_name="Casey",
+        last_name="Driver",
+        national_id=PERSONAL_RUT,
+        birth_date=date(1990, 1, 1),
+        phone=PHONE,
+        display_name="Casey Transport",
+        commune_code=COMMUNE_CODE,
+    )
+
+    provision_account(payload, identity(), session, Settings(_env_file=None, independent_driver_type_id=DRIVER_TYPE_ID), Response())
+
+    profile = next(item for item in session.added if isinstance(item, Perfil))
+    driver = next(item for item in session.added if isinstance(item, Conductor))
+    assert profile.commune_code == COMMUNE_CODE
+    assert driver.commune_code == COMMUNE_CODE
+

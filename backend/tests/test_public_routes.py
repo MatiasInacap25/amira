@@ -67,7 +67,10 @@ def test_services_returns_only_public_provider_and_service_fields() -> None:
                         "provider_name": "[DEMO] Transporte Prueba",
                         "category": "Mudanzas",
                         "description": "Servicio de demostración.",
-                        "location": "Santiago",
+                        "location": "Santiago, Metropolitana de Santiago",
+                        "commune_code": "13101",
+                        "commune_name": "Santiago",
+                        "region_name": "Metropolitana de Santiago",
                         "services": [
                             {"serviceTypeId": str(service_id), "name": "Mudanzas"},
                         ],
@@ -89,7 +92,10 @@ def test_services_returns_only_public_provider_and_service_fields() -> None:
                 "providerName": "[DEMO] Transporte Prueba",
                 "category": "Mudanzas",
                 "description": "Servicio de demostración.",
-                "location": "Santiago",
+                "location": "Santiago, Metropolitana de Santiago",
+                "communeCode": "13101",
+                "communeName": "Santiago",
+                "regionName": "Metropolitana de Santiago",
                 "logoUrl": None,
                 "services": [
                     {"serviceTypeId": str(service_id), "name": "Mudanzas"},
@@ -160,6 +166,8 @@ def test_shared_routes_returns_ordered_public_stops_without_vehicle_or_driver() 
                         "provider_name": "[DEMO] Transporte Prueba",
                         "origin": "Santiago",
                         "destination": "Valparaíso",
+                        "origin_commune_code": "13101",
+                        "destination_commune_code": "05101",
                         "departure_at": departure,
                     }
                 ]
@@ -174,8 +182,8 @@ def test_shared_routes_returns_ordered_public_stops_without_vehicle_or_driver() 
                 ]
             ),
         ],
-        origin="Santiago",
-        destination="Valparaíso",
+        originCommuneCode="13101",
+        destinationCommuneCode="05101",
         departureFrom="2026-10-01T00:00:00Z",
         departureTo="2026-10-31T00:00:00Z",
     )
@@ -188,6 +196,8 @@ def test_shared_routes_returns_ordered_public_stops_without_vehicle_or_driver() 
         "providerName": "[DEMO] Transporte Prueba",
         "origin": "Santiago",
         "destination": "Valparaíso",
+        "originCommuneCode": "13101",
+        "destinationCommuneCode": "05101",
         "departureAt": "2026-10-05T12:00:00Z",
         "stops": [
             {
@@ -226,3 +236,78 @@ def test_shared_routes_reject_timezone_naive_departure_filter() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_services_filters_by_region_and_commune_codes_and_returns_commune_labels() -> None:
+    profile_id = UUID("be7374de-165b-4d95-8da6-9a08c233b003")
+    service_id = UUID("ae7374de-165b-4d95-8da6-9a08c233b004")
+    sessions = []
+    response = run_get(
+        "/api/services",
+        [
+            FakeResult(scalar=1),
+            FakeResult(
+                rows=[
+                    {
+                        "profile_id": profile_id,
+                        "provider_name": "Ana Pérez",
+                        "category": "Mudanzas",
+                        "description": None,
+                        "location": "Valparaíso, Valparaíso",
+                        "commune_code": "05101",
+                        "commune_name": "Valparaíso",
+                        "region_name": "Valparaíso",
+                        "services": [{"serviceTypeId": str(service_id), "name": "Mudanzas"}],
+                    }
+                ]
+            ),
+        ],
+        sessions=sessions,
+        regionCode="05",
+        communeCode="05101",
+    )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["communeCode"] == "05101"
+    assert item["communeName"] == "Valparaíso"
+    assert item["regionName"] == "Valparaíso"
+    assert item["location"] == "Valparaíso, Valparaíso"
+    count_params = set(sessions[0].statements[0].compile(dialect=postgresql.dialect()).params.values())
+    assert {"05", "05101"} <= count_params
+    count_sql = str(sessions[0].statements[0].compile(dialect=postgresql.dialect())).lower()
+    assert "codigo_region" in count_sql
+    assert "comunas" in count_sql
+
+
+def test_services_rejects_malformed_region_and_commune_codes() -> None:
+    assert run_get("/api/services", [], regionCode="5").status_code == 422
+    assert run_get("/api/services", [], communeCode="1310").status_code == 422
+    assert run_get("/api/services", [], communeCode="13A01").status_code == 422
+
+
+def test_shared_routes_filter_by_commune_codes_and_keep_legacy_rows_without_codes() -> None:
+    sessions = []
+    response = run_get(
+        "/api/shared-routes",
+        [
+            FakeResult(scalar=0),
+            FakeResult(rows=[]),
+        ],
+        sessions=sessions,
+        originCommuneCode="13101",
+        destinationCommuneCode="05101",
+    )
+
+    assert response.status_code == 200
+    count_params = set(sessions[0].statements[0].compile(dialect=postgresql.dialect()).params.values())
+    assert {"13101", "05101"} <= count_params
+    count_sql = str(sessions[0].statements[0].compile(dialect=postgresql.dialect())).lower()
+    assert "codigo_comuna_origen" in count_sql
+    assert "codigo_comuna_destino" in count_sql
+
+
+def test_shared_routes_reject_malformed_commune_codes() -> None:
+    assert run_get("/api/shared-routes", [], originCommuneCode="131").status_code == 422
+    assert run_get("/api/shared-routes", [], destinationCommuneCode="0510A").status_code == 422
+

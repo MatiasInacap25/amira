@@ -40,9 +40,41 @@ class Base(DeclarativeBase):
     type_annotation_map = {dict[str, Any]: JSONB}
 
 
+class Region(Base):
+    __tablename__ = "Regiones"
+    __table_args__ = (
+        CheckConstraint("\"Codigo\" ~ '^[0-9]{2}$'", name="ck_region_code_format"),
+        CheckConstraint('"Orden" > 0', name="ck_region_order_positive"),
+        UniqueConstraint("Nombre", name="uq_regiones_nombre"),
+    )
+
+    code: Mapped[str] = mapped_column("Codigo", String(2), primary_key=True)
+    name: Mapped[str] = mapped_column("Nombre", String(120), nullable=False)
+    order: Mapped[int] = mapped_column("Orden", SmallInteger, nullable=False)
+
+    communes: Mapped[list[Commune]] = relationship(back_populates="region")
+
+
+class Commune(Base):
+    __tablename__ = "Comunas"
+    __table_args__ = (
+        CheckConstraint("\"Codigo\" ~ '^[0-9]{5}$'", name="ck_commune_code_format"),
+        UniqueConstraint("Codigo_Region", "Nombre", name="uq_comunas_region_nombre"),
+        Index("ix_comunas_codigo_region", "Codigo_Region"),
+    )
+
+    code: Mapped[str] = mapped_column("Codigo", String(5), primary_key=True)
+    region_code: Mapped[str] = mapped_column("Codigo_Region", ForeignKey("Regiones.Codigo", ondelete="RESTRICT"), nullable=False)
+    name: Mapped[str] = mapped_column("Nombre", String(120), nullable=False)
+
+    region: Mapped[Region] = relationship(back_populates="communes")
+
+
 class Usuario(Base):
     __tablename__ = "Usuario"
     __table_args__ = (
+        # Regex CHECKs (RUT, phone) use PostgreSQL's ~ operator and live in migration 20261010_0005.
+        Index("uq_usuario_rut", text('"Rut"'), unique=True, postgresql_where=text('"Rut" IS NOT NULL')),
         Index("uq_usuario_correo_normalizado", func.lower(func.btrim(text('"Correo"'))), unique=True),
     )
 
@@ -105,6 +137,7 @@ class RolPerfil(Base):
 class Perfil(Base):
     __tablename__ = "Perfil"
     __table_args__ = (
+        Index("uq_perfil_rut_empresa", text('"Rut_Empresa"'), unique=True, postgresql_where=text('"Rut_Empresa" IS NOT NULL')),
         CheckConstraint("length(trim(\"Rut_Empresa\")) > 0 OR \"Rut_Empresa\" IS NULL", name="ck_perfil_company_tax_id_nonblank"),
         CheckConstraint("kind IN ('company', 'independent_driver')", name="ck_perfil_kind_allowed"),
     )
@@ -116,6 +149,7 @@ class Perfil(Base):
     logo_storage_key: Mapped[str | None] = mapped_column("url_logo", String(512))
     role_id: Mapped[UUID] = mapped_column("Rol_Perfil", ForeignKey("Rol_Perfil.ID", ondelete="RESTRICT"), nullable=False, index=True)
     location: Mapped[str | None] = mapped_column("Ubicacion", String(200))
+    commune_code: Mapped[str | None] = mapped_column("Codigo_Comuna", ForeignKey("Comunas.Codigo", ondelete="RESTRICT"), index=True)
     registered_at: Mapped[datetime] = mapped_column("fecha_registro", DateTime(timezone=True), nullable=False, server_default=func.now())
     company_tax_id: Mapped[str | None] = mapped_column("Rut_Empresa", String(16))
     kind: Mapped[str] = mapped_column("kind", String(32), nullable=False)
@@ -199,6 +233,7 @@ class Conductor(Base):
     registered_at: Mapped[datetime] = mapped_column("Fecha_registro", DateTime(timezone=True), nullable=False, server_default=func.now())
     driver_type_id: Mapped[UUID] = mapped_column("Tipo_Conductor", ForeignKey("Tipo_Conductor.ID", ondelete="RESTRICT"), nullable=False, index=True)
     location: Mapped[str | None] = mapped_column("Ubicacion", String(200))
+    commune_code: Mapped[str | None] = mapped_column("Codigo_Comuna", ForeignKey("Comunas.Codigo", ondelete="RESTRICT"), index=True)
 
     user: Mapped[Usuario] = relationship(back_populates="driver_record")
     employer_profile: Mapped[Perfil | None] = relationship(back_populates="drivers", foreign_keys=[employer_profile_id])
@@ -232,9 +267,14 @@ class Vehiculo(Base):
 
 class TipoServicio(Base):
     __tablename__ = "Tipos_Servicio"
+    __table_args__ = (
+        UniqueConstraint("Slug", name="uq_tipos_servicio_slug"),
+        CheckConstraint("\"Slug\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'", name="ck_tipos_servicio_slug_format"),
+    )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column("Nombre_servicio", String(120), nullable=False, unique=True)
+    slug: Mapped[str] = mapped_column("Slug", String(120), nullable=False)
     available_profiles: Mapped[list[ServicioDisponible]] = relationship(back_populates="service_type")
     quotations: Mapped[list[Cotizacion]] = relationship(back_populates="service_type")
     form_requests: Mapped[list[FormularioServicio]] = relationship(back_populates="service_type")
@@ -254,13 +294,19 @@ class ServicioDisponible(Base):
 
 class FormularioServicio(Base):
     __tablename__ = "Formulario_servicio"
-    __table_args__ = (CheckConstraint('"Peso_Estimado" IS NULL OR "Peso_Estimado" >= 0', name="ck_form_weight_nonnegative"),)
+    __table_args__ = (
+        CheckConstraint('"Peso_Estimado" IS NULL OR "Peso_Estimado" >= 0', name="ck_form_weight_nonnegative"),
+        CheckConstraint('"Volumen_Estimado" IS NULL OR "Volumen_Estimado" >= 0', name="ck_form_volume_nonnegative"),
+        CheckConstraint("\"Estado\" IN ('pending', 'accepted', 'rejected')", name="ck_form_status_allowed"),
+    )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     profile_id: Mapped[UUID | None] = mapped_column("ID_Perfil", ForeignKey("Perfil.ID", ondelete="SET NULL"), index=True)
     service_type_id: Mapped[UUID] = mapped_column("Tipo_Servicio", ForeignKey("Tipos_Servicio.ID", ondelete="RESTRICT"), nullable=False, index=True)
-    origin: Mapped[str] = mapped_column("Origen", String(300), nullable=False)
-    destination: Mapped[str] = mapped_column("Destino", String(300), nullable=False)
+    origin: Mapped[str | None] = mapped_column("Origen", String(300))
+    destination: Mapped[str | None] = mapped_column("Destino", String(300))
+    origin_commune_code: Mapped[str | None] = mapped_column("Codigo_Comuna_Origen", ForeignKey("Comunas.Codigo", ondelete="RESTRICT"), index=True)
+    destination_commune_code: Mapped[str | None] = mapped_column("Codigo_Comuna_Destino", ForeignKey("Comunas.Codigo", ondelete="RESTRICT"), index=True)
     estimated_weight: Mapped[Decimal | None] = mapped_column("Peso_Estimado", Numeric(12, 2))
     estimated_volume: Mapped[Decimal | None] = mapped_column("Volumen_Estimado", Numeric(12, 3))
     requested_at: Mapped[datetime | None] = mapped_column("Fecha", DateTime(timezone=True))
@@ -342,6 +388,7 @@ class Mensaje(Base):
 class Cotizacion(Base):
     __tablename__ = "Cotizacion"
     __table_args__ = (
+        CheckConstraint('"Moneda" = \'CLP\'', name="ck_quote_currency_clp"),
         CheckConstraint('"Valor" >= 0', name="ck_quote_amount_nonnegative"),
         CheckConstraint('"Fecha_Vencimiento" IS NULL OR "Fecha_Vencimiento" > "Fecha_Creacion"', name="ck_quote_expiry_after_creation"),
     )
@@ -451,6 +498,8 @@ class Viaje(Base):
     registered_at: Mapped[datetime] = mapped_column("Fecha_registro", DateTime(timezone=True), nullable=False, server_default=func.now())
     origin: Mapped[str] = mapped_column("Origen", String(300), nullable=False)
     destination: Mapped[str] = mapped_column("Destino", String(300), nullable=False)
+    origin_commune_code: Mapped[str | None] = mapped_column("Codigo_Comuna_Origen", ForeignKey("Comunas.Codigo", ondelete="RESTRICT"), index=True)
+    destination_commune_code: Mapped[str | None] = mapped_column("Codigo_Comuna_Destino", ForeignKey("Comunas.Codigo", ondelete="RESTRICT"), index=True)
     status: Mapped[str] = mapped_column("Estado", String(40), nullable=False)
     departure_at: Mapped[datetime | None] = mapped_column("Fecha_Salida", DateTime(timezone=True))
     is_published: Mapped[bool] = mapped_column("Publicado", Boolean, nullable=False, server_default=text("false"))
@@ -496,6 +545,7 @@ class ParadaViaje(Base):
 class Pago(Base):
     __tablename__ = "Pago"
     __table_args__ = (
+        CheckConstraint('"Moneda" = \'CLP\'', name="ck_payment_currency_clp"),
         UniqueConstraint("ID", "ID_Cotizacion", name="uq_payment_id_quote"),
         UniqueConstraint("Proveedor", "ID_Pago_Proveedor", name="uq_payment_provider_external_id"),
         UniqueConstraint("Proveedor", "Clave_Idempotencia", name="uq_payment_provider_idempotency_key"),
@@ -522,6 +572,7 @@ class Pago(Base):
 class Reembolso(Base):
     __tablename__ = "Reembolso"
     __table_args__ = (
+        CheckConstraint('"Moneda" = \'CLP\'', name="ck_refund_currency_clp"),
         UniqueConstraint("Proveedor", "ID_Reembolso_Proveedor", name="uq_refund_provider_external_id"),
         UniqueConstraint("Proveedor", "Clave_Idempotencia", name="uq_refund_provider_idempotency_key"),
         CheckConstraint('"Monto" > 0', name="ck_refund_amount_positive"),
@@ -620,6 +671,7 @@ class CuentaDesembolso(Base):
 class Desembolso(Base):
     __tablename__ = "Desembolso"
     __table_args__ = (
+        CheckConstraint('"Moneda" = \'CLP\'', name="ck_payout_currency_clp"),
         UniqueConstraint("Proveedor", "ID_Desembolso_Proveedor", name="uq_payout_provider_external_id"),
         UniqueConstraint("Proveedor", "Clave_Idempotencia", name="uq_payout_provider_idempotency_key"),
         CheckConstraint('"Monto_Neto" >= 0', name="ck_payout_net_amount_nonnegative"),

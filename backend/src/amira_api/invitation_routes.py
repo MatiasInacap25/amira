@@ -12,6 +12,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic_core import PydanticCustomError
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -117,10 +118,10 @@ class InvitationCreate(BaseModel):
     def normalize_email(cls, value: str) -> str:
         normalized = value.strip().lower()
         if normalized.count("@") != 1 or any(char.isspace() for char in normalized):
-            raise ValueError("Enter a valid email address.")
+            raise PydanticCustomError("email_invalid", "Ingresa un correo electrónico válido.")
         local, domain = normalized.split("@")
         if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
-            raise ValueError("Enter a valid email address.")
+            raise PydanticCustomError("email_invalid", "Ingresa un correo electrónico válido.")
         return normalized
 
     @field_validator("company_tax_id")

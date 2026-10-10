@@ -1,11 +1,12 @@
 """Explicit response models for marketplace browsing and quote requests."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic_core import PydanticCustomError
 
 
 def _to_camel(value: str) -> str:
@@ -28,8 +29,21 @@ class PublicServiceItem(PublicResponse):
     category: str
     description: str | None
     location: str | None
+    commune_code: str | None = None
+    commune_name: str | None = None
+    region_name: str | None = None
     logo_url: str | None = None
     services: list[PublicProviderService]
+
+
+class PublicServiceType(PublicResponse):
+    id: UUID
+    slug: str
+    name: str
+
+
+class PublicServiceTypePage(PublicResponse):
+    items: list[PublicServiceType]
 
 
 class PublicServicePage(PublicResponse):
@@ -50,6 +64,8 @@ class PublicSharedRoute(PublicResponse):
     provider_name: str
     origin: str
     destination: str
+    origin_commune_code: str | None = None
+    destination_commune_code: str | None = None
     departure_at: datetime | None
     stops: list[PublicRouteStop]
 
@@ -108,19 +124,28 @@ class ServiceRequestCreate(BaseModel):
 
     profile_id: UUID
     service_type_id: UUID
-    origin: str = Field(min_length=1, max_length=300)
-    destination: str = Field(min_length=1, max_length=300)
+    origin_commune_code: str = Field(pattern=r"^\d{5}$")
+    destination_commune_code: str = Field(pattern=r"^\d{5}$")
+    origin: str | None = Field(default=None, max_length=300)
+    destination: str | None = Field(default=None, max_length=300)
     requested_at: datetime | None = None
     estimated_weight: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     estimated_volume: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=3)
     description: str | None = Field(default=None, max_length=4000)
     cargo_measurements: str | None = Field(default=None, max_length=2000)
 
+    @field_validator("origin", "destination")
+    @classmethod
+    def blank_street_address_is_absent(cls, value: str | None) -> str | None:
+        return value or None
+
     @field_validator("requested_at")
     @classmethod
     def requested_at_must_have_timezone(cls, value: datetime | None) -> datetime | None:
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
-            raise ValueError("requestedAt must include a timezone.")
+            raise PydanticCustomError("requested_at_timezone", "La fecha solicitada debe incluir zona horaria.")
+        if value is not None and value < datetime.now(UTC):
+            raise PydanticCustomError("requested_at_past", "La fecha solicitada no puede estar en el pasado.")
         return value
 
 

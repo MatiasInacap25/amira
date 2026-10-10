@@ -8,13 +8,11 @@ from alembic.script import ScriptDirectory
 
 
 ROOT = Path(__file__).parents[2]
-EXPECTED_REVISIONS = {
-    "20260926_0001",
-    "20260927_0002",
-    "20260928_0003",
-    "20261003_0001",
-    "20261003_0002",
-}
+
+
+def revision_from_filename(filename: str) -> str:
+    # Migration files are named "<revision>_<slug>.py", where the revision is "YYYYMMDD_NNNN".
+    return "_".join(Path(filename).stem.split("_")[:2])
 
 
 def test_tracked_migrations_form_one_resolvable_history_without_untracked_revisions():
@@ -38,6 +36,7 @@ def test_tracked_migrations_form_one_resolvable_history_without_untracked_revisi
         config.set_main_option("script_location", temp_dir)
         scripts = ScriptDirectory.from_config(config)
 
-        assert set(scripts.get_heads()) == {"20261003_0002"}
+        assert len(scripts.get_heads()) == 1
         history = list(scripts.walk_revisions())
-        assert {revision.revision for revision in history} == EXPECTED_REVISIONS
+        tracked_revisions = {revision_from_filename(Path(path).name) for path in tracked}
+        assert {revision.revision for revision in history} == tracked_revisions
