@@ -118,6 +118,38 @@ New settings (read from the backend environment; setup in `backend/README.md`, "
 | `SERVICE_EVIDENCE_URL_TTL_SECONDS` | `300` | Must be positive. |
 | `SERVICE_CLAIM_WINDOW_HOURS` | `24` | Must be positive. |
 
+## API contract (S4)
+
+Public JSON is camelCase. The customer routes use `get_current_user` and the customer rules of S3: a non-customer gets 403 and a service the customer does not own gets 404 (`Service not found.`). Both writes lock the service row `FOR UPDATE` and re-check its state after the lock. Nothing is written on any error.
+
+1. `POST /api/customer/services/{serviceId}/claims`: body `{reason}`. `reason` is trimmed and required, 1 to 1000 characters; anything else is 422. Checks run in this order:
+   - 409 `This service already has an open claim.`
+   - 409 `Only completed services can be claimed.` (covers a service that is not yet completed)
+   - 409 `Consent was already given for this service.`
+   - 409 `The claim window for this service has closed.` (now at or after `payoutDeadlineAt`, or no deadline)
+   - 200 on success: inserts a `Reclamo` with status `open` and the reason, sets the service `status` to `disputed`, and returns `ServiceDetail`.
+2. `POST /api/customer/services/{serviceId}/consent`: no body. Checks run in this order:
+   - 409 `A service with an open claim cannot receive consent.`
+   - 409 `Only completed services can receive consent.`
+   - 409 `Consent was already given for this service.`
+   - 200 on success: sets `customerConsentAt` to now, keeps `status` `completed`, and returns `ServiceDetail`. The payout is due at the next release run.
+3. `ServiceDetail` (provider and customer) gains:
+
+   | Field | Type | Meaning |
+   | --- | --- | --- |
+   | `customerConsentAt` | datetime or null | When the customer gave consent |
+   | `claimOpen` | bool | True while a claim on the service is open |
+   | `canClaim` | bool | Customer only: completed, no open claim, no consent, inside the claim window |
+   | `canConsent` | bool | Customer only: completed, no open claim, no consent yet |
+
+   Providers always get `canClaim: false` and `canConsent: false`. No claim text is exposed in any response.
+
+4. Payout release (no HTTP endpoint). `release_due_payouts(session, now, provider)` in `payout_service.py` releases a service when all of these hold: `status` is `completed`; there is no open claim; there is no `Desembolso` for the service; and either `customerConsentAt` is set or `payoutDeadlineAt` is at or before `now`. Each service runs in its own transaction and is locked with `FOR UPDATE SKIP LOCKED`; the conditions are checked again under the lock. It needs an approved `Pago` for the accepted quotation and an enabled `Cuenta_Desembolso` on the service's profile. It returns a `PayoutSummary` with the counts `due`, `released`, `missing_account`, `missing_payment`, `skipped` and `failed`. A provider failure rolls back that service only and counts it as `failed`. The payout idempotency key is `service:{serviceId}:payout`, so a repeat run creates no second payout.
+5. Port and adapter: `PayoutProvider` in `payout_provider.py` (`create_payout(PayoutRequest) -> PayoutResult`, raising `PayoutProviderError` on refusal). `SimulatedPayoutProvider` in `simulated_payout_provider.py` never moves money. It refuses to start unless `APP_ENV` is an allowlisted development value, the same allowlist as the simulated payment adapter.
+6. CLI and cron: `python -m amira_api.release_payouts` (`release_payouts.py`). It exits 0 when the run completes, including when single services failed. It exits 1 when the job cannot run: the adapter is refused for this `APP_ENV`, `APP_ENV` is not set explicitly, or `DATABASE_URL` is not configured. The summary is logged. `render.yaml` has the Render Cron Job `amira-release-payouts-dev` (`schedule: "*/15 * * * *"`, `dockerCommand: python -m amira_api.release_payouts`) with the same `envVars` as the web service, which is unchanged.
+
+Settings: no new variables. `SERVICE_CLAIM_WINDOW_HOURS` (S3) sets the window.
+
 ## Tasks
 
 ### S1 — Backend: assignments table and query endpoints (route: delegated direct, writer trigger: 3+ non-trivial files)

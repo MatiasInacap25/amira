@@ -9,7 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
+from amira_api.clock import as_utc, utc_now
 from amira_api.customer_schemas import (
+    CustomerClaimCreate,
     CustomerRatingCreate,
     CustomerServiceItem,
     CustomerServicePage,
@@ -19,6 +21,7 @@ from amira_api.db import get_db_session
 from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError, get_evidence_storage
 from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceDetail
 from amira_api.service_views import (
+    CLAIM_OPEN,
     DELIVERY_PHOTO_LINK_MESSAGE,
     load_assignments,
     provider_display_name,
@@ -30,6 +33,7 @@ from amira_api.settings import Settings, get_settings
 from amira_api.models import (
     FormularioServicio,
     Perfil,
+    Reclamo,
     RolUsuario,
     Servicio,
     TipoServicio,
@@ -237,3 +241,84 @@ def create_customer_service_rating(
     stored = CustomerServiceRating(rating=rating.rating, comment=rating.comment, created_at=rating.created_at)
     session.commit()
     return stored
+
+
+def _lock_customer_service(session: Session, account_id: UUID, service_id: UUID) -> Servicio:
+    """Lock the customer's own service row; a service the customer does not own is a 404."""
+    service = session.execute(
+        select(Servicio).where(Servicio.id == service_id, Servicio.customer_id == account_id).with_for_update()
+    ).scalar_one_or_none()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    return service
+
+
+def _has_open_claim(session: Session, service_id: UUID) -> bool:
+    return (
+        session.execute(
+            select(Reclamo.id).where(Reclamo.service_id == service_id, Reclamo.status == CLAIM_OPEN).limit(1)
+        ).first()
+        is not None
+    )
+
+
+def _customer_service_detail(session: Session, account_id: UUID, service_id: UUID) -> ServiceDetail:
+    row = session.execute(
+        service_rows(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).mappings().one()
+    return shape_detail(row, "customer", can_manage=False, assignments=load_assignments(session, service_id))
+
+
+@router.post("/services/{service_id}/claims", response_model=ServiceDetail)
+def create_customer_service_claim(
+    service_id: UUID,
+    payload: CustomerClaimCreate,
+    current_user: CurrentUser,
+    session: Database,
+) -> ServiceDetail:
+    account_id = _customer_account_id(session, current_user)
+    service = _lock_customer_service(session, account_id, service_id)
+    if _has_open_claim(session, service.id):
+        raise HTTPException(status_code=409, detail="This service already has an open claim.")
+    if service.status != "completed":
+        raise HTTPException(status_code=409, detail="Only completed services can be claimed.")
+    if service.customer_consent_at is not None:
+        raise HTTPException(status_code=409, detail="Consent was already given for this service.")
+    now = utc_now()
+    if service.payout_deadline_at is None or now >= as_utc(service.payout_deadline_at):
+        raise HTTPException(status_code=409, detail="The claim window for this service has closed.")
+
+    # The claim holds the payout: the service leaves completed until the claim is resolved outside this scope.
+    session.add(
+        Reclamo(
+            id=uuid4(),
+            service_id=service.id,
+            user_id=account_id,
+            reason=payload.reason,
+            status=CLAIM_OPEN,
+            created_at=now,
+        )
+    )
+    service.status = "disputed"
+    session.commit()
+    return _customer_service_detail(session, account_id, service_id)
+
+
+@router.post("/services/{service_id}/consent", response_model=ServiceDetail)
+def give_customer_service_consent(
+    service_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+) -> ServiceDetail:
+    account_id = _customer_account_id(session, current_user)
+    service = _lock_customer_service(session, account_id, service_id)
+    if _has_open_claim(session, service.id):
+        raise HTTPException(status_code=409, detail="A service with an open claim cannot receive consent.")
+    if service.status != "completed":
+        raise HTTPException(status_code=409, detail="Only completed services can receive consent.")
+    if service.customer_consent_at is not None:
+        raise HTTPException(status_code=409, detail="Consent was already given for this service.")
+    # Consent makes the payout due immediately; the release job picks it up on its next run.
+    service.customer_consent_at = utc_now()
+    session.commit()
+    return _customer_service_detail(session, account_id, service_id)

@@ -9,10 +9,10 @@ from uuid import UUID
 
 from datetime import timedelta
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, exists, func, select
 from sqlalchemy.orm import Session, aliased
 
-from amira_api.clock import utc_now
+from amira_api.clock import as_utc, utc_now
 from amira_api.evidence_storage import EvidenceStorage
 from amira_api.models import (
     Commune,
@@ -20,6 +20,7 @@ from amira_api.models import (
     Cotizacion,
     FormularioServicio,
     Perfil,
+    Reclamo,
     Servicio,
     ServicioAsignacion,
     TipoServicio,
@@ -31,6 +32,7 @@ from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceAssignme
 DELIVERY_PHOTO_LINK_MESSAGE = "The delivery photo could not be retrieved. Try again."
 PROVIDER_FALLBACK_NAME = "Prestador"
 CUSTOMER_FALLBACK_NAME = "Cliente"
+CLAIM_OPEN = "open"
 ViewerRole = Literal["customer", "provider"]
 
 _provider_owner = aliased(Usuario)
@@ -62,6 +64,11 @@ def _service_relation(statement: Select) -> Select:
     )
 
 
+def open_claim_exists():
+    """True while the service has a claim that is still open. Correlated to the enclosing ``Servicio``."""
+    return exists().where(Reclamo.service_id == Servicio.id, Reclamo.status == CLAIM_OPEN)
+
+
 def service_count(*conditions) -> Select:
     return _service_relation(select(func.count(Servicio.id))).where(*conditions)
 
@@ -91,6 +98,10 @@ def service_rows(*conditions) -> Select:
             Servicio.completed_at.label("completed_at"),
             Servicio.payout_deadline_at.label("payout_deadline_at"),
             Servicio.delivery_evidence_key.label("delivery_evidence_key"),
+            Servicio.customer_consent_at.label("customer_consent_at"),
+            # A claim moves the service to disputed and only claims do; resolution is out of scope. Reading the status
+            # keeps the shared detail query free of a Reclamo join, so detail views never depend on that table.
+            (Servicio.status == "disputed").label("claim_open"),
             Perfil.kind.label("provider_kind"),
             Perfil.name.label("profile_name"),
             _provider_owner.first_name.label("owner_first_name"),
@@ -158,9 +169,21 @@ def load_assignments(session: Session, service_id: UUID) -> list[ServiceAssignme
     ]
 
 
+def _customer_actions(row, viewer_role: ViewerRole) -> tuple[bool, bool]:
+    """(can_claim, can_consent) for the viewer. Mirrors the rules enforced by the customer claim and consent routes."""
+    if viewer_role != "customer":
+        return False, False
+    if row["status"] != "completed" or row["claim_open"] or row["customer_consent_at"] is not None:
+        return False, False
+    deadline = row["payout_deadline_at"]
+    within_window = deadline is not None and utc_now() < as_utc(deadline)
+    return within_window, True
+
+
 def shape_detail(
     row, viewer_role: ViewerRole, *, can_manage: bool, assignments: list[ServiceAssignment]
 ) -> ServiceDetail:
+    can_claim, can_consent = _customer_actions(row, viewer_role)
     return ServiceDetail(
         **_list_fields(row, viewer_role),
         chat_id=row["chat_id"],
@@ -172,6 +195,10 @@ def shape_detail(
         viewer_role=viewer_role,
         can_manage=can_manage,
         delivery_photo_available=row["delivery_evidence_key"] is not None,
+        customer_consent_at=row["customer_consent_at"],
+        claim_open=bool(row["claim_open"]),
+        can_claim=can_claim,
+        can_consent=can_consent,
         assignments=assignments,
     )
 

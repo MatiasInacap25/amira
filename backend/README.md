@@ -64,6 +64,14 @@ A service the viewer cannot see answers 404. Responses name the counterpart (pro
 
 Optional settings and defaults: `SERVICE_EVIDENCE_MAX_BYTES` (8 MiB), `SERVICE_EVIDENCE_URL_TTL_SECONDS` (300), `SERVICE_CLAIM_WINDOW_HOURS` (24). Without the Supabase settings, the delivery-photo endpoints answer 503.
 
+### Claims, consent and payout release
+
+A customer can act on a completed service once: `POST /api/customer/services/{serviceId}/claims` with `{reason}` (trimmed, 1 to 1000 characters) opens a claim and moves the service to `disputed`; `POST /api/customer/services/{serviceId}/consent` (no body) records that the customer is satisfied. Both lock the service row. A claim is refused after the claim window (`SERVICE_CLAIM_WINDOW_HOURS` from completion) and after consent; consent is refused while a claim is open. Claim resolution and refunds are out of scope.
+
+Payouts are released by `python -m amira_api.release_payouts`, which runs every 15 minutes as the Render cron job `amira-release-payouts-dev` in `render.yaml`. A completed service is released when the customer consented or its claim window has closed, it has no open claim, and it has no payout yet. The release needs an approved payment and an enabled `Cuenta_Desembolso` on the provider profile; services without one are counted as `missing_account` or `missing_payment` and stay due. Each service is released in its own transaction, the job is idempotent, and a provider failure is logged without stopping the other services. The command exits 1 only when the job cannot run (for example the adapter is refused for this `APP_ENV`, or the database is not configured).
+
+The only payout adapter is the simulated one (`simulated_payout_provider.py`). It runs only when `APP_ENV` is set explicitly to `development`, `local` or `test`, so the cron job fails closed in production until a real adapter is added behind the `PayoutProvider` port. No new environment variables are required.
+
 ## Checks
 
 ```powershell

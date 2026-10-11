@@ -54,6 +54,11 @@ class ServiceDetail(ServiceListItem):
     can_manage: bool
     # True once the completion photo exists. The storage key and the signed URL are never part of any response.
     delivery_photo_available: bool
+    # Customer-only: the consent time and the claim state. Providers always get false for the actions.
+    customer_consent_at: datetime | None
+    claim_open: bool
+    can_claim: bool
+    can_consent: bool
     assignments: list[ServiceAssignment]
 
 

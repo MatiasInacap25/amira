@@ -47,3 +47,14 @@ class CustomerRatingCreate(BaseModel):
     @classmethod
     def blank_comment_is_absent(cls, value: str | None) -> str | None:
         return value or None
+
+
+class CustomerClaimCreate(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    reason: str = Field(min_length=1, max_length=1000)
