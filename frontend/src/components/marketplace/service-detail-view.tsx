@@ -176,6 +176,8 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   const detail = detailQuery.data;
   // Only the profile owner can manage assignments, and only before the service starts.
   const showAssignmentForm = Boolean(detail?.canManage && detail.status === "confirmed");
+  // A same-day conflict answer is a successful request too, so only a saved result shows the notice.
+  const assignmentsSaved = mutations.saveAssignments.isSuccess && mutations.saveAssignments.data?.status === "saved";
 
   const optionsQuery = useQuery({
     queryKey: ["service-assignment-options", serviceId],
@@ -241,24 +243,31 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
                 <ServiceDetail
                   actions={isProviderViewer ? (
                     <ServiceActions
+                      canManage={detail.canManage}
                       completePending={mutations.completeService.isPending}
                       hasAssignments={detail.assignments.length > 0}
                       onComplete={(photo) => mutations.completeService.mutateAsync(photo)}
                       onStart={() => mutations.startService.mutateAsync()}
                       startPending={mutations.startService.isPending}
                       status={detail.status}
+                      viewerAssigned={detail.viewerAssigned}
                     />
                   ) : undefined}
                   assignmentEditor={showAssignmentForm ? (
-                    <ServiceAssignmentForm
-                      // Remounts when the saved assignments change, so the form is prefilled from the server state.
-                      key={assignmentSignature(detail.assignments)}
-                      assignments={detail.assignments}
-                      onSave={(update) => mutations.saveAssignments.mutateAsync(update)}
-                      options={optionsQuery.data}
-                      optionsErrorMessage={optionsQuery.isError ? serviceActionErrorMessage(optionsQuery.error, "load-options") : undefined}
-                      optionsPending={optionsQuery.isPending}
-                    />
+                    <>
+                      {assignmentsSaved && (
+                        <p aria-live="polite" className="account-service-result" role="status">Asignaciones guardadas.</p>
+                      )}
+                      <ServiceAssignmentForm
+                        // Remounts when the saved assignments change, so the form is prefilled from the server state.
+                        key={assignmentSignature(detail.assignments)}
+                        assignments={detail.assignments}
+                        onSave={(update) => mutations.saveAssignments.mutateAsync(update)}
+                        options={optionsQuery.data}
+                        optionsErrorMessage={optionsQuery.isError ? serviceActionErrorMessage(optionsQuery.error, "load-options") : undefined}
+                        optionsPending={optionsQuery.isPending}
+                      />
+                    </>
                   ) : undefined}
                   customerResolution={showCustomerResolution ? (
                     <CustomerServiceActions

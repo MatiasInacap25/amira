@@ -103,7 +103,8 @@ export type ServiceListItem = {
   serviceTypeName: string;
   serviceAt: string | null;
   amount: number | null;
-  currency: "CLP";
+  // ISO 4217 code from the backend (three uppercase letters).
+  currency: string;
   originCommune: string | null;
   destinationCommune: string | null;
   isExclusive: boolean;
@@ -128,6 +129,8 @@ export type ServiceDetail = ServiceListItem & {
   payoutDeadlineAt: string | null;
   viewerRole: "customer" | "provider";
   canManage: boolean;
+  // True when the viewer is one of the assigned drivers; always false for customers.
+  viewerAssigned: boolean;
   assignments: ServiceAssignment[];
   deliveryPhotoAvailable: boolean;
   customerConsentAt: string | null;

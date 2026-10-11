@@ -12,6 +12,9 @@ import type { ServiceStatus } from "@/lib/marketplace-api";
 type Props = {
   status: ServiceStatus;
   hasAssignments: boolean;
+  // The profile owner may start the service; an assigned driver may start and finish it.
+  canManage: boolean;
+  viewerAssigned: boolean;
   startPending: boolean;
   completePending: boolean;
   onStart: () => Promise<unknown>;
@@ -21,22 +24,38 @@ type Props = {
 const MAX_PHOTO_MB = DELIVERY_PHOTO_MAX_BYTES / (1024 * 1024);
 
 /**
- * Provider actions for a service. The viewer's own assignment is not visible in the detail, so the buttons
- * are shown to every provider viewer and the backend answers 403 when the viewer may not act.
+ * Provider actions for a service. "Iniciar servicio" is for the owner or an assigned driver; "Finalizar servicio"
+ * is for an assigned driver only. The backend still enforces both rules.
  */
-export function ServiceActions({ status, hasAssignments, startPending, completePending, onStart, onComplete }: Props) {
+export function ServiceActions({
+  status,
+  hasAssignments,
+  canManage,
+  viewerAssigned,
+  startPending,
+  completePending,
+  onStart,
+  onComplete,
+}: Props) {
   const [error, setError] = useState("");
+  // Set synchronously on the first click, so a second click before the pending state renders cannot start twice.
+  const starting = useRef(false);
 
   async function start() {
+    if (starting.current) return;
+    starting.current = true;
     setError("");
     try {
       await onStart();
     } catch (cause) {
       setError(serviceActionErrorMessage(cause, "start"));
+    } finally {
+      starting.current = false;
     }
   }
 
   if (status === "confirmed") {
+    if (!canManage && !viewerAssigned) return null;
     return (
       <div className="account-service-actions">
         {hasAssignments ? (
@@ -51,7 +70,7 @@ export function ServiceActions({ status, hasAssignments, startPending, completeP
     );
   }
 
-  if (status === "in_progress") {
+  if (status === "in_progress" && viewerAssigned) {
     return <CompleteServiceForm busy={completePending} onComplete={onComplete} />;
   }
 
@@ -64,6 +83,7 @@ function CompleteServiceForm({ busy, onComplete }: { busy: boolean; onComplete: 
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState("");
   const previewRef = useRef<HTMLImageElement>(null);
+  const submitting = useRef(false);
 
   // The object URL is written straight to the preview image and lives as long as the selected file.
   // The cleanup revokes it when the selection changes or the form unmounts.
@@ -92,12 +112,15 @@ function CompleteServiceForm({ busy, onComplete }: { busy: boolean; onComplete: 
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!photo || busy) return;
+    if (!photo || busy || submitting.current) return;
+    submitting.current = true;
     setError("");
     try {
       await onComplete(photo);
     } catch (cause) {
       setError(serviceActionErrorMessage(cause, "complete"));
+    } finally {
+      submitting.current = false;
     }
   }
 

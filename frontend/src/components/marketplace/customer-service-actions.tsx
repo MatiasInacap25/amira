@@ -39,6 +39,8 @@ export function CustomerServiceActions({ service, consentPending, claimPending, 
   // Set when a step closes, so focus returns to the control that opened it.
   const returnFocusTo = useRef<Trigger | null>(null);
   const busy = consentPending || claimPending;
+  // Set synchronously on the first submit, so a second click before the pending state renders cannot send a request.
+  const submitting = useRef(false);
 
   useEffect(() => {
     if (step === "consent-confirm" || step === "claim-confirm") {
@@ -68,7 +70,8 @@ export function CustomerServiceActions({ service, consentPending, claimPending, 
   }
 
   async function confirmConsent() {
-    if (busy) return;
+    if (busy || submitting.current) return;
+    submitting.current = true;
     setError("");
     try {
       await onConsent();
@@ -77,6 +80,8 @@ export function CustomerServiceActions({ service, consentPending, claimPending, 
     } catch (cause) {
       setError(serviceActionErrorMessage(cause, "consent"));
       closeStep("consent");
+    } finally {
+      submitting.current = false;
     }
   }
 
@@ -86,7 +91,8 @@ export function CustomerServiceActions({ service, consentPending, claimPending, 
   }
 
   async function confirmClaim() {
-    if (busy) return;
+    if (busy || submitting.current) return;
+    submitting.current = true;
     setError("");
     try {
       await onClaim(reason);
@@ -97,13 +103,16 @@ export function CustomerServiceActions({ service, consentPending, claimPending, 
       // The reason is kept, so the customer can retry from the form without retyping it.
       setError(serviceActionErrorMessage(cause, "claim"));
       closeStep("claim");
+    } finally {
+      submitting.current = false;
     }
   }
 
   const deadlineLabel = formatServiceDateTime(service.payoutDeadlineAt);
   // The window and the countdown apply only while the service is completed, not consented and not in a claim.
   const windowOpen = service.status === "completed" && service.customerConsentAt === null && !service.claimOpen;
-  const canClaimNow = windowOpen && service.canClaim && !claimWindow.expired;
+  // "Reclamar" waits for the client clock: while it is pending or the deadline is missing, the claim is not offered.
+  const canClaimNow = windowOpen && service.canClaim && claimWindow.status === "open";
 
   if (service.status !== "completed" && service.status !== "disputed") return null;
 
