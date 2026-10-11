@@ -163,22 +163,23 @@ Settings: no new variables. `SERVICE_CLAIM_WINDOW_HOURS` (S3) sets the window.
 
 - [x] T5 `PUT /api/provider/services/{id}/assignments` (owner only, status `confirmed`) replaces all pairs. It validates that drivers belong to the profile (or are the independent owner) and vehicles belong to the profile, and applies the same-day 409 with `confirmSameDayConflicts`.
 - [x] T6 `POST /api/provider/services/{id}/start` (assigned driver or owner; needs ≥ 1 assignment; `FOR UPDATE` and re-check the status).
+- [x] T5b (added 2026-10-11, plan gap found before T11) `GET /api/provider/services/{id}/assignment-options` (owner only): drivers and vehicles accepted by the PUT, sharing its filters.
 
 ### S3 — Backend: completion with delivery photo (route: delegated direct, Haiku worker in a Herdr pane; writer trigger: 2+ non-trivial files)
 
 - [x] T7 `POST /api/provider/services/{id}/complete` multipart (assigned driver; `in_progress`; JPEG/PNG/WebP, size cap). It uploads to a private Supabase Storage bucket and sets `delivery_evidence_key`, `completed_at`, `completion_notified_at` and `payout_deadline_at`. It also adds a signed-URL endpoint for the customer and the provider.
 
-### S4 — Backend: claims, consent and payout release
+### S4 — Backend: claims, consent and payout release (route: delegated direct, Haiku worker in a Herdr pane; writer trigger: 2+ non-trivial files)
 
-- [ ] T8 `POST /api/customer/services/{id}/claims` (within the window → `disputed`) and `POST /api/customer/services/{id}/consent`.
-- [ ] T9 `PayoutProvider` port plus a simulated adapter; idempotent `release_due_payouts` (`FOR UPDATE`, no open claim, no existing `Desembolso`, payout account required); a CLI entry point and a Render Cron Job in `render.yaml`.
+- [x] T8 `POST /api/customer/services/{id}/claims` (within the window → `disputed`) and `POST /api/customer/services/{id}/consent`.
+- [x] T9 `PayoutProvider` port plus a simulated adapter; idempotent `release_due_payouts` (`FOR UPDATE`, no open claim, no existing `Desembolso`, payout account required); a CLI entry point and a Render Cron Job in `render.yaml`.
 
 ### S5 — Frontend
 
 Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`.
 
 - [x] T10 Shared presentational `ServiceCard` / `ServiceDetail`; role-based containers at `/cuenta/servicios` and `/cuenta/servicios/[serviceId]`; rename the menu entry to "Mis servicios".
-- [ ] T11 Assignment form with the same-day warning dialog; Iniciar / Finalizar (with photo) actions.
+- [x] T11 Assignment form with the same-day warning dialog; Iniciar / Finalizar (with photo) actions.
 - [ ] T12 Customer: delivery photo, deadline countdown, "Todo conforme", "Reclamar".
 
 ## Checks
@@ -193,6 +194,10 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - 2026-10-11: S2 (T5, T6) done by `worker-1` (Haiku, Herdr pane), commit `f4c15fb`. RED: 19 of 22 new tests failed before implementation (routes missing). GREEN: `uv run pytest` 450 passed; `uv lock --check` passed. Parent spot check: `uv run pytest` 450 passed. The API contract (S2) section was added. Follow-ups: `R3-viewer-query-multiple-rows` cannot occur (`uq_conductor_user` and the unique `Perfil.ID_user` / `Usuario.ID_Auth_Supabase` limit the join to one row), but the lookup is now ordered and limited to one row anyway. `R3-started-by-fk-validate` was not reproducible (migration 0003 line 62 already validates `fk_service_started_by`), so no 0004 migration was added; a guard test was added instead. Native review (assess: medium, `slice_budget_reached`; reliability lens) granted, approved and acknowledged (lineage `review-ed85fcd06adaf678`). Next: S3 (T7).
 - 2026-10-11: branch review (base `1e72235`..`1f273a8`, requested by the stop hook, granted): approved and acknowledged (lineage `review-f906f2bf9346b57c`).
 - 2026-10-11: S3 (T7) done by `worker-1` (Haiku, Herdr pane), commit `1ab9984`. RED: collection failed with `ModuleNotFoundError: amira_api.evidence_storage`; settings tests failed on missing `supabase_url`. GREEN: `uv run pytest` 483 passed; `uv lock --check` passed. Parent spot check: `uv run pytest` 483 passed. The API contract (S3) section was added. Gap: `backend/.env.example` was not updated (the worker's permissions denied access); the six new variables are documented in `backend/README.md` and the S3 contract. Native review (assess: medium, `slice_budget_reached`; reliability lens) granted, approved and acknowledged (lineage `review-08a95a100032fcbd`). Next: S4 (T8, T9) and T11 in parallel.
+- 2026-10-11: T5b done by `worker-1`, commit `66fbe7b`. RED: 11 of 11 failed (route missing; detail texts asserted). GREEN: `uv run pytest` 494 passed; `uv lock --check` passed. Parent spot check: 494 passed. Branch review (base `1e72235`, includes T5b) approved and acknowledged (lineage `review-45a21e63e75a56c0`).
+- 2026-10-11: T11 done by `worker-2` (Haiku, second Herdr pane, in parallel with S4; frontend-only surface), commit `0460973`. RED exception: no frontend unit runner, Playwright not used. `npm run lint` and `npm run build` passed (worker); parent spot check `npm run lint` passed.
+- 2026-10-11: S4 (T8, T9) done by `worker-1`, commit `ee05151`. RED: claim/consent tests got 404 (routes missing, detail texts asserted); payout tests failed at import. GREEN: `uv run pytest` 522 passed; `uv lock --check` passed. Parent spot check: 522 passed. No new env variables.
+- 2026-10-11: a branch-wide review (5035 lines) stopped with `lens_context_budget_exceeded`; the reduced candidate T11 + S4 (base `66fbe7b`, 1777 lines) was granted, approved and acknowledged (lineage `review-e20c3dcf15c36461`). Next: T12.
 
 ### Review follow-ups (non-blocking)
 
@@ -211,6 +216,13 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - S3 `R3-002` (`provider_service_routes.py:327`): the upload runs while the service row lock is held (up to the 10 s httpx timeout).
 - S3 `R3-003` (`evidence_storage.py:61-62`): the 503 "not configured" branch is untested.
 - S3 worker notes: Starlette spools the multipart part to disk before the size cap runs (add a proxy body limit); 503 precedes 403/404 when storage is not configured; add the new variables to `backend/.env.example`.
+- Branch review `R3-003` (`models.py:474-475`): `fk_service_started_by` is `ON DELETE RESTRICT`, so deleting a user who started a service fails.
+- T11 gaps: `ServiceDetail` does not say whether the viewer is assigned, so Iniciar/Finalizar show for every provider viewer and the backend decides (suggest `viewerAssigned`); no success notice after saving assignments; provider mutations do not invalidate the customer list query; `ui-ux-pro-max` and `boneyard` were not read; not exercised in a browser.
+- S4 decisions to confirm: `Monto_Neto` equals the gross payment (no commission model); release requires an approved `Pago` (else `missing_payment`); `claimOpen` is `status == 'disputed'` (a `Reclamo` join broke SQLite fixtures; the release job still checks `Reclamo`).
+- S4 `R3-001` (`render.yaml:41-42`): the cron sets `APP_ENV=production`, so the simulated adapter refuses and every run exits 1 until a real payout adapter exists.
+- S4 `R3-002` (`test_payout_release.py:202-205`): the production-refusal CLI test only asserts exit 1, which other failures also produce.
+- S4 `R3-003` (`customer_routes.py:318-323`): consent is accepted after the payout was already released.
+- S4 environment note: with `DEV_SKIP_SMS_MFA` set, settings reject `APP_ENV=production`; check the real deploy config.
 
 ### API notes (S1)
 
