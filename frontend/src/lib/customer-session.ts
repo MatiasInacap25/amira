@@ -1,3 +1,4 @@
+import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
 import { createClient } from "@/lib/supabase/client";
 
 export class CustomerSessionError extends Error {}
@@ -8,7 +9,7 @@ export async function readCustomerUserId(): Promise<string> {
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError || !userData.user?.email_confirmed_at) throw new CustomerSessionError();
   const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (assuranceError || assurance.currentLevel !== "aal2") throw new CustomerSessionError();
+  if (assuranceError || !acceptsAssuranceLevel(assurance.currentLevel)) throw new CustomerSessionError();
   return userData.user.id;
 }
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
 import { decideProviderRequest, getProviderRequests, type ProviderRequest } from "@/lib/marketplace-api";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,7 +13,7 @@ async function currentAccessToken() {
   if (userError || !userData.user?.email_confirmed_at) throw new Error("sign-in");
   const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
   if (assuranceError) throw assuranceError;
-  if (assurance.currentLevel !== "aal2") throw new Error("aal2");
+  if (!acceptsAssuranceLevel(assurance.currentLevel)) throw new Error("aal2");
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) throw new Error("session");
   return data.session.access_token;

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { authenticatedApiFetch } from "@/lib/auth/account-api";
+import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
 import { createClient } from "@/lib/supabase/client";
 
 const INVITATION_KEY = "amira-driver-invitation";
@@ -22,7 +23,7 @@ async function validateInvitationSession() {
   if (userError || !data.user?.email_confirmed_at) return { kind: "email" as const };
 
   const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (assuranceError || assurance.currentLevel !== "aal2") return { kind: "mfa" as const };
+  if (assuranceError || !acceptsAssuranceLevel(assurance.currentLevel)) return { kind: "mfa" as const };
 
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   if (sessionError || !sessionData.session?.access_token) throw new Error("invalid");

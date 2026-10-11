@@ -14,7 +14,7 @@ services:
       - key: APP_NAME
         value: Amira API
       - key: APP_ENV
-        value: development
+        value: production
       - key: CORS_ORIGINS
         sync: false
       - key: DATABASE_URL

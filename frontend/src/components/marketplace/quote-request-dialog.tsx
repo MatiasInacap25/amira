@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
+import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
 import { createServiceRequest, type ProviderProfile, type ServiceRequestInput } from "@/lib/marketplace-api";
 import { createClient } from "@/lib/supabase/client";
 
@@ -88,7 +89,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
       }
       const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
       if (assuranceError) throw assuranceError;
-      if (assurance.currentLevel !== "aal2") {
+      if (!acceptsAssuranceLevel(assurance.currentLevel)) {
         setError("Completa la verificación por SMS antes de solicitar una cotización.");
         return;
       }
