@@ -203,6 +203,11 @@ Frontend (one commit):
 - [x] F9 Use `viewerAssigned` to show Iniciar/Finalizar only to the right viewers; success notice after saving assignments.
 - [x] F10 Claim window: no "Reclamar" before the client clock is known; a missing deadline is not shown as "Plazo vencido"; double-submit guard with a ref for consent/claim (and the provider actions).
 
+### G — User decisions on payouts (2026-10-11; route: delegated direct, one Haiku worker in a Herdr pane)
+
+- [ ] G1 Fixed 10% commission: `commission = round_half_up(gross * percent / 100)` in integer CLP, `Desembolso.Monto_Neto = gross - commission`; percent is a setting (default 10). Store the commission only if `Desembolso` already has a column for it (no new migration).
+- [ ] G2 Remove the payout cron job from `render.yaml` until a real payout adapter exists; document the block and the manual CLI in `backend/README.md`.
+
 ## Checks
 
 - Backend: `uv run pytest`, `uv lock --check`. Frontend: `npm run lint`, `npm run build`. Playwright is not used for verification.
