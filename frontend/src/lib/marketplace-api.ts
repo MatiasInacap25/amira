@@ -1,4 +1,5 @@
 import { authenticatedApiFetch, resolveApiBaseUrl } from "@/lib/auth/account-api";
+import { buildProviderRequestsQuery, type ProviderRequestStatus } from "@/lib/provider-requests";
 
 export type LocationCommune = {
   code: string;
@@ -109,8 +110,18 @@ export type ServiceRequestInput = {
 export type ProviderRequest = {
   requestId: string;
   status: "pending" | "accepted" | "rejected" | string;
-  origin: string;
-  destination: string;
+  origin: string | null;
+  destination: string | null;
+  originCommuneCode: string | null;
+  originCommuneName: string | null;
+  originRegionName: string | null;
+  destinationCommuneCode: string | null;
+  destinationCommuneName: string | null;
+  destinationRegionName: string | null;
+  isExclusive: boolean;
+  customerFirstName: string;
+  // Non-null only once the request is accepted.
+  customerLastName: string | null;
   requestedAt: string | null;
   createdAt: string;
   estimatedWeight: string | null;
@@ -119,6 +130,17 @@ export type ProviderRequest = {
   cargoMeasurements: string | null;
   serviceName: string;
   chatId: string | null;
+};
+
+export type ProviderRequestCounts = {
+  pending: number;
+  accepted: number;
+  rejected: number;
+};
+
+// Counts always cover every status, independent of the status filter.
+export type ProviderRequestPage = PagedResponse<ProviderRequest> & {
+  counts: ProviderRequestCounts;
 };
 
 export type ProviderRequestDecision = {
@@ -203,15 +225,27 @@ export async function createCustomerServiceRating(serviceId: string, input: { ra
   );
 }
 
-export async function getProviderRequests(accessToken: string) {
+export async function getProviderRequests(
+  accessToken: string,
+  options: { status?: ProviderRequestStatus; limit: number; offset: number },
+) {
   const response = await authenticatedApiFetch(
-    "/api/provider/requests",
+    `/api/provider/requests?${buildProviderRequestsQuery(options)}`,
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
     { headers: { Accept: "application/json" } },
   );
   if (!response.ok) throw new Error(`Provider requests failed (${response.status})`);
-  return response.json() as Promise<PagedResponse<ProviderRequest>>;
+  return response.json() as Promise<ProviderRequestPage>;
+}
+
+export async function getProviderRequest(accessToken: string, requestId: string) {
+  return authenticatedApiFetch(
+    `/api/provider/requests/${encodeURIComponent(requestId)}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" } },
+  );
 }
 
 export async function decideProviderRequest(requestId: string, decision: "accept" | "reject", accessToken: string) {

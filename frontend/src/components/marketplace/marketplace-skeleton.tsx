@@ -70,6 +70,22 @@ export const PROFILE_LAYOUT: Layout = {
 export const SERVICE_RESULTS_LAYOUT = gridLayout("service-results", 3, 6, 240);
 export const ROUTE_RESULTS_LAYOUT = gridLayout("route-results", 3, 6, 240);
 export const CUSTOMER_SERVICES_LAYOUT = listLayout("customer-services", 4, 84, 12);
+export const PROVIDER_REQUESTS_LAYOUT = listLayout("provider-requests", 4, 132, 16);
+
+/** Provider request detail: back link, heading with status, then summary and cargo sections. */
+export const PROVIDER_REQUEST_DETAIL_LAYOUT: Layout = {
+  name: "provider-request-detail",
+  viewportWidth: 1280,
+  width: 1000,
+  height: 460,
+  bones: [
+    [0, 0, 18, 14, 6],
+    [0, 36, 46, 30, 6],
+    [0, 80, 24, 18, 6],
+    [0, 120, 100, 150, 12],
+    [0, 290, 100, 130, 12],
+  ],
+};
 
 type MarketplaceSkeletonProps = {
   name: string;
