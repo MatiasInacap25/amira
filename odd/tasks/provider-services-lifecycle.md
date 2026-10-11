@@ -224,7 +224,7 @@ Frontend (one commit):
 
 Decisions: only CLP is accepted (`ck_quote_currency_clp` stays); the Supabase `delete` is not tested against live Supabase.
 
-- [ ] I1 Extract the sign-out cache clearing into a pure function (for example `clearAccountScopedQueries(queryClient)` in `frontend/src/lib/service-query-keys.ts`), use it in `site-navigation.tsx`, and cover it with a browserless spec run by the Playwright runner (no `page`, like `tests/rut.spec.ts`), using a real `QueryClient`: the role, provider list (with filter), service detail and customer list (with user id) queries are removed, and an unrelated query survives. User-approved exception to "no Playwright": this spec only, no browser.
+- [x] I1 Extract the sign-out cache clearing into a pure function (for example `clearAccountScopedQueries(queryClient)` in `frontend/src/lib/service-query-keys.ts`), use it in `site-navigation.tsx`, and cover it with a browserless spec run by the Playwright runner (no `page`, like `tests/rut.spec.ts`), using a real `QueryClient`: the role, provider list (with filter), service detail and customer list (with user id) queries are removed, and an unrelated query survives. User-approved exception to "no Playwright": this spec only, no browser.
 
 ## Checks
 
@@ -246,6 +246,7 @@ Decisions: only CLP is accepted (`ck_quote_currency_clp` stays); the Supabase `d
 - 2026-10-11: F1-F10 done by `worker-1` (Haiku, Herdr pane; it delegated internally to its own subagent): commits `6735b03` (backend F1-F7) and `3e8359a` (frontend F8-F10). RED observed for F1-F5 and the Supabase `delete`; F6's behavioral RED was not observed (the module failed at import first); F7 was test-only strengthening. Worker: `uv run pytest` 544 passed, `uv lock --check`, `npm run lint`, `npm run build` passed. Parent spot checks: `uv run pytest` 544 passed, `npm run lint` passed. The whole-branch review again stopped with `lens_context_budget_exceeded`; the fixes (base `44fc7cc`, 697 lines) were granted, approved and acknowledged (lineage `review-019de5f1d21bf4b9`).
 - 2026-10-11: user decisions: 10% fixed commission and remove the payout cron; do not update `backend/.env.example`. G1 + G2 done by `worker-1`, commit `87a2688`. RED: 9 failed (missing `commission_percent`, settings field, cron still present). Worker: `uv run pytest` 551 passed, `uv lock --check` passed. Parent spot check: 551 passed. Native review (base `d3c3e55`, 195 lines) granted, approved and acknowledged (lineage `review-f47bf0f13d84ead9`). The whole-branch candidate the stop hook keeps offering stops with `lens_context_budget_exceeded` (6146 lines).
 - 2026-10-11: whole-branch reviews keep stopping at `lens_context_budget_exceeded`; the half `66fbe7b..HEAD` (3058 lines) also exceeded the budget, so the budget is not a pure line count. Every range is covered by the per-task reviews. H1-H4 done by `worker-1`: commits `ccf29b1` (backend) and `19b6319` (frontend). RED for H1 (range check) and H2 (404 before 503); the other changes are test-only or a docstring. Worker: `uv run pytest` 558 passed, `uv lock --check`, `npm run lint`, `npm run build` passed. Parent spot checks: 558 passed, lint passed. Native review (base `e26df7f`, 138 lines) granted, approved and acknowledged (lineage `review-e1ef63a66f21906c`).
+- 2026-10-11: user decisions: only CLP is accepted (`ck_quote_currency_clp` stays), no live Supabase `delete` test, and the sign-out cache test runs as a browserless Playwright spec (exception for that spec only). I1 done by `worker-2`, commit `3970487`: `clearAccountScopedQueries` extracted and covered by `tests/account-query-cache.spec.ts`; `provider-services-view.tsx` uses `PROVIDER_SERVICES_KEY`. RED: `clearAccountScopedQueries is not a function`. Worker: spec 1 passed, `npm run lint` and `npm run build` passed. Parent spot check: spec 1 passed. Native review (base `7e7d55c`, 57 lines) granted, approved and acknowledged (lineage `review-6dd70110f41001fb`).
 
 ### Review follow-ups (non-blocking)
 
@@ -282,7 +283,8 @@ Decisions: only CLP is accepted (`ck_quote_currency_clp` stays); the Supabase `d
 - (G and F open items above resolved by H1-H4, except `ck_quote_currency_clp` and the live Supabase `delete` test.)
 - H `R3-001` (`site-navigation.tsx:39-42`): no test proves the service caches are cleared on account change (no frontend unit runner).
 - H `R3-002` (`test_payout_release.py:294-301`): the no-cron guard only inspects `command:` lines; also assert `release_payouts` appears nowhere in `render.yaml`.
-- H worker note: `provider-services-view.tsx` builds its key as the literal `["provider-services", filter]` instead of `[...PROVIDER_SERVICES_KEY, filter]`.
+- H worker note: `provider-services-view.tsx` builds its key as the literal `["provider-services", filter]` instead of `[...PROVIDER_SERVICES_KEY, filter]`. (Resolved by I1.)
+- (H `R3-001` resolved by I1: the clearing is covered by a browserless spec.) I `R3-nav-wiring-untested` (suggestion): no test fires an auth event to prove `site-navigation.tsx` still calls `clearAccountScopedQueries`.
 
 ### API notes (S1)
 
