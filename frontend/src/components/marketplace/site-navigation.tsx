@@ -18,6 +18,7 @@ export function MarketplaceHeader() {
           <Link className="button button-secondary header-nav-button" href="/servicios">Buscar servicios</Link>
           <Link className="button button-secondary header-nav-button" href="/rutas-compartidas">Rutas compartidas</Link>
           <Link href="/solicitudes">Mis solicitudes</Link>
+          <Link href="/cuenta/servicios">Valorar servicios</Link>
           <Link href="/#como-funciona">Cómo funciona</Link>
         </nav>
         <div className="header-actions">
@@ -43,6 +44,7 @@ export function MarketplaceHeader() {
           <Link className="header-nav-button" href="/servicios" onClick={() => setMenuOpen(false)}>Buscar servicios</Link>
           <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMenuOpen(false)}>Rutas compartidas</Link>
           <Link className="header-nav-button" href="/solicitudes" onClick={() => setMenuOpen(false)}>Mis solicitudes</Link>
+          <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Valorar servicios</Link>
           <Link className="header-nav-button" href="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
           <Link className="header-nav-button" href="/registro" onClick={() => setMenuOpen(false)}>Crear cuenta</Link>
           <Link href="/#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</Link>

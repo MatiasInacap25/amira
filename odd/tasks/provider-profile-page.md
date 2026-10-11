@@ -32,9 +32,9 @@ Public JSON is camelCase (existing alias generator).
 
 Route: delegated direct (Herdr worker, Haiku 5.5). Skills: `sqlalchemy-alembic-expert-best-practices-code-review`, `fastapi-templates`, `supabase`.
 
-- [ ] PB1 Profile location from catalog: contract 1 (commune/region fields and `location` display). Tests.
-- [ ] PB2 Driver owner flag: contract 1 `isOwner`. Tests.
-- [ ] PB3 Customer services and rating creation: contracts 2 and 3, in a new `customer_routes.py` + `customer_schemas.py` wired in `main.py`; enforce ownership, completion, and one rating per service (rely on the existing unique constraint and map the integrity error to 409). Tests for each rule.
+- [x] PB1 Profile location from catalog: contract 1 (commune/region fields and `location` display). Tests.
+- [x] PB2 Driver owner flag: contract 1 `isOwner`. Tests.
+- [x] PB3 Customer services and rating creation: contracts 2 and 3, in a new `customer_routes.py` + `customer_schemas.py` wired in `main.py`; enforce ownership, completion, and one rating per service (rely on the existing unique constraint and map the integrity error to 409). Tests for each rule.
 
 Verification: `uv run pytest -q`, `uv lock --check`.
 
@@ -42,9 +42,9 @@ Verification: `uv run pytest -q`, `uv lock --check`.
 
 Route: delegated direct (Herdr worker, Haiku 5.5). Read `frontend/CLAUDE.md` first. Skills: `ui-ux-pro-max` and `impeccable` (mandatory for design decisions), plus `vercel-react-best-practices`. Keep the existing visual language of the site (globals.css tokens, typography) unless the skills justify a change. UI copy in Spanish.
 
-- [ ] PF1 Profile redesign: one structure for both kinds. Hero: initials avatar (no logo yet), name, kind badge, "<Comuna>, <Región>", average rating with count; primary "Cotizar" button always visible (sticky bottom bar on mobile). Sections: Servicios, Vehículos, Valoraciones (summary + recent reviews), and Conductores only for companies (mark the owner). Accessible headings, empty states, loading and error states, responsive down to 360px.
-- [ ] PF2 Per-service "Cotizar": each service card opens `QuoteRequestDialog` with that service preselected; hero button opens it with none selected. Tighten `ProviderProfile` types (ratings required, new fields).
-- [ ] PF3 Customer ratings: page `/cuenta/servicios` listing the caller's services (contract 2) with a 1–5 star input and optional comment for completed, unrated services (contract 3); show the existing rating otherwise; inline Spanish errors; requires sign-in like the quote dialog.
+- [x] PF1 Profile redesign: one structure for both kinds. Hero: initials avatar (no logo yet), name, kind badge, "<Comuna>, <Región>", average rating with count; primary "Cotizar" button always visible (sticky bottom bar on mobile). Sections: Servicios, Vehículos, Valoraciones (summary + recent reviews), and Conductores only for companies (mark the owner). Accessible headings, empty states, loading and error states, responsive down to 360px.
+- [x] PF2 Per-service "Cotizar": each service card opens `QuoteRequestDialog` with that service preselected; hero button opens it with none selected. Tighten `ProviderProfile` types (ratings required, new fields).
+- [x] PF3 Customer ratings: page `/cuenta/servicios` listing the caller's services (contract 2) with a 1–5 star input and optional comment for completed, unrated services (contract 3); show the existing rating otherwise; inline Spanish errors; requires sign-in like the quote dialog.
 
 Verification: `npm run lint`, `npx tsc --noEmit`, `npm run build`.
 
