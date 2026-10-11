@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "api": "cd backend && uv run uvicorn amira_api.main:app --reload"
+  },
   "devDependencies": {
     "supabase": "^2.119.0"
   }
