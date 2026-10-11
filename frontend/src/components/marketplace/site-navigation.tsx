@@ -4,6 +4,7 @@ import { ArrowRight, Menu, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { CHAT_ROOT_KEY } from "@/lib/chats";
 import { shouldClearCustomerCache } from "@/lib/customer-cache-policy";
 import { accountApiFetch } from "@/lib/auth/account-api";
 import { getProviderRequests } from "@/lib/marketplace-api";
@@ -19,7 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 
 type NavAccount = { userId: string | null };
 
-// Drops the header's per-account provider data on sign-out or account change, and re-reads the session user.
+// Drops the header's per-account data (provider and chat queries) on sign-out or account change, and re-reads the session user.
 function useProviderNavAccountScope() {
   const queryClient = useQueryClient();
   useEffect(() => {
@@ -28,6 +29,7 @@ function useProviderNavAccountScope() {
       const cachedUserId = queryClient.getQueryData<NavAccount>(PROVIDER_NAV_USER_KEY)?.userId ?? undefined;
       if (shouldClearCustomerCache(event, cachedUserId, session?.user.id)) {
         for (const key of providerNavStaleKeys()) queryClient.removeQueries({ queryKey: key });
+        queryClient.removeQueries({ queryKey: CHAT_ROOT_KEY });
       }
       void queryClient.invalidateQueries({ queryKey: PROVIDER_NAV_USER_KEY });
     });
@@ -35,8 +37,8 @@ function useProviderNavAccountScope() {
   }, [queryClient]);
 }
 
-// Shown only to provider accounts with an active session; anonymous and client visitors get nothing.
-function ProviderRequestsLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+// The signed-in user id shared by the header and the chat views; userId is null for anonymous visitors.
+export function useNavUserId(): { userId: string | null; pending: boolean } {
   const userQuery = useQuery({
     queryKey: PROVIDER_NAV_USER_KEY,
     queryFn: async (): Promise<NavAccount> => {
@@ -46,7 +48,23 @@ function ProviderRequestsLink({ className, onNavigate }: { className?: string; o
     retry: false,
     staleTime: 0,
   });
-  const userId = userQuery.data?.userId ?? null;
+  return { userId: userQuery.data?.userId ?? null, pending: userQuery.isPending };
+}
+
+// Shown to every signed-in account, customers and providers alike.
+function ChatsLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+  const { userId } = useNavUserId();
+  if (!userId) return null;
+  return (
+    <Link className={className} href="/mensajes" onClick={onNavigate}>
+      Mensajes
+    </Link>
+  );
+}
+
+// Shown only to provider accounts with an active session; anonymous and client visitors get nothing.
+function ProviderRequestsLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+  const { userId } = useNavUserId();
 
   const roleQuery = useQuery({
     queryKey: providerNavRoleKey(userId ?? ""),
@@ -98,6 +116,7 @@ export function MarketplaceHeader() {
         <nav aria-label="Navegación principal" className="desktop-nav">
           <Link className="button button-secondary header-nav-button" href="/servicios">Buscar servicios</Link>
           <Link className="button button-secondary header-nav-button" href="/rutas-compartidas">Rutas compartidas</Link>
+          <ChatsLink />
           <ProviderRequestsLink />
           <Link href="/cuenta/servicios">Valorar servicios</Link>
           <Link href="/#como-funciona">Cómo funciona</Link>
@@ -124,6 +143,7 @@ export function MarketplaceHeader() {
         <nav aria-label="Navegación móvil" className="mobile-nav" id="marketplace-mobile-navigation">
           <Link className="header-nav-button" href="/servicios" onClick={() => setMenuOpen(false)}>Buscar servicios</Link>
           <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMenuOpen(false)}>Rutas compartidas</Link>
+          <ChatsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <ProviderRequestsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Valorar servicios</Link>
           <Link className="header-nav-button" href="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>

@@ -36,6 +36,16 @@ The frontend also needs its own switch: set `NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true` 
 
 Both endpoints return `{items, total, limit, offset}`, cap page size at 50 and offset at 5000, and validate filter lengths. Responses intentionally omit account identity, company tax IDs, raw storage keys, full stop addresses, vehicles/drivers, customer requests, chats, payments, and payout references. Route results expose only published origin/destination cities; intermediate stops include sequence and time but no address because the current schema has no separate public-locality field. Service entries are based on `Servicios_Disponibles`; the current schema has no separate visibility status for that association. Logo URLs remain null until a safe public asset URL mechanism is implemented. Departure filters must be timezone-aware ISO-8601 datetimes.
 
+## Payments (simulated provider)
+
+Payments go through the `PaymentProvider` port (`src/amira_api/payment_provider.py`). The domain in `payment_service.py` depends only on the port; `simulated_payment_provider.py` is the only adapter and `payment_routes.py` is the composition root that chooses it.
+
+The simulated adapter is enabled only when `APP_ENV` is set explicitly to `development`, `local` or `test` (fail closed, like `DEV_SKIP_SMS_MFA`; an unset `APP_ENV` disables it). It needs `PAYMENT_SIMULATOR_SECRET` (signs checkout tokens and confirmations; the browser never sees it) and `FRONTEND_BASE_URL` (builds the `/pagos/simulado` link). Without them, payment endpoints answer 503, and the simulated checkout endpoint answers 404 outside development.
+
+A checkout link is bound to its payment and to the paying customer, expires after 15 minutes, and is single-use: the link is consumed in the same transaction as the confirmation, so a refused confirmation releases it. Only the payment's customer can complete it.
+
+`POST /api/payments/confirm` is server-to-server only: it requires the `X-Amira-Payment-Webhook-Secret` header, compared in constant time with `PAYMENT_WEBHOOK_SECRET` (401 when wrong or missing, 503 when the secret is not configured). It refuses confirmations from the simulated provider with 403, so a browser can never obtain an approval through it. Confirmations are applied under row locks and are idempotent on the provider payment; a conflicting result for an already-decided payment is refused with 409.
+
 ## Checks
 
 ```powershell
