@@ -105,6 +105,7 @@ def run_request(method: str, path: str, session: FakeSession, *, json_body=None,
 def service_row(**overrides):
     row = {
         "service_id": SERVICE_ID,
+        "status": "completed",
         "provider_profile_id": PROFILE_ID,
         "provider_kind": "company",
         "profile_name": "Transportes del Sur",
@@ -138,6 +139,7 @@ def test_customer_services_list_returns_own_services_with_optional_rating_and_pa
     assert body["offset"] == 0
     assert body["items"][0] == {
         "serviceId": str(SERVICE_ID),
+        "status": "completed",
         "providerProfileId": str(PROFILE_ID),
         "providerName": "Transportes del Sur",
         "serviceTypeName": "Mudanzas",

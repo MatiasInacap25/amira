@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from amira_api.provider_service_schemas import ServiceStatus
 from amira_api.public_schemas import PublicResponse, _to_camel
 
 
@@ -16,6 +17,7 @@ class CustomerServiceRating(PublicResponse):
 
 class CustomerServiceItem(PublicResponse):
     service_id: UUID
+    status: ServiceStatus
     provider_profile_id: UUID
     provider_name: str
     service_type_name: str

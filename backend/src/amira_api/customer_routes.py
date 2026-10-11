@@ -16,6 +16,8 @@ from amira_api.customer_schemas import (
     CustomerServiceRating,
 )
 from amira_api.db import get_db_session
+from amira_api.provider_service_schemas import ServiceDetail
+from amira_api.service_views import load_assignments, provider_display_name, service_rows, shape_detail
 from amira_api.models import (
     FormularioServicio,
     Perfil,
@@ -30,7 +32,6 @@ router = APIRouter(prefix="/api/customer", tags=["customer"])
 MAX_PAGE_SIZE = 50
 MAX_OFFSET = 5000
 RATING_CONSTRAINT = "uq_rating_service"
-PROVIDER_FALLBACK_NAME = "Prestador"
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
 
@@ -70,15 +71,6 @@ def _customer_services_relation(statement: Select, account_id: UUID) -> Select:
     )
 
 
-def _provider_display_name(kind: str, profile_name: str | None, first_name: str | None, last_name: str | None) -> str:
-    """Return a non-empty provider name; independent drivers use their real name, never the profile handle."""
-    if kind == "independent_driver":
-        name = " ".join(part.strip() for part in (first_name, last_name) if part and part.strip())
-    else:
-        name = (profile_name or "").strip()
-    return name or PROVIDER_FALLBACK_NAME
-
-
 @router.get("/services", response_model=CustomerServicePage)
 def list_customer_services(
     current_user: CurrentUser,
@@ -94,6 +86,7 @@ def list_customer_services(
         _customer_services_relation(
             select(
                 Servicio.id.label("service_id"),
+                Servicio.status.label("status"),
                 Perfil.id.label("provider_profile_id"),
                 Perfil.kind.label("provider_kind"),
                 Perfil.name.label("profile_name"),
@@ -116,8 +109,9 @@ def list_customer_services(
     items = [
         CustomerServiceItem(
             service_id=row["service_id"],
+            status=row["status"],
             provider_profile_id=row["provider_profile_id"],
-            provider_name=_provider_display_name(
+            provider_name=provider_display_name(
                 row["provider_kind"],
                 row["profile_name"],
                 row["owner_first_name"],
@@ -138,6 +132,17 @@ def list_customer_services(
         for row in rows
     ]
     return CustomerServicePage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/services/{service_id}", response_model=ServiceDetail)
+def get_customer_service(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceDetail:
+    account_id = _customer_account_id(session, current_user)
+    row = session.execute(
+        service_rows(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    return shape_detail(row, "customer", can_manage=False, assignments=load_assignments(session, service_id))
 
 
 @router.post(

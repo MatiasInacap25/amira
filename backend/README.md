@@ -46,6 +46,15 @@ A checkout link is bound to its payment and to the paying customer, expires afte
 
 `POST /api/payments/confirm` is server-to-server only: it requires the `X-Amira-Payment-Webhook-Secret` header, compared in constant time with `PAYMENT_WEBHOOK_SECRET` (401 when wrong or missing, 503 when the secret is not configured). It refuses confirmations from the simulated provider with 403, so a browser can never obtain an approval through it. Confirmations are applied under row locks and are idempotent on the provider payment; a conflicting result for an already-decided payment is refused with 409.
 
+## Contracted services
+
+A `Servicio` moves through `confirmed`, `in_progress`, `completed` and `disputed` (`ck_service_status_allowed`). Providers assign one or more (driver, vehicle) pairs per service in `Servicio_Asignacion`.
+
+- `GET /api/provider/services?status=&limit=20&offset=0` and `GET /api/provider/services/{serviceId}`: the owner of a provider `Perfil` sees every service of that profile; a company-employed driver (`Conductor.ID_perfil` set) who owns no profile sees only the services they are assigned to. Any other account gets 403.
+- `GET /api/customer/services/{serviceId}`: the customer who owns the service.
+
+A service the viewer cannot see answers 404. Responses name the counterpart (provider display name for customers, customer first name for providers) and never include phone, email or RUT. `canManage` is true only for the profile owner.
+
 ## Checks
 
 ```powershell
