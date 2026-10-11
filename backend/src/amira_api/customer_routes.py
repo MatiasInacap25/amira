@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,7 @@ router = APIRouter(prefix="/api/customer", tags=["customer"])
 MAX_PAGE_SIZE = 50
 MAX_OFFSET = 5000
 RATING_CONSTRAINT = "uq_rating_service"
+PROVIDER_FALLBACK_NAME = "Prestador"
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
 
@@ -53,6 +54,31 @@ def _constraint_name(error: IntegrityError) -> str | None:
     return getattr(diag, "constraint_name", None)
 
 
+def _customer_services_relation(statement: Select, account_id: UUID) -> Select:
+    """Apply the one join path that defines a customer's reachable services.
+
+    Both the page total and the page items use this relation, so the total never
+    counts a service that the item query cannot return.
+    """
+    return (
+        statement.select_from(Servicio)
+        .join(Perfil, Perfil.id == Servicio.profile_id)
+        .join(Usuario, Usuario.id == Perfil.owner_user_id)
+        .join(FormularioServicio, FormularioServicio.id == Servicio.form_id)
+        .join(TipoServicio, TipoServicio.id == FormularioServicio.service_type_id)
+        .where(Servicio.customer_id == account_id)
+    )
+
+
+def _provider_display_name(kind: str, profile_name: str | None, first_name: str | None, last_name: str | None) -> str:
+    """Return a non-empty provider name; independent drivers use their real name, never the profile handle."""
+    if kind == "independent_driver":
+        name = " ".join(part.strip() for part in (first_name, last_name) if part and part.strip())
+    else:
+        name = (profile_name or "").strip()
+    return name or PROVIDER_FALLBACK_NAME
+
+
 @router.get("/services", response_model=CustomerServicePage)
 def list_customer_services(
     current_user: CurrentUser,
@@ -62,28 +88,26 @@ def list_customer_services(
 ) -> CustomerServicePage:
     account_id = _customer_account_id(session, current_user)
     total = session.execute(
-        select(func.count()).select_from(Servicio).where(Servicio.customer_id == account_id)
+        _customer_services_relation(select(func.count(Servicio.id)), account_id)
     ).scalar_one()
     rows = session.execute(
-        select(
-            Servicio.id.label("service_id"),
-            Perfil.id.label("provider_profile_id"),
-            case(
-                (Perfil.kind == "independent_driver", Usuario.first_name + " " + Usuario.last_name),
-                else_=Perfil.name,
-            ).label("provider_name"),
-            TipoServicio.name.label("service_type_name"),
-            Servicio.completed_at.label("completed_at"),
-            Valoracion.rating.label("rating_value"),
-            Valoracion.comment.label("rating_comment"),
-            Valoracion.created_at.label("rating_created_at"),
+        _customer_services_relation(
+            select(
+                Servicio.id.label("service_id"),
+                Perfil.id.label("provider_profile_id"),
+                Perfil.kind.label("provider_kind"),
+                Perfil.name.label("profile_name"),
+                Usuario.first_name.label("owner_first_name"),
+                Usuario.last_name.label("owner_last_name"),
+                TipoServicio.name.label("service_type_name"),
+                Servicio.completed_at.label("completed_at"),
+                Valoracion.rating.label("rating_value"),
+                Valoracion.comment.label("rating_comment"),
+                Valoracion.created_at.label("rating_created_at"),
+            ),
+            account_id,
         )
-        .join(Perfil, Perfil.id == Servicio.profile_id)
-        .join(Usuario, Usuario.id == Perfil.owner_user_id)
-        .join(FormularioServicio, FormularioServicio.id == Servicio.form_id)
-        .join(TipoServicio, TipoServicio.id == FormularioServicio.service_type_id)
         .outerjoin(Valoracion, Valoracion.service_id == Servicio.id)
-        .where(Servicio.customer_id == account_id)
         .order_by(Servicio.created_at.desc(), Servicio.id.desc())
         .limit(limit)
         .offset(offset)
@@ -93,7 +117,12 @@ def list_customer_services(
         CustomerServiceItem(
             service_id=row["service_id"],
             provider_profile_id=row["provider_profile_id"],
-            provider_name=row["provider_name"],
+            provider_name=_provider_display_name(
+                row["provider_kind"],
+                row["profile_name"],
+                row["owner_first_name"],
+                row["owner_last_name"],
+            ),
             service_type_name=row["service_type_name"],
             completed_at=row["completed_at"],
             rating=(

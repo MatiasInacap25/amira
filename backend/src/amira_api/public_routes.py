@@ -70,6 +70,14 @@ def _contains(value: str) -> str:
     return f"%{escaped}%"
 
 
+def _profile_location(commune_name: str | None, region_name: str | None, legacy_location: str | None) -> str | None:
+    """Join only the catalog parts that exist; fall back to the legacy free text when none do."""
+    parts = [part.strip() for part in (commune_name, region_name) if part and part.strip()]
+    if parts:
+        return ", ".join(parts)
+    return legacy_location
+
+
 @router.get("/providers/{profile_id}", response_model=PublicProviderProfile)
 def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicProviderProfile:
     profile = session.execute(
@@ -170,11 +178,7 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
         ),
         kind=profile["kind"],
         description=profile["description"],
-        location=(
-            f"{profile['commune_name']}, {profile['region_name']}"
-            if profile["commune_name"] is not None
-            else profile["location"]
-        ),
+        location=_profile_location(profile["commune_name"], profile["region_name"], profile["location"]),
         commune_code=profile["commune_code"],
         commune_name=profile["commune_name"],
         region_name=profile["region_name"],

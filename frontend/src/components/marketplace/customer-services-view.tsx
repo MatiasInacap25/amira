@@ -12,13 +12,19 @@ import {
   type CustomerService,
 } from "@/lib/marketplace-api";
 import { normalizeRatingComment, RATING_COMMENT_MAX_LENGTH, validateRatingDraft, type RatingDraftErrors } from "@/lib/customer-rating-validation";
+import { nextCustomerServicesOffset } from "@/lib/customer-services-pagination";
 import { createClient } from "@/lib/supabase/client";
 
+// Services are cached per user; the session root is cleared on auth changes because
+// its user id is only known after it resolves.
+const AUTH_QUERY_KEY = ["customer-auth"];
 const SERVICES_QUERY_KEY = ["customer-services"];
 
 class CustomerSessionError extends Error {}
 
-async function readAccessToken(): Promise<string> {
+type CustomerSession = { userId: string; accessToken: string };
+
+async function readSession(): Promise<CustomerSession> {
   const client = createClient();
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError || !userData.user?.email_confirmed_at) throw new CustomerSessionError();
@@ -26,29 +32,37 @@ async function readAccessToken(): Promise<string> {
   if (assuranceError || assurance.currentLevel !== "aal2") throw new CustomerSessionError();
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   if (sessionError || !sessionData.session?.access_token) throw new CustomerSessionError();
-  return sessionData.session.access_token;
+  return { userId: userData.user.id, accessToken: sessionData.session.access_token };
 }
 
 export function CustomerServicesView() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const sessionQuery = useQuery({
-    queryKey: ["customer-access-token"],
-    queryFn: readAccessToken,
+    queryKey: AUTH_QUERY_KEY,
+    queryFn: readSession,
     retry: false,
     staleTime: 60_000,
   });
-  const token = sessionQuery.data ?? "";
+  const userId = sessionQuery.data?.userId ?? "";
+  const token = sessionQuery.data?.accessToken ?? "";
   const servicesQuery = useInfiniteQuery({
-    queryKey: SERVICES_QUERY_KEY,
+    queryKey: [...SERVICES_QUERY_KEY, userId],
     queryFn: ({ pageParam, signal }) => getCustomerServices(token, pageParam, signal),
     initialPageParam: 0,
-    getNextPageParam: (lastPage) => {
-      const nextOffset = lastPage.offset + lastPage.items.length;
-      return nextOffset < lastPage.total ? nextOffset : undefined;
-    },
+    getNextPageParam: nextCustomerServicesOffset,
     enabled: Boolean(token),
     retry: false,
   });
+
+  useEffect(() => {
+    const { data } = createClient().auth.onAuthStateChange((event) => {
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+      queryClient.removeQueries({ queryKey: SERVICES_QUERY_KEY });
+      void queryClient.resetQueries({ queryKey: AUTH_QUERY_KEY });
+    });
+    return () => data.subscription.unsubscribe();
+  }, [queryClient]);
 
   const sessionExpired = sessionQuery.error instanceof CustomerSessionError;
   useEffect(() => {

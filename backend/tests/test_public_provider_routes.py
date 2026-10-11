@@ -169,6 +169,43 @@ def test_public_profile_location_is_built_from_the_commune_catalog_when_availabl
     assert '"Regiones"."Codigo" = "Comunas"."Codigo_Region"' in profile_query
 
 
+@pytest.mark.parametrize(
+    ("commune_name", "region_name", "legacy_location", "expected"),
+    [
+        ("Santiago", "Metropolitana de Santiago", "Calle vieja 123", "Santiago, Metropolitana de Santiago"),
+        ("Santiago", None, "Calle vieja 123", "Santiago"),
+        (None, "Metropolitana de Santiago", "Calle vieja 123", "Metropolitana de Santiago"),
+        (None, None, "Calle vieja 123", "Calle vieja 123"),
+        ("  ", " ", "Calle vieja 123", "Calle vieja 123"),
+        (None, None, None, None),
+    ],
+)
+def test_public_profile_location_uses_only_available_parts_and_never_renders_none(
+    commune_name, region_name, legacy_location, expected
+):
+    session = FakeSession([
+        FakeResult(row={
+            **PROFILE,
+            "location": legacy_location,
+            "commune_code": "13101",
+            "commune_name": commune_name,
+            "region_name": region_name,
+        }),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": None, "rating_count": 0}),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["location"] == expected
+    assert "None" not in response.text
+
+
 def test_public_profile_keeps_legacy_location_text_when_no_commune_is_linked():
     session = FakeSession([
         FakeResult(row={**PROFILE, "location": "Calle vieja 123"}),

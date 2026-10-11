@@ -106,7 +106,10 @@ def service_row(**overrides):
     row = {
         "service_id": SERVICE_ID,
         "provider_profile_id": PROFILE_ID,
-        "provider_name": "Transportes del Sur",
+        "provider_kind": "company",
+        "profile_name": "Transportes del Sur",
+        "owner_first_name": "Ana",
+        "owner_last_name": "Pérez",
         "service_type_name": "Mudanzas",
         "completed_at": COMPLETED_AT,
         "rating_value": None,
@@ -149,6 +152,55 @@ def test_customer_services_list_returns_own_services_with_optional_rating_and_pa
     assert "LIMIT" in rows_sql
     count_sql = str(session.statements[1].compile(dialect=postgresql.dialect()))
     assert '"Servicio"."ID_Cliente" = ' in count_sql
+
+
+def test_customer_services_total_and_items_are_counted_over_the_same_joined_relation():
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(count=0),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", "/api/customer/services", session)
+
+    assert response.status_code == 200
+    count_sql = str(session.statements[1].compile(dialect=postgresql.dialect()))
+    rows_sql = str(session.statements[2].compile(dialect=postgresql.dialect()))
+    for table in ('"Perfil"', '"Usuario"', '"Formulario_servicio"', '"Tipos_Servicio"'):
+        assert f"JOIN {table}" in count_sql
+        assert f"JOIN {table}" in rows_sql
+
+
+@pytest.mark.parametrize(
+    ("provider_kind", "profile_name", "first_name", "last_name", "expected"),
+    [
+        ("independent_driver", "Fletes Pedro", "Pedro", "Soto", "Pedro Soto"),
+        ("independent_driver", "Fletes Pedro", None, "Soto", "Soto"),
+        ("independent_driver", "Fletes Pedro", "Pedro", None, "Pedro"),
+        ("independent_driver", "Fletes Pedro", "  ", "", "Prestador"),
+        ("independent_driver", "Fletes Pedro", None, None, "Prestador"),
+        ("company", "Transportes del Sur", None, None, "Transportes del Sur"),
+        ("company", "   ", None, None, "Prestador"),
+    ],
+)
+def test_customer_service_provider_name_is_never_null_or_empty(provider_kind, profile_name, first_name, last_name, expected):
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(count=1),
+        FakeResult(rows=[
+            service_row(
+                provider_kind=provider_kind,
+                profile_name=profile_name,
+                owner_first_name=first_name,
+                owner_last_name=last_name,
+            )
+        ]),
+    ])
+
+    response = run_request("GET", "/api/customer/services", session)
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["providerName"] == expected
 
 
 def test_customer_services_list_does_not_expose_private_identifiers():
