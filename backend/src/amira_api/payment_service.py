@@ -75,6 +75,15 @@ def start_payment(session: Session, provider: PaymentProvider, quotation_id: UUI
     return payment, provider.checkout_url(payment.id, payment.provider_payment_id, customer_id)
 
 
+def _closed_quotation_reason(quotation: Cotizacion, now: datetime) -> str:
+    status = effective_status(quotation, now)
+    if status == "expired":
+        return "La cotización venció; el pago no se aplicó."
+    if status == "superseded":
+        return "La cotización fue reemplazada por otra; el pago no se aplicó."
+    return "La cotización ya no está pendiente; el pago no se aplicó."
+
+
 def consume_checkout_token(session: Session, payment_id: UUID, now: datetime) -> bool:
     """Mark the payment's checkout link as used in one conditional UPDATE. False when it was already used.
 
@@ -101,7 +110,8 @@ def confirm_payment(
         raise ConfirmationRefused()
 
     payment = session.execute(select(Pago).where(Pago.id == payment_id).with_for_update()).scalar_one_or_none()
-    if payment is None or payment.provider_payment_id != provider_payment_id:
+    # A confirmation from another provider is treated as unknown: nothing is applied and nothing is revealed.
+    if payment is None or payment.provider_payment_id != provider_payment_id or payment.provider != provider.name:
         raise PaymentNotFound()
     if payment.status != IN_PROGRESS:
         if payment.status == status:
@@ -119,8 +129,11 @@ def confirm_payment(
     quotation = session.execute(
         select(Cotizacion).where(Cotizacion.id == payment.quotation_id).with_for_update()
     ).scalar_one()
-    if quotation.status not in (PENDING, "superseded"):
-        raise PaymentConflict("La cotización ya no admite este pago.")
+    if effective_status(quotation, now) != PENDING:
+        # The quotation moved on while the customer was paying: record the payment as rejected, apply nothing.
+        payment.status = REJECTED
+        session.commit()
+        raise PaymentConflict(_closed_quotation_reason(quotation, now))
     chat = session.get(Chat, quotation.chat_id)
     form = chat.form
     if form.profile_id is None:

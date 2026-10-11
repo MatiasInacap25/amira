@@ -206,6 +206,9 @@ def complete_simulated_payment(
         raise HTTPException(status_code=400, detail="El enlace de pago no es válido o expiró.")
 
     status = "approved" if payload.approve else "rejected"
+    if payment.checkout_used_at is not None and payment.status == status:
+        # A retry of a decision already applied to this payment returns the stored result.
+        return _result(session, payment)
     try:
         # The link is consumed in the same transaction as the confirmation, so a refused confirmation releases it.
         if not consume_checkout_token(session, payment.id, utc_now()):

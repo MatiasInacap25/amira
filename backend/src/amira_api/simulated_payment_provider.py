@@ -7,6 +7,7 @@ CHECKOUT_TOKEN_TTL. Confirmations are signed with a server-side secret that the 
 
 import hashlib
 import hmac
+import re
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
@@ -51,7 +52,8 @@ class SimulatedPaymentProvider:
     def verify_checkout_token(self, payment_id: UUID, provider_payment_id: str, customer_id: UUID, token: str) -> bool:
         """True only for an untampered token of this payment and customer, issued within CHECKOUT_TOKEN_TTL."""
         issued_text, separator, mac = token.partition(".")
-        if not separator or not issued_text.isdigit():
+        # ASCII-only: str.isdigit() accepts Unicode digits such as superscripts, which int() then rejects with a 500.
+        if not separator or re.fullmatch(r"[0-9]{1,12}", issued_text) is None:
             return False
         issued_at = int(issued_text)
         now = int(self._clock().timestamp())

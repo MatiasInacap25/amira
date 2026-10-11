@@ -262,21 +262,21 @@ def test_checkout_token_is_bound_to_the_customer(pay, scenario, db: Session, sim
     assert db.query(Pago).one().status == "pending"
 
 
-def test_checkout_token_is_single_use_after_a_rejection(pay, scenario, db: Session):
+def test_checkout_token_is_single_use_across_decisions(pay, scenario, db: Session):
     started = _start(pay, _quote(pay, scenario)).json()
     token = _token(started["checkoutUrl"])
 
     assert _complete(pay, started["paymentId"], token, approve=False).status_code == 200
-    assert _complete(pay, started["paymentId"], token, approve=False).status_code == 400
+    assert _complete(pay, started["paymentId"], token, approve=True).status_code == 400
     assert db.query(Pago).one().checkout_used_at is not None
+    assert db.query(Servicio).count() == 0
 
 
-def test_checkout_token_is_single_use_after_an_approval(pay, scenario, db: Session):
+def test_retrying_the_same_approval_returns_the_existing_result(pay, scenario, db: Session):
     started = _start(pay, _quote(pay, scenario)).json()
     token = _token(started["checkoutUrl"])
 
     assert _complete(pay, started["paymentId"], token, approve=True).status_code == 200
-    assert _complete(pay, started["paymentId"], token, approve=True).status_code == 400
     assert db.query(Servicio).count() == 1
 
 
@@ -534,3 +534,115 @@ def test_domain_service_depends_on_the_port_not_the_simulated_adapter():
 
 def test_simulated_provider_name_matches_the_port_constant():
     assert SIMULATED_PROVIDER_NAME == "simulated"
+
+
+# Follow-up: payment review warnings (R4-001, R1-002, R3-001, R4-002)
+
+
+def _supersede(pay, scenario) -> None:
+    response = pay(
+        f"/api/chats/{scenario.chat_a.id}/quotations",
+        as_auth_id=PROVIDER_AUTH,
+        method="POST",
+        json={**QUOTATION_BODY, "amount": 99000},
+    )
+    assert response.status_code == 201
+
+
+def test_confirmation_refuses_a_superseded_quotation_and_marks_the_payment_rejected(webhook_pay, scenario, db: Session, external):
+    payment = _pending_payment(webhook_pay, scenario, db)
+    _supersede(webhook_pay, scenario)
+
+    response = _confirm(webhook_pay, external, payment, "approved")
+
+    assert response.status_code == 409
+    assert "reemplazada" in response.json()["detail"]
+    assert db.query(Pago).one().status == "rejected"
+    assert db.query(Servicio).count() == 0
+    assert db.query(Cotizacion).filter(Cotizacion.status == "pending").count() == 1
+
+
+def test_confirmation_refuses_an_expired_quotation_and_marks_the_payment_rejected(webhook_pay, scenario, db: Session, external):
+    payment = _pending_payment(webhook_pay, scenario, db)
+    quotation = db.query(Cotizacion).one()
+    quotation.created_at = utc_now() - timedelta(days=3)
+    quotation.expires_at = utc_now() - timedelta(days=1)
+    db.commit()
+
+    response = _confirm(webhook_pay, external, payment, "approved")
+
+    assert response.status_code == 409
+    assert "venció" in response.json()["detail"]
+    assert db.query(Pago).one().status == "rejected"
+    assert db.query(Cotizacion).one().status == "pending"
+    assert db.query(Servicio).count() == 0
+
+
+def test_confirmation_refuses_a_quotation_already_paid_by_another_payment(webhook_pay, scenario, db: Session, external):
+    payment = _pending_payment(webhook_pay, scenario, db)
+    db.query(Cotizacion).one().status = "paid"
+    db.commit()
+
+    response = _confirm(webhook_pay, external, payment, "approved")
+
+    assert response.status_code == 409
+    assert db.query(Pago).one().status == "rejected"
+    assert db.query(Servicio).count() == 0
+
+
+def test_simulated_completion_of_a_superseded_quotation_is_refused(pay, scenario, db: Session):
+    started = _start(pay, _quote(pay, scenario)).json()
+    _supersede(pay, scenario)
+
+    response = _complete(pay, started["paymentId"], _token(started["checkoutUrl"]), approve=True)
+
+    assert response.status_code == 409
+    assert db.query(Pago).one().status == "rejected"
+    assert db.query(Servicio).count() == 0
+
+
+def test_confirmation_refuses_a_payment_owned_by_another_provider(pay, scenario, db: Session, external):
+    payment = _pending_payment(pay, scenario, db)  # started by the simulated adapter
+    app.dependency_overrides[get_payment_provider] = lambda: external
+
+    response = _confirm(pay, external, payment, "approved")
+
+    assert response.status_code == 404
+    assert db.query(Pago).one().status == "pending"
+    assert db.query(Servicio).count() == 0
+
+
+@pytest.mark.parametrize("issued", ["\u00b2", "1\u00b2", "\u0661\u0667"])
+def test_checkout_token_with_non_ascii_digits_is_a_bad_request(pay, scenario, db: Session, simulator, issued):
+    started = _start(pay, _quote(pay, scenario)).json()
+    payment = db.query(Pago).one()
+
+    response = _complete(pay, started["paymentId"], f"{issued}.{'0' * 64}", approve=True)
+
+    assert response.status_code == 400
+    assert not simulator.verify_checkout_token(payment.id, payment.provider_payment_id, scenario.customer.id, f"{issued}.{'0' * 64}")
+    assert db.query(Pago).one().status == "pending"
+
+
+def test_retrying_the_same_rejection_returns_the_existing_result(pay, scenario, db: Session):
+    started = _start(pay, _quote(pay, scenario)).json()
+    token = _token(started["checkoutUrl"])
+
+    first = _complete(pay, started["paymentId"], token, approve=False)
+    second = _complete(pay, started["paymentId"], token, approve=False)
+
+    assert first.status_code == second.status_code == 200
+    assert second.json() == first.json()
+    assert second.json()["status"] == "rejected"
+
+
+def test_retrying_the_same_approval_returns_the_same_body(pay, scenario, db: Session):
+    started = _start(pay, _quote(pay, scenario)).json()
+    token = _token(started["checkoutUrl"])
+
+    first = _complete(pay, started["paymentId"], token, approve=True)
+    second = _complete(pay, started["paymentId"], token, approve=True)
+
+    assert second.status_code == 200
+    assert second.json() == first.json()
+    assert db.query(Servicio).count() == 1
