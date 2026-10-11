@@ -1,4 +1,5 @@
 import { authenticatedApiFetch, resolveApiBaseUrl } from "@/lib/auth/account-api";
+import { ChatRequestError, type ChatListPage, type ChatMessagesPage } from "@/lib/chats";
 import { buildProviderRequestsQuery, type ProviderRequestStatus } from "@/lib/provider-requests";
 
 export type LocationCommune = {
@@ -237,6 +238,36 @@ export async function getProviderRequests(
   );
   if (!response.ok) throw new Error(`Provider requests failed (${response.status})`);
   return response.json() as Promise<ProviderRequestPage>;
+}
+
+export async function getChats(accessToken: string, options: { limit: number; offset: number }, signal?: AbortSignal) {
+  const params = new URLSearchParams({ limit: String(options.limit), offset: String(options.offset) });
+  const response = await authenticatedApiFetch(
+    `/api/chats?${params.toString()}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, signal },
+  );
+  if (!response.ok) throw new ChatRequestError(response.status);
+  return response.json() as Promise<ChatListPage>;
+}
+
+export async function getChatMessages(
+  accessToken: string,
+  chatId: string,
+  options: { limit: number; before?: string },
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ limit: String(options.limit) });
+  if (options.before) params.set("before", options.before);
+  const response = await authenticatedApiFetch(
+    `/api/chats/${encodeURIComponent(chatId)}/messages?${params.toString()}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, signal },
+  );
+  if (!response.ok) throw new ChatRequestError(response.status);
+  return response.json() as Promise<ChatMessagesPage>;
 }
 
 export async function getProviderRequest(accessToken: string, requestId: string) {

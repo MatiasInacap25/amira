@@ -73,6 +73,25 @@ export const CUSTOMER_SERVICES_LAYOUT = listLayout("customer-services", 4, 84, 1
 export const PROVIDER_REQUESTS_LAYOUT = listLayout("provider-requests", 4, 132, 16);
 
 /** Provider request detail: back link, heading with status, then summary and cargo sections. */
+export const CHAT_LIST_LAYOUT = listLayout("chat-list", 5, 96, 12);
+
+/** Chat view: back link, header with counterpart, then alternating incoming and outgoing bubbles. */
+export const CHAT_THREAD_LAYOUT: Layout = {
+  name: "chat-thread",
+  viewportWidth: 1280,
+  width: 1000,
+  height: 460,
+  bones: [
+    [0, 0, 22, 14, 6],
+    [0, 36, 48, 26, 6],
+    [0, 74, 30, 14, 6],
+    [0, 116, 46, 62, 14],
+    [54, 194, 46, 52, 14],
+    [0, 262, 40, 44, 14],
+    [60, 322, 40, 64, 14],
+  ],
+};
+
 export const PROVIDER_REQUEST_DETAIL_LAYOUT: Layout = {
   name: "provider-request-detail",
   viewportWidth: 1280,
