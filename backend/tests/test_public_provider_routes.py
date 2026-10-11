@@ -66,6 +66,9 @@ PROFILE = {
     "kind": "company",
     "description": "Traslados y carga en la zona central.",
     "location": "Santiago",
+    "commune_code": None,
+    "commune_name": None,
+    "region_name": None,
     "public_activated_at": datetime(2026, 10, 3, tzinfo=timezone.utc),
     "owner_first_name": "Ana",
     "owner_last_name": "Pérez",
@@ -101,7 +104,7 @@ def run_request(method: str, path: str, session: FakeSession, *, json_body=None,
 def test_public_profile_returns_real_provider_and_linked_driver_names_but_only_allowlisted_data():
     session = FakeSession([
         FakeResult(row=PROFILE),
-        FakeResult(rows=[{"first_name": "Pedro", "last_name": "Soto"}]),
+        FakeResult(rows=[{"first_name": "Pedro", "last_name": "Soto", "is_owner": False}]),
         FakeResult(rows=[{"service_type_id": SERVICE_TYPE_ID, "name": "Mudanzas"}]),
         FakeResult(rows=[{"brand": "Volvo", "model": "FH", "year": 2022, "maximum_weight": "18000.00"}]),
         FakeResult(row={"average_rating": 4.5, "rating_count": 2}),
@@ -118,8 +121,11 @@ def test_public_profile_returns_real_provider_and_linked_driver_names_but_only_a
         "kind": "company",
         "description": "Traslados y carga en la zona central.",
         "location": "Santiago",
+        "communeCode": None,
+        "communeName": None,
+        "regionName": None,
         "ownerName": "Ana Pérez",
-        "drivers": [{"firstName": "Pedro", "lastName": "Soto"}],
+        "drivers": [{"firstName": "Pedro", "lastName": "Soto", "isOwner": False}],
         "services": [{"serviceTypeId": str(SERVICE_TYPE_ID), "name": "Mudanzas"}],
         "vehicles": [{"brand": "Volvo", "model": "FH", "year": 2022, "maximumWeight": "18000.00"}],
         "ratings": {
@@ -131,6 +137,117 @@ def test_public_profile_returns_real_provider_and_linked_driver_names_but_only_a
     for private_field in ("nationalId", "birthDate", "email", "phone", "authUserId", "companyTaxId", "plate", "imageStorageKey", "logoStorageKey", "userId", "serviceId", "customerId", "ratingId"):
         assert private_field not in response.text
     assert "user-chosen" not in response.text
+
+
+def test_public_profile_location_is_built_from_the_commune_catalog_when_available():
+    session = FakeSession([
+        FakeResult(row={
+            **PROFILE,
+            "location": "Calle vieja 123",
+            "commune_code": "13101",
+            "commune_name": "Santiago",
+            "region_name": "Metropolitana de Santiago",
+        }),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": None, "rating_count": 0}),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["location"] == "Santiago, Metropolitana de Santiago"
+    assert body["communeCode"] == "13101"
+    assert body["communeName"] == "Santiago"
+    assert body["regionName"] == "Metropolitana de Santiago"
+    assert "Calle vieja 123" not in response.text
+    profile_query = str(session.statements[0].compile(dialect=postgresql.dialect()))
+    assert '"Comunas"."Codigo" = "Perfil"."Codigo_Comuna"' in profile_query
+    assert '"Regiones"."Codigo" = "Comunas"."Codigo_Region"' in profile_query
+
+
+@pytest.mark.parametrize(
+    ("commune_name", "region_name", "legacy_location", "expected"),
+    [
+        ("Santiago", "Metropolitana de Santiago", "Calle vieja 123", "Santiago, Metropolitana de Santiago"),
+        ("Santiago", None, "Calle vieja 123", "Santiago"),
+        (None, "Metropolitana de Santiago", "Calle vieja 123", "Metropolitana de Santiago"),
+        (None, None, "Calle vieja 123", "Calle vieja 123"),
+        ("  ", " ", "Calle vieja 123", "Calle vieja 123"),
+        (None, None, None, None),
+    ],
+)
+def test_public_profile_location_uses_only_available_parts_and_never_renders_none(
+    commune_name, region_name, legacy_location, expected
+):
+    session = FakeSession([
+        FakeResult(row={
+            **PROFILE,
+            "location": legacy_location,
+            "commune_code": "13101",
+            "commune_name": commune_name,
+            "region_name": region_name,
+        }),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": None, "rating_count": 0}),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["location"] == expected
+    assert "None" not in response.text
+
+
+def test_public_profile_keeps_legacy_location_text_when_no_commune_is_linked():
+    session = FakeSession([
+        FakeResult(row={**PROFILE, "location": "Calle vieja 123"}),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": None, "rating_count": 0}),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    body = response.json()
+    assert body["location"] == "Calle vieja 123"
+    assert body["communeCode"] is None
+    assert body["communeName"] is None
+    assert body["regionName"] is None
+
+
+def test_company_profile_marks_only_the_owner_driver_record_with_is_owner():
+    session = FakeSession([
+        FakeResult(row=PROFILE),
+        FakeResult(rows=[
+            {"first_name": "Ana", "last_name": "Pérez", "is_owner": True},
+            {"first_name": "Pedro", "last_name": "Soto", "is_owner": False},
+        ]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row={"average_rating": None, "rating_count": 0}),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    assert response.json()["drivers"] == [
+        {"firstName": "Ana", "lastName": "Pérez", "isOwner": True},
+        {"firstName": "Pedro", "lastName": "Soto", "isOwner": False},
+    ]
+    driver_query = str(session.statements[1].compile(dialect=postgresql.dialect()))
+    assert "AS is_owner" in driver_query
+    assert '"Conductor"."ID_user" = (SELECT "Perfil"."ID_user"' in driver_query
 
 
 def test_public_profile_ratings_aggregate_all_eligible_rows_and_bound_recent_reviews():
@@ -192,6 +309,22 @@ def test_public_profile_with_no_eligible_ratings_returns_an_authoritative_empty_
     assert response.json()["ratings"] == {"averageRating": None, "ratingCount": 0, "recent": []}
 
 
+def test_public_profile_without_any_summary_row_still_returns_a_non_null_ratings_object():
+    session = FakeSession([
+        FakeResult(row=PROFILE),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row=None),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    assert response.json()["ratings"] == {"averageRating": None, "ratingCount": 0, "recent": []}
+
+
 def test_non_public_profile_is_rejected_before_rating_queries():
     session = FakeSession([FakeResult(row=None)])
 
@@ -211,7 +344,7 @@ def test_independent_driver_public_name_uses_real_name_not_profile_handle():
     }
     session = FakeSession([
         FakeResult(row=profile),
-        FakeResult(rows=[{"first_name": "Pedro", "last_name": "Soto"}]),
+        FakeResult(rows=[{"first_name": "Pedro", "last_name": "Soto", "is_owner": True}]),
         FakeResult(rows=[{"service_type_id": SERVICE_TYPE_ID, "name": "Fletes"}]),
         FakeResult(rows=[]),
         FakeResult(row={"average_rating": None, "rating_count": 0}),
@@ -222,7 +355,7 @@ def test_independent_driver_public_name_uses_real_name_not_profile_handle():
 
     assert response.status_code == 200
     assert response.json()["providerName"] == "Pedro Soto"
-    assert response.json()["drivers"] == [{"firstName": "Pedro", "lastName": "Soto"}]
+    assert response.json()["drivers"] == [{"firstName": "Pedro", "lastName": "Soto", "isOwner": True}]
     assert "Fletes Pedro" not in response.text
     driver_query = str(session.statements[1].compile(dialect=postgresql.dialect()))
     assert '"Perfil"."ID_user"' in driver_query

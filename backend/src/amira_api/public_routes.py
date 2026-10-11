@@ -70,6 +70,14 @@ def _contains(value: str) -> str:
     return f"%{escaped}%"
 
 
+def _profile_location(commune_name: str | None, region_name: str | None, legacy_location: str | None) -> str | None:
+    """Join only the catalog parts that exist; fall back to the legacy free text when none do."""
+    parts = [part.strip() for part in (commune_name, region_name) if part and part.strip()]
+    if parts:
+        return ", ".join(parts)
+    return legacy_location
+
+
 @router.get("/providers/{profile_id}", response_model=PublicProviderProfile)
 def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicProviderProfile:
     profile = session.execute(
@@ -80,11 +88,16 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
             Perfil.description.label("description"),
             Perfil.location.label("location"),
             Perfil.public_activated_at.label("public_activated_at"),
+            Commune.code.label("commune_code"),
+            Commune.name.label("commune_name"),
+            Region.name.label("region_name"),
             Usuario.first_name.label("owner_first_name"),
             Usuario.last_name.label("owner_last_name"),
         )
         .join(Usuario, Usuario.id == Perfil.owner_user_id)
         .join(RolPerfil, RolPerfil.id == Perfil.role_id)
+        .outerjoin(Commune, Commune.code == Perfil.commune_code)
+        .outerjoin(Region, Region.code == Commune.region_code)
         .where(
             Perfil.id == profile_id,
             Perfil.public_activated_at.is_not(None),
@@ -95,14 +108,18 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
     if profile is None or profile["public_activated_at"] is None:
         raise HTTPException(status_code=404, detail="Provider profile not found.")
 
+    owner_user_id = select(Perfil.owner_user_id).where(Perfil.id == profile_id).scalar_subquery()
     driver_rows = session.execute(
-        select(Usuario.first_name.label("first_name"), Usuario.last_name.label("last_name"))
+        select(
+            Usuario.first_name.label("first_name"),
+            Usuario.last_name.label("last_name"),
+            (Conductor.user_id == owner_user_id).label("is_owner"),
+        )
         .join(Conductor, Conductor.user_id == Usuario.id)
         .where(
             or_(
                 Conductor.employer_profile_id == profile_id,
-                (Conductor.user_id == select(Perfil.owner_user_id).where(Perfil.id == profile_id).scalar_subquery())
-                & Conductor.employer_profile_id.is_(None),
+                (Conductor.user_id == owner_user_id) & Conductor.employer_profile_id.is_(None),
             )
         )
         .order_by(Usuario.first_name.asc(), Usuario.last_name.asc(), Usuario.id.asc())
@@ -161,7 +178,10 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
         ),
         kind=profile["kind"],
         description=profile["description"],
-        location=profile["location"],
+        location=_profile_location(profile["commune_name"], profile["region_name"], profile["location"]),
+        commune_code=profile["commune_code"],
+        commune_name=profile["commune_name"],
+        region_name=profile["region_name"],
         owner_name=f"{profile['owner_first_name']} {profile['owner_last_name']}",
         drivers=[PublicProviderDriver(**row) for row in driver_rows],
         services=[PublicProviderService(**row) for row in service_rows],

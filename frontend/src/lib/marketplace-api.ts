@@ -61,8 +61,11 @@ export type ProviderProfile = {
   kind: "company" | "independent_driver";
   description: string | null;
   location: string | null;
+  communeCode: string | null;
+  communeName: string | null;
+  regionName: string | null;
   ownerName: string;
-  drivers: Array<{ firstName: string; lastName: string }>;
+  drivers: Array<{ firstName: string; lastName: string; isOwner: boolean }>;
   services: Array<{ serviceTypeId: string; name: string }>;
   vehicles: Array<{ brand: string; model: string; year: number | null; maximumWeight: string | null }>;
   ratings?: {
@@ -71,6 +74,23 @@ export type ProviderProfile = {
     recent: Array<{ rating: number; comment: string | null; createdAt: string }>;
   } | null;
 };
+
+export type CustomerServiceRating = {
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+};
+
+export type CustomerService = {
+  serviceId: string;
+  providerProfileId: string;
+  providerName: string;
+  serviceTypeName: string;
+  completedAt: string | null;
+  rating: CustomerServiceRating | null;
+};
+
+export type CustomerServicePage = PagedResponse<CustomerService>;
 
 export type ServiceRequestInput = {
   profileId: string;
@@ -161,6 +181,25 @@ export async function createServiceRequest(input: ServiceRequestInput, accessTok
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
+  );
+}
+
+export function requestCustomerServices(accessToken: string, offset: number, signal?: AbortSignal) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+  return authenticatedApiFetch(
+    `/api/customer/services?${params.toString()}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+export async function createCustomerServiceRating(serviceId: string, input: { rating: number; comment: string | null }, accessToken: string) {
+  return authenticatedApiFetch(
+    `/api/customer/services/${encodeURIComponent(serviceId)}/rating`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(input) },
   );
 }
 

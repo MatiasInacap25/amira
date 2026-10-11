@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { QuoteRequestDialog } from "@/components/marketplace/quote-request-dialog";
 import { RegionCommuneSelect } from "@/components/marketplace/region-commune-select";
+import { MarketplaceSkeleton, SERVICE_RESULTS_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { getServiceTypes, getServices, type ProviderProfile, type ServiceFilters } from "@/lib/marketplace-api";
 
@@ -116,7 +117,6 @@ function ServicesSearch() {
           <section aria-labelledby="results-title" className="marketplace-results" id="resultados">
             <div className="results-heading"><div><p className="eyebrow">PRESTADORES PUBLICADOS</p><h2 id="results-title">Servicios disponibles</h2></div>{page && <p className="results-count">{page.total} {page.total === 1 ? "resultado" : "resultados"}</p>}</div>
 
-            {servicesQuery.isPending && <div className="marketplace-state" role="status"><span className="state-spinner" aria-hidden="true" />Cargando servicios…</div>}
             {servicesQuery.isError && (
               <div className="marketplace-state marketplace-error" role="alert">
                 <h3>No pudimos cargar los servicios</h3>
@@ -131,6 +131,7 @@ function ServicesSearch() {
                 <p>Prueba con otra categoría o comuna. Los resultados dependen de los prestadores publicados en Amira.</p>
               </div>
             )}
+            <MarketplaceSkeleton label="Cargando servicios…" layout={SERVICE_RESULTS_LAYOUT} loading={servicesQuery.isPending} name="service-results">
             {servicesQuery.isSuccess && page && page.items.length > 0 && (
               <div className="service-results-grid">
                 {page.items.map((service) => (
@@ -165,6 +166,7 @@ function ServicesSearch() {
                 ))}
               </div>
             )}
+            </MarketplaceSkeleton>
 
             {page && page.total > 20 && (
               <nav aria-label="Páginas de resultados" className="pagination-controls">

@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, Route, Truck } from "lucide-react"
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
+import { MarketplaceSkeleton, ROUTE_RESULTS_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { getSharedRoutes, type SharedRouteFilters } from "@/lib/marketplace-api";
 
@@ -111,7 +112,6 @@ export default function SharedRoutesPage() {
           <section aria-labelledby="results-title" className="marketplace-results" id="resultados">
             <div className="results-heading"><div><p className="eyebrow">PUBLICADAS Y DISPONIBLES</p><h2 id="results-title">Rutas compartidas</h2></div>{page && <p className="results-count">{page.total} {page.total === 1 ? "ruta" : "rutas"}</p>}</div>
 
-            {routesQuery.isPending && <div className="marketplace-state" role="status"><span className="state-spinner" aria-hidden="true" />Cargando rutas…</div>}
             {routesQuery.isError && (
               <div className="marketplace-state marketplace-error" role="alert">
                 <h3>No pudimos cargar las rutas</h3>
@@ -126,6 +126,7 @@ export default function SharedRoutesPage() {
                 <p>Prueba con otra combinación o fecha. La lista muestra solo viajes publicados que aceptan solicitudes.</p>
               </div>
             )}
+            <MarketplaceSkeleton label="Cargando rutas…" layout={ROUTE_RESULTS_LAYOUT} loading={routesQuery.isPending} name="route-results">
             {routesQuery.isSuccess && page && page.items.length > 0 && (
               <div className="route-results-grid">
                 {page.items.map((route) => (
@@ -145,6 +146,7 @@ export default function SharedRoutesPage() {
                 ))}
               </div>
             )}
+            </MarketplaceSkeleton>
 
             {page && page.total > 20 && (
               <nav aria-label="Páginas de rutas" className="pagination-controls">
