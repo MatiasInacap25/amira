@@ -1,5 +1,5 @@
 import { authenticatedApiFetch, resolveApiBaseUrl } from "@/lib/auth/account-api";
-import { ChatRequestError, type ChatListPage, type ChatMessagesPage } from "@/lib/chats";
+import { ChatRequestError, type ChatListPage, type ChatMessage, type ChatMessagesPage, type ChatQuotation } from "@/lib/chats";
 import { buildProviderRequestsQuery, type ProviderRequestStatus } from "@/lib/provider-requests";
 
 export type LocationCommune = {
@@ -268,6 +268,76 @@ export async function getChatMessages(
   );
   if (!response.ok) throw new ChatRequestError(response.status);
   return response.json() as Promise<ChatMessagesPage>;
+}
+
+// FastAPI validation errors arrive as { detail: [{ type, msg }] }; other errors carry no usable detail.
+async function chatErrorFrom(response: Response): Promise<ChatRequestError> {
+  const body = await response.json().catch(() => null) as { detail?: unknown } | null;
+  const first = Array.isArray(body?.detail) ? (body.detail[0] as { type?: unknown; msg?: unknown } | undefined) : undefined;
+  return new ChatRequestError(response.status, {
+    type: typeof first?.type === "string" ? first.type : null,
+    msg: typeof first?.msg === "string" ? first.msg : null,
+  });
+}
+
+async function postChatJson<T>(accessToken: string, path: string, body?: unknown): Promise<T> {
+  const response = await authenticatedApiFetch(path, accessToken, process.env.NEXT_PUBLIC_API_URL, {
+    method: "POST",
+    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) throw await chatErrorFrom(response);
+  return response.json() as Promise<T>;
+}
+
+export function sendChatMessage(accessToken: string, chatId: string, content: string) {
+  return postChatJson<ChatMessage>(accessToken, `/api/chats/${encodeURIComponent(chatId)}/messages`, { content });
+}
+
+export type QuotationInput = {
+  amount: number;
+  serviceAt: string;
+  description: string;
+  validityHours: number;
+};
+
+export function createQuotation(accessToken: string, chatId: string, input: QuotationInput) {
+  return postChatJson<ChatQuotation>(accessToken, `/api/chats/${encodeURIComponent(chatId)}/quotations`, input);
+}
+
+export function rejectQuotation(accessToken: string, quotationId: string) {
+  return postChatJson<ChatQuotation>(accessToken, `/api/quotations/${encodeURIComponent(quotationId)}/reject`);
+}
+
+export function createQuotationPayment(accessToken: string, quotationId: string) {
+  return postChatJson<{ paymentId: string; checkoutUrl: string }>(
+    accessToken,
+    `/api/quotations/${encodeURIComponent(quotationId)}/payments`,
+  );
+}
+
+export type PaymentStatusPage = {
+  paymentId: string;
+  status: string;
+  quotationId: string;
+  quotationStatus: string;
+  chatId: string;
+};
+
+export async function getPaymentStatus(accessToken: string, paymentId: string) {
+  const response = await authenticatedApiFetch(
+    `/api/payments/${encodeURIComponent(paymentId)}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) throw new ChatRequestError(response.status);
+  return response.json() as Promise<PaymentStatusPage>;
+}
+
+// Development-only simulated checkout. The backend signs and applies the confirmation itself.
+export async function completeSimulatedPayment(accessToken: string, paymentId: string, token: string, approve: boolean) {
+  await postChatJson<unknown>(accessToken, `/api/payments/simulated/${encodeURIComponent(paymentId)}/complete`, { token, approve });
 }
 
 export async function getProviderRequest(accessToken: string, requestId: string) {

@@ -47,11 +47,34 @@ export type ChatMessage = {
   senderName: string;
 };
 
-// Contract shape: the header is nested under `chat`, and `messages` runs oldest to newest within the page.
+export type ChatViewerRole = "customer" | "provider";
+
+export type QuotationStatus = "pending" | "paid" | "rejected" | "expired" | "superseded";
+
+export type ChatQuotation = {
+  quotationId: string;
+  status: QuotationStatus;
+  amount: number;
+  currency: "CLP";
+  serviceAt: string;
+  description: string;
+  expiresAt: string;
+  createdAt: string;
+  paidAt: string | null;
+};
+
+export type ChatTimelineEntry =
+  | ({ kind: "message" } & ChatMessage)
+  | { kind: "quotation"; quotation: ChatQuotation };
+
+// Contract shape: the header is nested under `chat`; `timeline` runs oldest to newest within the page.
+// `nextBefore` is an opaque cursor for the next older page, null when no more messages exist.
 export type ChatMessagesPage = {
   chat: ChatHeader;
-  messages: ChatMessage[];
+  timeline: ChatTimelineEntry[];
   hasMore: boolean;
+  nextBefore: string | null;
+  viewerRole: ChatViewerRole;
 };
 
 export const CHAT_ROOT_KEY = ["chats"] as const;
@@ -71,15 +94,16 @@ export function nextChatListOffset(page: { offset: number; items: readonly unkno
   return nextOffset < page.total ? nextOffset : undefined;
 }
 
-// Pages are fetched newest first, so the last fetched page holds the oldest messages on screen.
+// Pages are fetched newest first. The server cursor breaks timestamp ties, so no message is skipped.
 export function nextMessagesBefore(pages: readonly ChatMessagesPage[]): string | undefined {
   const oldest = pages[pages.length - 1];
-  if (!oldest?.hasMore || oldest.messages.length === 0) return undefined;
-  return oldest.messages[0].sentAt;
+  if (!oldest?.hasMore || !oldest.nextBefore) return undefined;
+  return oldest.nextBefore;
 }
 
-export function orderMessagesOldestFirst(pages: readonly ChatMessagesPage[]): ChatMessage[] {
-  return [...pages].reverse().flatMap((page) => page.messages);
+// Pages are fetched newest first, so reversing them puts the oldest timeline entries first.
+export function orderTimelineOldestFirst(pages: readonly ChatMessagesPage[]): ChatTimelineEntry[] {
+  return [...pages].reverse().flatMap((page) => page.timeline);
 }
 
 export function chatHref(chatId: string): string {
@@ -121,11 +145,15 @@ export function formatChatRelativeTime(sentAt: string, now: Date): string {
 // Carries the HTTP status so the view can tell "not found" from a failed request.
 export class ChatRequestError extends Error {
   readonly status: number;
+  readonly detailType: string | null;
+  readonly detailMessage: string | null;
 
-  constructor(status: number) {
+  constructor(status: number, detail: { type: string | null; msg: string | null } = { type: null, msg: null }) {
     super(`Chat request failed (${status})`);
     this.name = "ChatRequestError";
     this.status = status;
+    this.detailType = detail.type;
+    this.detailMessage = detail.msg;
   }
 }
 

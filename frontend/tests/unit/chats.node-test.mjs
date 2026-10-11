@@ -11,7 +11,7 @@ import {
   lastMessageLabel,
   nextChatListOffset,
   nextMessagesBefore,
-  orderMessagesOldestFirst,
+  orderTimelineOldestFirst,
 } from "../../src/lib/chats.ts";
 
 const NOW = new Date("2026-10-11T15:00:00.000Z");
@@ -20,8 +20,8 @@ function minutesAgo(minutes) {
   return new Date(NOW.getTime() - minutes * 60_000).toISOString();
 }
 
-function message(messageId, sentAt) {
-  return { messageId, content: messageId, sentAt, fromMe: false, senderName: "Ana" };
+function messageEntry(messageId, sentAt) {
+  return { kind: "message", messageId, content: messageId, sentAt, fromMe: false, senderName: "Ana" };
 }
 
 test("returns the next chat offset while more chats remain", () => {
@@ -81,23 +81,22 @@ test("scopes chat query keys by user and keeps them under the chat root", () => 
   assert.deepEqual(chatThreadKey("user-a", "chat-1").slice(0, CHAT_ROOT_KEY.length), [...CHAT_ROOT_KEY]);
 });
 
-test("uses the oldest message of the last fetched page as the before cursor", () => {
-  const latest = { chat: {}, hasMore: true, messages: [message("m3", "2026-10-11T12:00:00.000Z"), message("m4", "2026-10-11T13:00:00.000Z")] };
-  const older = { chat: {}, hasMore: true, messages: [message("m1", "2026-10-10T09:00:00.000Z"), message("m2", "2026-10-10T10:00:00.000Z")] };
-  assert.equal(nextMessagesBefore([latest, older]), "2026-10-10T09:00:00.000Z");
+test("uses the server nextBefore cursor of the last fetched page", () => {
+  const latest = { chat: {}, hasMore: true, nextBefore: "older-cursor", viewerRole: "customer", timeline: [messageEntry("m3", "2026-10-11T12:00:00.000Z"), messageEntry("m4", "2026-10-11T13:00:00.000Z")] };
+  const older = { chat: {}, hasMore: true, nextBefore: "oldest-cursor", viewerRole: "customer", timeline: [messageEntry("m1", "2026-10-10T09:00:00.000Z")] };
+  assert.equal(nextMessagesBefore([latest, older]), "oldest-cursor");
 });
 
-test("has no before cursor once the oldest page reports no more messages", () => {
-  const oldest = { chat: {}, hasMore: false, messages: [message("m1", "2026-10-10T09:00:00.000Z")] };
+test("has no before cursor once the server reports no more messages", () => {
+  const oldest = { chat: {}, hasMore: false, nextBefore: null, viewerRole: "customer", timeline: [messageEntry("m1", "2026-10-10T09:00:00.000Z")] };
   assert.equal(nextMessagesBefore([oldest]), undefined);
-  assert.equal(nextMessagesBefore([{ chat: {}, hasMore: true, messages: [] }]), undefined);
 });
 
-test("orders fetched pages oldest first while keeping each page's order", () => {
-  const latest = { chat: {}, hasMore: true, messages: [message("m3", "2026-10-11T12:00:00.000Z"), message("m4", "2026-10-11T13:00:00.000Z")] };
-  const older = { chat: {}, hasMore: false, messages: [message("m1", "2026-10-10T09:00:00.000Z"), message("m2", "2026-10-10T10:00:00.000Z")] };
+test("orders fetched timeline entries oldest first while keeping each page's order", () => {
+  const latest = { chat: {}, hasMore: true, nextBefore: "c", viewerRole: "customer", timeline: [messageEntry("m3", "2026-10-11T12:00:00.000Z"), messageEntry("m4", "2026-10-11T13:00:00.000Z")] };
+  const older = { chat: {}, hasMore: false, nextBefore: null, viewerRole: "customer", timeline: [messageEntry("m1", "2026-10-10T09:00:00.000Z"), messageEntry("m2", "2026-10-10T10:00:00.000Z")] };
   assert.deepEqual(
-    orderMessagesOldestFirst([latest, older]).map((item) => item.messageId),
+    orderTimelineOldestFirst([latest, older]).map((entry) => entry.messageId),
     ["m1", "m2", "m3", "m4"],
   );
 });

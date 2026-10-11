@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ChatComposer } from "@/components/marketplace/chat-composer";
 import { ChatErrorState } from "@/components/marketplace/chat-error-state";
+import { ChatQuotationCard } from "@/components/marketplace/chat-quotation-card";
+import { QuotationDialog } from "@/components/marketplace/quotation-dialog";
 import { CHAT_THREAD_LAYOUT, MarketplaceSkeleton } from "@/components/marketplace/marketplace-skeleton";
 import { useNavUserId } from "@/components/marketplace/site-navigation";
 import {
@@ -15,16 +18,18 @@ import {
   chatThreadKey,
   counterpartKindLabel,
   nextMessagesBefore,
-  orderMessagesOldestFirst,
+  orderTimelineOldestFirst,
 } from "@/lib/chats";
+import { CHAT_POLL_INTERVAL_MS } from "@/lib/chat-quotations";
 import { getChatMessages } from "@/lib/marketplace-api";
 import { currentAccessToken } from "@/lib/provider-request-access";
 
 const timeFormatter = new Intl.DateTimeFormat("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: "America/Santiago" });
 
-// Same view for customers and providers. Messages are read-only until sending ships.
+// Same view for customers and providers. Polls so both sides see new messages without a reload.
 export function ChatThreadView({ chatId }: { chatId: string }) {
   const { userId, pending: sessionPending } = useNavUserId();
+  const queryClient = useQueryClient();
   const threadQuery = useInfiniteQuery({
     queryKey: chatThreadKey(userId ?? "", chatId),
     queryFn: async ({ pageParam }) => getChatMessages(await currentAccessToken(), chatId, { limit: CHAT_MESSAGE_PAGE_SIZE, before: pageParam }),
@@ -32,18 +37,23 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
     getNextPageParam: (_lastPage, pages) => nextMessagesBefore(pages),
     enabled: Boolean(userId),
     retry: false,
+    refetchInterval: CHAT_POLL_INTERVAL_MS,
   });
 
   const pages = threadQuery.data?.pages ?? [];
   const chat = pages[0]?.chat;
-  const messages = orderMessagesOldestFirst(pages);
-  const lastMessageId = messages[messages.length - 1]?.messageId;
+  const timeline = orderTimelineOldestFirst(pages);
+  const lastEntry = timeline[timeline.length - 1];
+  const lastEntryId = lastEntry?.kind === "message" ? lastEntry.messageId : lastEntry?.quotation.quotationId;
+  const viewerRole = pages[0]?.viewerRole;
   const endRef = useRef<HTMLDivElement>(null);
+  const [quotationOpen, setQuotationOpen] = useState(false);
+  const refreshThread = () => void queryClient.invalidateQueries({ queryKey: chatThreadKey(userId ?? "", chatId) });
 
   // Opens the conversation at its latest message. Loading older pages keeps the last message, so it does not jump.
   useEffect(() => {
-    if (lastMessageId) endRef.current?.scrollIntoView({ block: "end" });
-  }, [lastMessageId]);
+    if (lastEntryId) endRef.current?.scrollIntoView({ block: "end" });
+  }, [lastEntryId]);
 
   const notFound = threadQuery.error instanceof ChatRequestError && threadQuery.error.status === 404;
   const loading = sessionPending || (Boolean(userId) && threadQuery.isPending);
@@ -70,6 +80,11 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
               <h1 id="chat-thread-title">{chat.counterpart.name}</h1>
               <p className="chat-card-meta">{counterpartKindLabel(chat.counterpart.kind)} · {chat.serviceName}</p>
               <p className="chat-card-meta">{chatRouteLabel(chat)}</p>
+              {viewerRole === "provider" && (
+                <button className="button button-primary chat-quotation-trigger" onClick={() => setQuotationOpen(true)} type="button">
+                  Enviar cotización
+                </button>
+              )}
             </header>
           )}
 
@@ -86,24 +101,38 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
             </div>
           )}
 
-          {threadQuery.isSuccess && messages.length === 0 ? (
+          {threadQuery.isSuccess && timeline.length === 0 ? (
             <div className="marketplace-state marketplace-empty" role="status">
               <h2>Aún no hay mensajes en esta conversación</h2>
             </div>
           ) : (
             <ol aria-label="Mensajes" className="chat-thread">
-              {messages.map((message) => (
-                <li className={message.fromMe ? "chat-message chat-message-own" : "chat-message"} key={message.messageId}>
-                  {!message.fromMe && <p className="chat-message-sender">{message.senderName}</p>}
-                  <p className="chat-message-content">{message.content}</p>
-                  <time dateTime={message.sentAt}>{timeFormatter.format(new Date(message.sentAt))}</time>
+              {timeline.map((entry) => entry.kind === "message" ? (
+                <li className={entry.fromMe ? "chat-message chat-message-own" : "chat-message"} key={entry.messageId}>
+                  {!entry.fromMe && <p className="chat-message-sender">{entry.senderName}</p>}
+                  <p className="chat-message-content">{entry.content}</p>
+                  <time dateTime={entry.sentAt}>{timeFormatter.format(new Date(entry.sentAt))}</time>
+                </li>
+              ) : (
+                <li className="chat-timeline-quotation" key={entry.quotation.quotationId}>
+                  <ChatQuotationCard onChanged={refreshThread} quotation={entry.quotation} viewerRole={viewerRole ?? "customer"} />
                 </li>
               ))}
             </ol>
           )}
           <div ref={endRef} />
 
-          <p className="chat-composer-note">El envío de mensajes estará disponible próximamente.</p>
+          {quotationOpen && (
+            <QuotationDialog
+              chatId={chatId}
+              onClose={() => setQuotationOpen(false)}
+              onCreated={refreshThread}
+            />
+          )}
+
+          {chat && (
+            <ChatComposer chatId={chatId} onSent={refreshThread} />
+          )}
         </MarketplaceSkeleton>
       )}
     </article>
