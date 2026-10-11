@@ -19,6 +19,7 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
 
   const profile = query.data;
   const isCompany = profile?.kind === "company";
+  const ratings = profile?.ratings ?? null;
   const sections = [
     { id: "servicios", label: "Servicios" },
     { id: "flota", label: "Vehículos" },
@@ -63,7 +64,7 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
                       <span className="provider-kind-badge">{isCompany ? "Empresa" : "Conductor independiente"}</span>
                     </div>
                     {profile.location && <p className="provider-profile-location"><MapPin aria-hidden="true" size={14} />{profile.location}</p>}
-                    <RatingLine profile={profile} />
+                    <RatingLine ratings={ratings} />
                     {profile.description && <p className="provider-profile-description">{profile.description}</p>}
                     <button className="button button-primary provider-profile-hero-quote" disabled={!profile.services.length} onClick={() => setQuoteRequest({ serviceId: "" })} type="button">Cotizar</button>
                     {!profile.services.length && <p className="provider-profile-quote-note">Este prestador no tiene servicios publicados para cotizar.</p>}
@@ -104,17 +105,17 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
 
                 <section aria-labelledby="provider-ratings-title" className="provider-profile-section" id="valoraciones">
                   <h2 id="provider-ratings-title">Valoraciones</h2>
-                  {profile.ratings.ratingCount === 0 ? (
-                    <div className="provider-profile-empty"><Star aria-hidden="true" size={19} /><p>Este prestador aún no tiene valoraciones.</p></div>
+                  {!ratings || ratings.ratingCount === 0 ? (
+                    <div className="provider-profile-empty"><Star aria-hidden="true" size={19} /><p>Aún no hay valoraciones</p></div>
                   ) : (
                     <>
                       <div className="provider-rating-summary">
-                        <strong>{profile.ratings.averageRating === null ? "Promedio no disponible" : `${formatRating(profile.ratings.averageRating)} de 5`}</strong>
+                        <strong>{ratings.averageRating === null ? "Promedio no disponible" : `${formatRating(ratings.averageRating)} de 5`}</strong>
                         <span>Promedio de clientes con servicios completados</span>
                       </div>
-                      {profile.ratings.recent.length ? (
+                      {ratings.recent.length ? (
                         <ul className="provider-rating-list">
-                          {profile.ratings.recent.map((rating, index) => (
+                          {ratings.recent.map((rating, index) => (
                             <li key={`${rating.createdAt}-${rating.rating}-${index}`}>
                               <div><strong>{rating.rating} de 5</strong><time dateTime={rating.createdAt}>{formatRatingDate(rating.createdAt)}</time></div>
                               <p>{rating.comment?.trim() || "Sin comentario"}</p>
@@ -171,15 +172,14 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
   );
 }
 
-function RatingLine({ profile }: { profile: ProviderProfile }) {
-  const { ratingCount, averageRating } = profile.ratings;
-  if (ratingCount === 0 || averageRating === null) {
-    return <p className="provider-profile-rating-line provider-profile-rating-empty">Sin valoraciones todavía</p>;
+function RatingLine({ ratings }: { ratings: ProviderProfile["ratings"] }) {
+  if (!ratings || ratings.ratingCount === 0 || ratings.averageRating === null) {
+    return <p className="provider-profile-rating-line provider-profile-rating-empty">Aún no hay valoraciones</p>;
   }
   return (
     <p className="provider-profile-rating-line">
       <Star aria-hidden="true" fill="currentColor" size={15} />
-      <span><strong>{formatRating(averageRating)}</strong> de 5 · {ratingCount} {ratingCount === 1 ? "valoración" : "valoraciones"}</span>
+      <span><strong>{formatRating(ratings.averageRating)}</strong> de 5 · {ratings.ratingCount} {ratings.ratingCount === 1 ? "valoración" : "valoraciones"}</span>
     </p>
   );
 }

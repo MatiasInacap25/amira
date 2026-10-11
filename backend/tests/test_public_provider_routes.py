@@ -272,6 +272,22 @@ def test_public_profile_with_no_eligible_ratings_returns_an_authoritative_empty_
     assert response.json()["ratings"] == {"averageRating": None, "ratingCount": 0, "recent": []}
 
 
+def test_public_profile_without_any_summary_row_still_returns_a_non_null_ratings_object():
+    session = FakeSession([
+        FakeResult(row=PROFILE),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(rows=[]),
+        FakeResult(row=None),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/providers/{PROFILE_ID}", session, authenticated=False)
+
+    assert response.status_code == 200
+    assert response.json()["ratings"] == {"averageRating": None, "ratingCount": 0, "recent": []}
+
+
 def test_non_public_profile_is_rejected_before_rating_queries():
     session = FakeSession([FakeResult(row=None)])
 

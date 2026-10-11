@@ -68,11 +68,11 @@ export type ProviderProfile = {
   drivers: Array<{ firstName: string; lastName: string; isOwner: boolean }>;
   services: Array<{ serviceTypeId: string; name: string }>;
   vehicles: Array<{ brand: string; model: string; year: number | null; maximumWeight: string | null }>;
-  ratings: {
+  ratings?: {
     averageRating: number | null;
     ratingCount: number;
     recent: Array<{ rating: number; comment: string | null; createdAt: string }>;
-  };
+  } | null;
 };
 
 export type CustomerServiceRating = {
