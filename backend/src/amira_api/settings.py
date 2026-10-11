@@ -7,6 +7,8 @@ from pydantic import SecretStr, model_validator
 
 logger = logging.getLogger(__name__)
 
+DEV_SMS_MFA_BYPASS_APP_ENVS = frozenset({"development", "local", "test"})
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -32,19 +34,17 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
-    def is_production(self) -> bool:
-        return self.app_env.strip().lower() == "production"
-
-    @property
     def dev_sms_mfa_bypass_active(self) -> bool:
-        return self.dev_skip_sms_mfa and not self.is_production
+        return self.dev_skip_sms_mfa and self.app_env.strip().lower() in DEV_SMS_MFA_BYPASS_APP_ENVS
 
     @model_validator(mode="after")
-    def reject_dev_sms_mfa_bypass_in_production(self) -> "Settings":
+    def fail_closed_dev_sms_mfa_bypass_outside_allowlist(self) -> "Settings":
+        # Fail closed: any environment outside the allowlist (including typos and empty values) refuses the bypass.
         # RuntimeError, not ValueError: pydantic wraps ValueError and echoes every input
         # (including DATABASE_URL) into the traceback, which would leak secrets into logs.
-        if self.dev_skip_sms_mfa and self.is_production:
-            raise RuntimeError("DEV_SKIP_SMS_MFA must not be enabled when APP_ENV is 'production'.")
+        if self.dev_skip_sms_mfa and self.app_env.strip().lower() not in DEV_SMS_MFA_BYPASS_APP_ENVS:
+            allowed = ", ".join(sorted(DEV_SMS_MFA_BYPASS_APP_ENVS))
+            raise RuntimeError(f"DEV_SKIP_SMS_MFA requires APP_ENV to be one of: {allowed}.")
         return self
 
 

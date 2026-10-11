@@ -111,10 +111,11 @@ def test_bypass_on_accepts_aal1_password_session(monkeypatch):
     assert response.json() == {"user_id": USER_ID, "assurance": "dev_password_bypass"}
 
 
-def test_bypass_on_accepts_aal1_password_session_outside_production(monkeypatch):
-    response = request_protected_route(monkeypatch, make_token(), dev_skip=True, app_env="staging")
+def test_bypass_on_accepts_aal1_password_session_in_allowed_environment(monkeypatch):
+    response = request_protected_route(monkeypatch, make_token(), dev_skip=True, app_env="local")
 
     assert response.status_code == 200
+    assert response.json()["assurance"] == "dev_password_bypass"
 
 
 def test_bypass_on_rejects_anonymous_aal1_session(monkeypatch):
@@ -155,20 +156,36 @@ def test_bypass_on_rejects_aal1_session_with_wrong_role(monkeypatch):
     assert response.status_code == 401
 
 
-def test_production_with_bypass_fails_at_settings_construction():
-    with pytest.raises(RuntimeError, match="DEV_SKIP_SMS_MFA"):
-        Settings(_env_file=None, app_env="production", dev_skip_sms_mfa=True)
+@pytest.mark.parametrize("app_env", ["development", "local", "test", " Development ", "LOCAL", "Test\n"])
+def test_bypass_activates_only_for_allowlisted_environments(app_env):
+    settings = Settings(_env_file=None, app_env=app_env, dev_skip_sms_mfa=True)
+
+    assert settings.dev_sms_mfa_bypass_active is True
 
 
-def test_production_check_ignores_case_and_surrounding_whitespace():
-    with pytest.raises(RuntimeError, match="DEV_SKIP_SMS_MFA"):
-        Settings(_env_file=None, app_env=" Production ", dev_skip_sms_mfa=True)
+@pytest.mark.parametrize("app_env", ["production", "prod", "staging", "preview", "developmnet", "", "   "])
+def test_bypass_on_outside_allowlist_fails_closed_at_settings_construction(app_env):
+    with pytest.raises(RuntimeError, match="development, local, test"):
+        Settings(_env_file=None, app_env=app_env, dev_skip_sms_mfa=True)
 
 
-def test_production_without_bypass_is_allowed():
-    settings = Settings(_env_file=None, app_env="production", dev_skip_sms_mfa=False)
+@pytest.mark.parametrize("app_env", ["production", "prod", "staging", "preview", "developmnet", "", "development"])
+def test_bypass_off_works_in_any_environment(app_env):
+    settings = Settings(_env_file=None, app_env=app_env, dev_skip_sms_mfa=False)
 
     assert settings.dev_sms_mfa_bypass_active is False
+
+
+def test_fail_closed_error_does_not_echo_other_settings():
+    secret_url = "postgresql://user:hunter2-secret@db.example.test/amira"
+
+    with pytest.raises(RuntimeError) as excinfo:
+        Settings(_env_file=None, app_env="production", dev_skip_sms_mfa=True, database_url=secret_url)
+
+    message = str(excinfo.value)
+    assert "hunter2-secret" not in message
+    assert secret_url not in message
+    assert "DEV_SKIP_SMS_MFA" in message
 
 
 def test_startup_warning_is_logged_only_when_bypass_is_active(caplog):
