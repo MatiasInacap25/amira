@@ -23,7 +23,7 @@ Make the chat window usable: participants send messages (without sharing contact
 
 ### Backend
 
-- [ ] MB1 `POST /api/chats/{id}/messages` (participants only, 404 otherwise; content 1–2000 chars, trimmed) with the contact filter (422 Spanish message naming the blocked kind).
+- [ ] MB1 `POST /api/chats/{id}/messages` (participants only, 404 otherwise; content 1–2000 chars, trimmed) with the contact filter (422 Spanish message naming the blocked kind). Also fix the message cursor (chat-list review R4-001/R4-002/R3-003): `before` must break ties with the message id (e.g. an opaque cursor `"<sentAt>|<messageId>"` compared as a tuple), so messages sharing a timestamp are never skipped; update the frontend `nextMessagesBefore` accordingly.
 - [ ] MB2 `POST /api/chats/{id}/quotations` (provider participant only): amount CLP integer > 0, service date, description, validity (default 48 h); supersedes previous pending; migration adds CHECK on `Cotizacion.Estado`. Quotations appear in the chat timeline returned by `GET /api/chats/{id}/messages`.
 - [ ] MB3 `POST /api/quotations/{id}/reject` (customer participant only; pending only).
 - [ ] MB4 Payments: `POST /api/quotations/{id}/payments` (customer only, pending and not expired) creates a `Pago` with an idempotency key and returns a checkout URL from the `PaymentProvider` port; `POST /api/payments/confirm` verifies the signature, marks `Pago` confirmed, quotation `paid`, and creates the `Servicio` atomically and idempotently. Simulated adapter with its own checkout endpoint for development.
