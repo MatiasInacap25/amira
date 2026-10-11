@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { CustomerServiceActions } from "@/components/marketplace/customer-service-actions";
 import { DeliveryPhoto } from "@/components/marketplace/delivery-photo";
 import { ServiceActions } from "@/components/marketplace/service-actions";
 import { ServiceAssignmentForm } from "@/components/marketplace/service-assignment-form";
@@ -14,6 +15,9 @@ import {
   parseAssignmentSaveResponse,
   parseServiceResponse,
   type DeliveryPhotoLink,
+  requestCustomerDeliveryPhoto,
+  requestCustomerServiceClaim,
+  requestCustomerServiceConsent,
   requestCustomerServiceDetail,
   requestProviderAssignmentOptions,
   requestProviderAssignmentUpdate,
@@ -29,18 +33,21 @@ import {
 import { sendWithTokenRetry, type StatusResponse } from "@/lib/customer-request-retry";
 import { CustomerSessionError, readAccessToken, refreshAccessToken } from "@/lib/customer-session";
 import { isProviderRole } from "@/lib/provider-requests";
+import {
+  ACCOUNT_ROLE_KEY,
+  CUSTOMER_SERVICES_KEY,
+  PROVIDER_SERVICES_KEY,
+  SERVICE_DETAIL_KEY,
+} from "@/lib/service-query-keys";
 import { serviceActionErrorMessage } from "@/lib/service-status";
 
-const ACCOUNT_ROLE_KEY = ["services-account-role"];
-const SERVICE_DETAIL_KEY = ["service-detail"];
-const PROVIDER_SERVICES_KEY = ["provider-services"];
 const SIGN_IN_HREF = "/login?next=%2Fcuenta%2Fservicios";
 const LIST_HREF = "/cuenta/servicios";
 
 class ServiceNotFoundError extends Error {}
 
 // Sends with the session token, retrying once with a refreshed token on 401. A second 401 is returned to the caller.
-function sendProviderRequest<T extends StatusResponse>(send: (accessToken: string) => Promise<T>) {
+function sendAuthorizedRequest<T extends StatusResponse>(send: (accessToken: string) => Promise<T>) {
   return sendWithTokenRetry(send, readAccessToken, refreshAccessToken);
 }
 
@@ -67,44 +74,75 @@ export function useServiceAccountRole() {
   });
 }
 
-// Provider mutations refresh the detail and every provider list, since a status or assignment change shows in both.
+// Provider mutations refresh the detail and every list, since a status or assignment change shows in the customer list too.
 function useProviderServiceMutations(serviceId: string) {
   const queryClient = useQueryClient();
 
-  function refreshProviderViews() {
+  function refreshServiceViews() {
     return Promise.all([
       queryClient.invalidateQueries({ queryKey: SERVICE_DETAIL_KEY }),
       queryClient.invalidateQueries({ queryKey: PROVIDER_SERVICES_KEY }),
+      queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY }),
     ]);
   }
 
   const saveAssignments = useMutation({
     mutationFn: async (update: ServiceAssignmentUpdate) => {
-      const response = await sendProviderRequest((accessToken) => requestProviderAssignmentUpdate(accessToken, serviceId, update));
+      const response = await sendAuthorizedRequest((accessToken) => requestProviderAssignmentUpdate(accessToken, serviceId, update));
       return parseAssignmentSaveResponse(response);
     },
     onSuccess: (result) => {
-      if (result.status === "saved") return refreshProviderViews();
+      if (result.status === "saved") return refreshServiceViews();
     },
   });
 
   const startService = useMutation({
     mutationFn: async () => {
-      const response = await sendProviderRequest((accessToken) => requestProviderServiceStart(accessToken, serviceId));
+      const response = await sendAuthorizedRequest((accessToken) => requestProviderServiceStart(accessToken, serviceId));
       return parseServiceResponse<ServiceDetailData>(response);
     },
-    onSuccess: refreshProviderViews,
+    onSuccess: refreshServiceViews,
   });
 
   const completeService = useMutation({
     mutationFn: async (photo: File) => {
-      const response = await sendProviderRequest((accessToken) => requestProviderServiceComplete(accessToken, serviceId, photo));
+      const response = await sendAuthorizedRequest((accessToken) => requestProviderServiceComplete(accessToken, serviceId, photo));
       return parseServiceResponse<ServiceDetailData>(response);
     },
-    onSuccess: refreshProviderViews,
+    onSuccess: refreshServiceViews,
   });
 
   return { saveAssignments, startService, completeService };
+}
+
+// Customer mutations refresh on settle, not only on success: a 409 means the shown state is stale and must be refetched.
+function useCustomerServiceMutations(serviceId: string) {
+  const queryClient = useQueryClient();
+
+  function refreshServiceViews() {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: SERVICE_DETAIL_KEY }),
+      queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY }),
+    ]);
+  }
+
+  const consent = useMutation({
+    mutationFn: async () => {
+      const response = await sendAuthorizedRequest((accessToken) => requestCustomerServiceConsent(accessToken, serviceId));
+      return parseServiceResponse<ServiceDetailData>(response);
+    },
+    onSettled: refreshServiceViews,
+  });
+
+  const claim = useMutation({
+    mutationFn: async (reason: string) => {
+      const response = await sendAuthorizedRequest((accessToken) => requestCustomerServiceClaim(accessToken, serviceId, { reason }));
+      return parseServiceResponse<ServiceDetailData>(response);
+    },
+    onSettled: refreshServiceViews,
+  });
+
+  return { consent, claim };
 }
 
 function assignmentSignature(assignments: ServiceDetailData["assignments"]) {
@@ -115,6 +153,7 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   const roleQuery = useServiceAccountRole();
   const provider = roleQuery.data?.provider ?? false;
   const mutations = useProviderServiceMutations(serviceId);
+  const customerMutations = useCustomerServiceMutations(serviceId);
 
   const detailQuery = useQuery({
     queryKey: ["service-detail", provider ? "provider" : "customer", serviceId],
@@ -141,7 +180,7 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   const optionsQuery = useQuery({
     queryKey: ["service-assignment-options", serviceId],
     queryFn: async () => {
-      const response = await sendProviderRequest((accessToken) => requestProviderAssignmentOptions(accessToken, serviceId));
+      const response = await sendAuthorizedRequest((accessToken) => requestProviderAssignmentOptions(accessToken, serviceId));
       return parseServiceResponse<ServiceAssignmentOptions>(response);
     },
     enabled: showAssignmentForm,
@@ -155,6 +194,9 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   const loading = roleQuery.isPending || (roleQuery.isSuccess && detailQuery.isPending);
 
   const isProviderViewer = detail?.viewerRole === "provider";
+  const isCustomerViewer = detail?.viewerRole === "customer";
+  // Claims and consent only exist once the service is completed; a disputed service still shows its open claim.
+  const showCustomerResolution = Boolean(isCustomerViewer && detail && (detail.status === "completed" || detail.status === "disputed"));
 
   return (
     <>
@@ -218,9 +260,20 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
                       optionsPending={optionsQuery.isPending}
                     />
                   ) : undefined}
-                  deliveryPhoto={isProviderViewer && detail.deliveryPhotoAvailable ? (
+                  customerResolution={showCustomerResolution ? (
+                    <CustomerServiceActions
+                      claimPending={customerMutations.claim.isPending}
+                      consentPending={customerMutations.consent.isPending}
+                      onClaim={(reason) => customerMutations.claim.mutateAsync(reason)}
+                      onConsent={() => customerMutations.consent.mutateAsync()}
+                      service={detail}
+                    />
+                  ) : undefined}
+                  deliveryPhoto={detail.deliveryPhotoAvailable ? (
                     <DeliveryPhoto
-                      onLoad={() => sendProviderRequest((accessToken) => requestProviderDeliveryPhoto(accessToken, serviceId))
+                      onLoad={() => sendAuthorizedRequest((accessToken) => (isProviderViewer
+                        ? requestProviderDeliveryPhoto(accessToken, serviceId)
+                        : requestCustomerDeliveryPhoto(accessToken, serviceId)))
                         .then((response) => parseServiceResponse<DeliveryPhotoLink>(response))}
                     />
                   ) : undefined}

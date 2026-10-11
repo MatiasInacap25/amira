@@ -50,7 +50,7 @@ export function deliveryPhotoRejection(photo: Pick<File, "type" | "size">): stri
   return null;
 }
 
-export type ServiceAction = "load-options" | "assign" | "start" | "complete" | "delivery-photo";
+export type ServiceAction = "load-options" | "assign" | "start" | "complete" | "delivery-photo" | "consent" | "claim";
 
 const SESSION_EXPIRED_MESSAGE = "Tu sesión expiró. Inicia sesión nuevamente para continuar.";
 const NOT_FOUND_MESSAGE = "Este servicio no existe o ya no está disponible en tu cuenta.";
@@ -58,6 +58,7 @@ const NO_CONNECTION_MESSAGE = "No pudimos conectarnos. Revisa tu conexión e int
 const GENERIC_MESSAGE = "No pudimos completar la acción. Inténtalo nuevamente.";
 const OWNER_ONLY_MESSAGE = "Solo el dueño del perfil puede gestionar este servicio.";
 const STORAGE_NOT_CONFIGURED_MESSAGE = "El almacenamiento de fotos no está configurado. Contacta al equipo de Amira.";
+export const CLAIM_REASON_MAX_LENGTH = 1000;
 
 // Status-specific copy per action. Anything not listed falls back to the generic message.
 const ACTION_STATUS_MESSAGES: Record<ServiceAction, Partial<Record<number, string>>> = {
@@ -85,13 +86,62 @@ const ACTION_STATUS_MESSAGES: Record<ServiceAction, Partial<Record<number, strin
     502: "No pudimos obtener la foto de entrega. Inténtalo nuevamente.",
     503: STORAGE_NOT_CONFIGURED_MESSAGE,
   },
+  consent: {
+    409: "No pudimos registrar tu conformidad con el estado actual del servicio. Actualizamos la información.",
+  },
+  claim: {
+    409: "No pudimos enviar el reclamo con el estado actual del servicio. Actualizamos la información.",
+    422: `Revisa el motivo del reclamo: debe tener entre 1 y ${CLAIM_REASON_MAX_LENGTH} caracteres.`,
+  },
 };
+
+// The backend's 409 detail for each customer conflict. The detail names the state that blocked the action.
+const CUSTOMER_CONFLICT_MESSAGES = new Map<string, string>([
+  ["This service already has an open claim.", "Este servicio ya tiene un reclamo abierto."],
+  ["Only completed services can be claimed.", "Solo puedes reclamar servicios finalizados."],
+  ["Consent was already given for this service.", "Ya registraste tu conformidad con este servicio."],
+  ["The claim window for this service has closed.", "El plazo para reclamar este servicio ya venció."],
+  ["A service with an open claim cannot receive consent.", "Este servicio tiene un reclamo abierto y no admite conformidad."],
+  ["Only completed services can receive consent.", "Solo puedes confirmar la conformidad de servicios finalizados."],
+]);
 
 export function serviceActionErrorMessage(cause: unknown, action: ServiceAction): string {
   if (cause instanceof TypeError) return NO_CONNECTION_MESSAGE;
   if (!(cause instanceof ServiceRequestError)) return GENERIC_MESSAGE;
-  const { status } = cause;
+  const { status, detail } = cause;
   if (status === 401) return SESSION_EXPIRED_MESSAGE;
+  if (status === 409 && (action === "claim" || action === "consent") && detail) {
+    const conflict = CUSTOMER_CONFLICT_MESSAGES.get(detail);
+    if (conflict) return conflict;
+  }
   if (status === 404) return ACTION_STATUS_MESSAGES[action][status] ?? NOT_FOUND_MESSAGE;
   return ACTION_STATUS_MESSAGES[action][status] ?? GENERIC_MESSAGE;
+}
+
+// Claim reason rules, mirroring the backend: trimmed, required, at most CLAIM_REASON_MAX_LENGTH characters.
+export function claimReasonRejection(reason: string): string | null {
+  const trimmed = reason.trim();
+  if (!trimmed) return "Escribe el motivo del reclamo.";
+  if (Array.from(trimmed).length > CLAIM_REASON_MAX_LENGTH) return `El motivo no puede superar ${CLAIM_REASON_MAX_LENGTH} caracteres.`;
+  return null;
+}
+
+export type ClaimWindow = { expired: boolean; minutesLeft: number | null };
+
+// `now` is null until the client has mounted, so the server render never depends on the clock.
+// A missing deadline means the claim window is closed, as the backend treats it.
+export function claimWindowAt(deadlineAt: string | null, now: number | null): ClaimWindow {
+  if (deadlineAt === null) return { expired: true, minutesLeft: null };
+  if (now === null) return { expired: false, minutesLeft: null };
+  const remainingMs = Date.parse(deadlineAt) - now;
+  if (!(remainingMs > 0)) return { expired: true, minutesLeft: null };
+  return { expired: false, minutesLeft: Math.ceil(remainingMs / 60_000) };
+}
+
+export function formatClaimCountdown(minutesLeft: number): string {
+  if (minutesLeft < 1) return "menos de 1 minuto";
+  const hours = Math.floor(minutesLeft / 60);
+  const minutes = minutesLeft % 60;
+  if (hours === 0) return `${minutes} min`;
+  return `${hours} h ${minutes} min`;
 }

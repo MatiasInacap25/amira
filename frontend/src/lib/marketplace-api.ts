@@ -130,6 +130,11 @@ export type ServiceDetail = ServiceListItem & {
   canManage: boolean;
   assignments: ServiceAssignment[];
   deliveryPhotoAvailable: boolean;
+  customerConsentAt: string | null;
+  claimOpen: boolean;
+  // Customer-only flags; providers always receive false.
+  canClaim: boolean;
+  canConsent: boolean;
 };
 
 export type ServiceListPage = PagedResponse<ServiceListItem>;
@@ -163,6 +168,10 @@ export type ServiceAssignmentSaveResult =
 export type DeliveryPhotoLink = {
   url: string;
   expiresAt: string;
+};
+
+export type CustomerServiceClaimInput = {
+  reason: string;
 };
 
 export type ProviderServiceQuery = {
@@ -304,7 +313,8 @@ export async function createCustomerServiceRating(serviceId: string, input: { ra
 }
 
 export class ServiceRequestError extends Error {
-  constructor(readonly status: number) {
+  // `detail` is the backend's message for handled errors, when it is a plain string.
+  constructor(readonly status: number, readonly detail: string | null = null) {
     super(`Service request failed (${status})`);
     this.name = "ServiceRequestError";
   }
@@ -340,8 +350,14 @@ export function requestCustomerServiceDetail(accessToken: string, serviceId: str
   );
 }
 
+// FastAPI puts a handled error's message in `detail`. A body that is not JSON, or has no string detail, yields null.
+async function serviceErrorDetailFrom(response: Response): Promise<string | null> {
+  const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+  return typeof body?.detail === "string" ? body.detail : null;
+}
+
 export async function parseServiceResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new ServiceRequestError(response.status);
+  if (!response.ok) throw new ServiceRequestError(response.status, await serviceErrorDetailFrom(response));
   return response.json() as Promise<T>;
 }
 
@@ -405,6 +421,38 @@ export function requestProviderDeliveryPhoto(accessToken: string, serviceId: str
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
     { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+export function requestCustomerDeliveryPhoto(accessToken: string, serviceId: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    `/api/customer/services/${encodeURIComponent(serviceId)}/delivery-photo`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+// No body: the backend records consent for the viewer's own service and releases the payout at the next run.
+export function requestCustomerServiceConsent(accessToken: string, serviceId: string) {
+  return authenticatedApiFetch(
+    `/api/customer/services/${encodeURIComponent(serviceId)}/consent`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { Accept: "application/json" } },
+  );
+}
+
+export function requestCustomerServiceClaim(accessToken: string, serviceId: string, input: CustomerServiceClaimInput) {
+  return authenticatedApiFetch(
+    `/api/customer/services/${encodeURIComponent(serviceId)}/claims`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    },
   );
 }
 

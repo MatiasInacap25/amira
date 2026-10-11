@@ -16,6 +16,7 @@ import {
 import { normalizeRatingComment, RATING_COMMENT_MAX_LENGTH, validateRatingDraft, type RatingDraftErrors } from "@/lib/customer-rating-validation";
 import { mapRatingRejection } from "@/lib/customer-rating-errors";
 import { nextCustomerServicesOffset } from "@/lib/customer-services-pagination";
+import { CUSTOMER_SERVICES_KEY } from "@/lib/service-query-keys";
 import { shouldClearCustomerCache } from "@/lib/customer-cache-policy";
 import { sendWithTokenRetry } from "@/lib/customer-request-retry";
 import {
@@ -28,7 +29,6 @@ import { createClient } from "@/lib/supabase/client";
 
 // Services are cached per user. The auth query holds only the user id; tokens are read per request.
 const AUTH_QUERY_KEY = ["customer-auth"];
-const SERVICES_QUERY_KEY = ["customer-services"];
 const SIGN_IN_HREF = "/login?next=%2Fcuenta%2Fservicios";
 
 export function CustomerServicesView() {
@@ -42,7 +42,7 @@ export function CustomerServicesView() {
   });
   const userId = sessionQuery.data?.userId ?? "";
   const servicesQuery = useInfiniteQuery({
-    queryKey: [...SERVICES_QUERY_KEY, userId],
+    queryKey: [...CUSTOMER_SERVICES_KEY, userId],
     queryFn: async ({ pageParam, signal }) => {
       const response = await sendWithTokenRetry(
         (accessToken) => requestCustomerServices(accessToken, pageParam, signal),
@@ -64,7 +64,7 @@ export function CustomerServicesView() {
       if (event === "INITIAL_SESSION") return;
       const cachedUserId = queryClient.getQueryData<{ userId: string }>(AUTH_QUERY_KEY)?.userId;
       if (!shouldClearCustomerCache(event, cachedUserId, session?.user.id)) return;
-      queryClient.removeQueries({ queryKey: SERVICES_QUERY_KEY });
+      queryClient.removeQueries({ queryKey: CUSTOMER_SERVICES_KEY });
       void queryClient.resetQueries({ queryKey: AUTH_QUERY_KEY });
     });
     return () => data.subscription.unsubscribe();
@@ -192,7 +192,7 @@ function RatingForm({ serviceId }: { serviceId: string }) {
         refreshAccessToken,
       );
       if (response.ok) {
-        await queryClient.invalidateQueries({ queryKey: SERVICES_QUERY_KEY });
+        await queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY });
         return;
       }
       if (response.status === 401) {
@@ -202,7 +202,7 @@ function RatingForm({ serviceId }: { serviceId: string }) {
       else if (response.status === 404) setSubmitError("No encontramos este servicio en tu cuenta. Actualiza la página e inténtalo nuevamente.");
       else if (response.status === 409) {
         setSubmitError("Este servicio ya fue valorado.");
-        await queryClient.invalidateQueries({ queryKey: SERVICES_QUERY_KEY });
+        await queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY });
       } else if (response.status === 422) {
         const rejection = mapRatingRejection(await response.json().catch(() => null));
         setFieldErrors(rejection.fieldErrors);

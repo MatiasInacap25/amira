@@ -738,6 +738,21 @@ h1, h2, h3, p { margin-top: 0; }
 .account-service-photo-image, .account-service-photo-preview { max-width: 100%; height: auto; border: 1px solid #e0e8e8; border-radius: 10px; object-fit: cover; }
 .account-service-photo-image { width: min(100%, 420px); }
 .account-service-photo-preview { width: 160px; height: 160px; }
+.account-service-resolution { display: grid; gap: 14px; }
+.account-service-state { margin: 0; padding: 12px 14px; border-radius: 10px; font-size: 14px; line-height: 1.5; }
+.account-service-state-claim { background: #fbeaea; color: #8a2e2e; }
+.account-service-state-consent { background: #eaf5f0; color: #326250; }
+.account-service-window { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid #dce6ea; border-radius: 10px; background: #f6f9fa; }
+.account-service-window-state { margin: 4px 0 0; color: #173f55; font-size: 14px; font-weight: 700; }
+.account-service-window-state-expired { color: #8a2e2e; }
+.account-service-countdown { margin: 0; color: #38545d; font-size: 13px; font-variant-numeric: tabular-nums; }
+.account-service-confirm { display: grid; gap: 12px; padding: 16px; border: 1px solid #dce2e8; border-radius: 10px; background: #fbfcfd; }
+.account-service-confirm h3 { margin: 0; color: #172532; font-size: 15px; font-weight: 720; }
+.account-service-confirm h3:focus-visible, .account-service-result:focus-visible { outline: 2px solid #df6e3e; outline-offset: 2px; }
+.account-service-claim-form { display: grid; gap: 14px; }
+.account-service-claim-form textarea { width: 100%; resize: vertical; }
+.account-service-reason { margin: 0; padding: 10px 14px; border-left: 3px solid #df6e3e; background: #fff; color: #3d4f5c; font-size: 14px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.account-service-result { margin: 0; color: #326250; font-size: 14px; font-weight: 650; }
 .same-day-conflict-body { display: grid; gap: 16px; padding: 19px 24px 22px; }
 .same-day-conflict-body p { margin: 0; color: #3d4f5c; font-size: 14px; line-height: 1.55; }
 .same-day-conflict-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
