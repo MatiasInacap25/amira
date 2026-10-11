@@ -80,7 +80,7 @@ Public JSON is camelCase. All endpoints use `get_current_user`. A service that t
 
 Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`.
 
-- [ ] T10 Shared presentational `ServiceCard` / `ServiceDetail`; role-based containers at `/cuenta/servicios` and `/cuenta/servicios/[serviceId]`; rename the menu entry to "Mis servicios".
+- [x] T10 Shared presentational `ServiceCard` / `ServiceDetail`; role-based containers at `/cuenta/servicios` and `/cuenta/servicios/[serviceId]`; rename the menu entry to "Mis servicios".
 - [ ] T11 Assignment form with the same-day warning dialog; Iniciar / Finalizar (with photo) actions.
 - [ ] T12 Customer: delivery photo, deadline countdown, "Todo conforme", "Reclamar".
 
@@ -91,7 +91,17 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 ## Progress
 
 - 2026-10-11: plan approved; branch `feat/services-lifecycle` created. Next: S1.
-- 2026-10-11: S1 done (route: delegated direct, writer trigger: 3+ non-trivial files). Migration `20261011_0003_service_assignments` adds `Servicio_Asignacion` (RLS, revoked from `anon`/`authenticated`, indexes on driver and vehicle), `Servicio.ID_Usuario_Inicio` (nullable FK, for S2) and `ck_service_status_allowed` (NOT VALID then VALIDATE). Shared query/shaping in `service_views.py`; provider routes in `provider_service_routes.py`; customer detail in `customer_routes.py`, and the customer list now also returns `status`. RED: new route tests failed at import (`ServicioAsignacion` missing), migration tests failed (file missing), customer list test failed (no `status`). GREEN: `uv run pytest` 428 passed; `uv lock --check` passed. Next: S2.
+- 2026-10-11: S1 done (route: delegated direct, writer trigger: 3+ non-trivial files). Migration `20261011_0003_service_assignments` adds `Servicio_Asignacion` (RLS, revoked from `anon`/`authenticated`, indexes on driver and vehicle), `Servicio.ID_Usuario_Inicio` (nullable FK, for S2) and `ck_service_status_allowed` (NOT VALID then VALIDATE). Shared query/shaping in `service_views.py`; provider routes in `provider_service_routes.py`; customer detail in `customer_routes.py`, and the customer list now also returns `status`. RED: new route tests failed at import (`ServicioAsignacion` missing), migration tests failed (file missing), customer list test failed (no `status`). GREEN: `uv run pytest` 428 passed; `uv lock --check` passed. Commit `441a4ca`. Native review (reliability lens): approved and acknowledged (lineage `review-7b7dfe5d20a480d3`). Parent spot check: `uv run pytest` 428 passed.
+- 2026-10-11: T10 done in parallel (route: delegated direct in an isolated worktree, Haiku worker), cherry-picked as `ab5a431`. Role comes from `GET /api/account/me` (`isProviderRole`); the menu entry is now "Mis servicios". RED exception: no frontend unit runner, Playwright not used. Parent check: `npm run lint` and `npm run build` passed. Native review (reliability lens): approved and acknowledged (lineage `review-c06172a440bbfa43`). Next: S2 (launch the worker in a Herdr pane, with Haiku).
+
+### Review follow-ups (non-blocking)
+
+- S1 `R3-employed-driver-owner-precedence` (`provider_service_routes.py:33-35`): a profile owner who is also employed elsewhere only sees their own profile's services.
+- S1 `R3-customer-detail-assignments` (`customer_routes.py:146-147`): the customer detail's assignments are not covered by a test.
+- S1 `R3-status-check-existing-rows` (migration `0003`, lines 55-59): before upgrading the live DB, confirm every `Servicio.Estado` value is `confirmed`.
+- S1 `R3-provider-list-status-filter-untested-combo`: the status filter combined with employed-driver visibility is not tested.
+- T10 `R3-role-query-error-falls-back-to-customer` (`app/cuenta/servicios/page.tsx:20-29`): a failed role lookup shows the customer view to a provider.
+- T10: the role query (`["services-account-role"]`, staleTime 60 s) is not cleared on sign-out; there is also no retry on transient errors, and the 404 handling and list filter keys could be tightened.
 
 ### API notes (S1)
 
