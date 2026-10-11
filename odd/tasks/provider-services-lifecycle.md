@@ -213,12 +213,12 @@ Frontend (one commit):
 Excluded: `ck_quote_currency_clp` (accepting other currencies is a product decision) and testing the Supabase `delete` against live Supabase (operational).
 
 Backend (one commit):
-- [ ] H1 `commission_for` and `release_due_payouts` reject a commission percent outside 0..99 (`ValueError`), with tests; a test pins the provider request amount == `Monto_Neto` in the rounding case; the commission-default test restores the settings cache; the no-cron blueprint test checks behavior (no service of type cron, no `release_payouts` command) instead of the web block's exact text.
-- [ ] H2 The two GET delivery-photo routes resolve storage after their 404 checks (404 before 503), like the completion route; tests.
-- [ ] H3 Migration `0004` docstring: describe the lock behavior correctly (DROP holds ACCESS EXCLUSIVE until commit).
+- [x] H1 `commission_for` and `release_due_payouts` reject a commission percent outside 0..99 (`ValueError`), with tests; a test pins the provider request amount == `Monto_Neto` in the rounding case; the commission-default test restores the settings cache; the no-cron blueprint test checks behavior (no service of type cron, no `release_payouts` command) instead of the web block's exact text.
+- [x] H2 The two GET delivery-photo routes resolve storage after their 404 checks (404 before 503), like the completion route; tests.
+- [x] H3 Migration `0004` docstring: describe the lock behavior correctly (DROP holds ACCESS EXCLUSIVE until commit).
 
 Frontend (one commit):
-- [ ] H4 On sign-out/account change, also clear the provider services list, service detail and customer services queries (not only the role key).
+- [x] H4 On sign-out/account change, also clear the provider services list, service detail and customer services queries (not only the role key).
 
 ## Checks
 
@@ -239,6 +239,7 @@ Frontend (one commit):
 - 2026-10-11: T12 done by `worker-2`, commit `de94225`. RED exception: no frontend unit runner, Playwright not used. `npm run lint` and `npm run build` passed (worker); parent spot check `npm run lint` passed. Shared query keys in `service-query-keys.ts`; provider mutations now also invalidate the customer list (closes that T11 gap). Native review (assess: medium, `slice_budget_reached`; base `ee05151`) granted, approved and acknowledged (lineage `review-d0f3cd3ef53bbc61`). All tasks done. Next: user decisions on follow-ups, then delivery (push/PR) when the user asks.
 - 2026-10-11: F1-F10 done by `worker-1` (Haiku, Herdr pane; it delegated internally to its own subagent): commits `6735b03` (backend F1-F7) and `3e8359a` (frontend F8-F10). RED observed for F1-F5 and the Supabase `delete`; F6's behavioral RED was not observed (the module failed at import first); F7 was test-only strengthening. Worker: `uv run pytest` 544 passed, `uv lock --check`, `npm run lint`, `npm run build` passed. Parent spot checks: `uv run pytest` 544 passed, `npm run lint` passed. The whole-branch review again stopped with `lens_context_budget_exceeded`; the fixes (base `44fc7cc`, 697 lines) were granted, approved and acknowledged (lineage `review-019de5f1d21bf4b9`).
 - 2026-10-11: user decisions: 10% fixed commission and remove the payout cron; do not update `backend/.env.example`. G1 + G2 done by `worker-1`, commit `87a2688`. RED: 9 failed (missing `commission_percent`, settings field, cron still present). Worker: `uv run pytest` 551 passed, `uv lock --check` passed. Parent spot check: 551 passed. Native review (base `d3c3e55`, 195 lines) granted, approved and acknowledged (lineage `review-f47bf0f13d84ead9`). The whole-branch candidate the stop hook keeps offering stops with `lens_context_budget_exceeded` (6146 lines).
+- 2026-10-11: whole-branch reviews keep stopping at `lens_context_budget_exceeded`; the half `66fbe7b..HEAD` (3058 lines) also exceeded the budget, so the budget is not a pure line count. Every range is covered by the per-task reviews. H1-H4 done by `worker-1`: commits `ccf29b1` (backend) and `19b6319` (frontend). RED for H1 (range check) and H2 (404 before 503); the other changes are test-only or a docstring. Worker: `uv run pytest` 558 passed, `uv lock --check`, `npm run lint`, `npm run build` passed. Parent spot checks: 558 passed, lint passed. Native review (base `e26df7f`, 138 lines) granted, approved and acknowledged (lineage `review-e1ef63a66f21906c`).
 
 ### Review follow-ups (non-blocking)
 
@@ -272,6 +273,10 @@ Frontend (one commit):
 - F open items: the two GET delivery-photo routes still return 503 before 404 when storage is not configured; provider list/detail caches are not cleared on sign-out (only the role key); `ck_quote_currency_clp` still restricts quotations to CLP in the DB; the Supabase `delete` call is untested against live Supabase.
 - G `R3-001`/`R3-002` (`payout_service.py:68-74,134-140`): `commission_percent` passed directly to `release_due_payouts`/`commission_for` is not range-checked (only Settings enforces 0..99), and no test covers an out-of-range override.
 - G `R3-003`/`R3-004`/`R3-005` (suggestions/brittleness): no test pins provider amount == `Monto_Neto` in the rounding case; the settings cache is not restored after the commission default test; the no-cron blueprint test matches exact web-block text.
+- (G and F open items above resolved by H1-H4, except `ck_quote_currency_clp` and the live Supabase `delete` test.)
+- H `R3-001` (`site-navigation.tsx:39-42`): no test proves the service caches are cleared on account change (no frontend unit runner).
+- H `R3-002` (`test_payout_release.py:294-301`): the no-cron guard only inspects `command:` lines; also assert `release_payouts` appears nowhere in `render.yaml`.
+- H worker note: `provider-services-view.tsx` builds its key as the literal `["provider-services", filter]` instead of `[...PROVIDER_SERVICES_KEY, filter]`.
 
 ### API notes (S1)
 
