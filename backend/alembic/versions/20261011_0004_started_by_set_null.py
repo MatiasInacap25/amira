@@ -1,9 +1,12 @@
 """Make the service start-actor foreign key ON DELETE SET NULL.
 
 Migration 0003 added fk_service_started_by with ON DELETE RESTRICT, so deleting a user who started a service was
-blocked. The constraint is replaced: dropped, added again as NOT VALID, then validated. NOT VALID avoids a full table
-scan under the exclusive lock; VALIDATE checks existing rows under a weaker lock. The downgrade restores RESTRICT the
-same way.
+blocked. The constraint is replaced: dropped, added again as NOT VALID, then validated.
+
+The three statements run in one transaction (Alembic wraps the run in one transaction on PostgreSQL). DROP CONSTRAINT
+takes ACCESS EXCLUSIVE on "Servicio" and holds it until that commit. The VALIDATE scan of existing rows therefore runs
+under the same ACCESS EXCLUSIVE lock, not a weaker one, so splitting ADD and VALIDATE does not shorten the lock here.
+The downgrade restores RESTRICT the same way.
 """
 
 from alembic import op

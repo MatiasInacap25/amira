@@ -106,7 +106,7 @@ Public JSON is camelCase. All endpoints use `get_current_user` and the S1 viewer
    - 404 `Service not found.` (not visible, not owned, including another customer's service).
    - 404 `Delivery photo not found.` (no evidence yet).
    - 502 `The delivery photo could not be retrieved. Try again.` (signing failed).
-   - 503 as in endpoint 1. Unlike endpoint 1, these two GET routes still resolve storage before their 404 checks, so an unconfigured deployment answers 503 first (open follow-up; not part of F6).
+   - 503 as in endpoint 1. These two GET routes resolve storage after their 404 checks, like endpoint 1: a service the viewer cannot see, or a service with no photo, answers 404 even when storage is unconfigured; a visible photo answers 503 (H2).
 4. `ServiceDetail` (provider and customer detail) gains `deliveryPhotoAvailable: bool`. The storage key and signed URLs never appear in list, detail or completion responses.
 
 New settings (read from the backend environment; setup in `backend/README.md`, "Delivery photos"):

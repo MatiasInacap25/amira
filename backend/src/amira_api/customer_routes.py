@@ -1,5 +1,6 @@
 """Authenticated customer service history and one-time service ratings."""
 
+from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -18,7 +19,7 @@ from amira_api.customer_schemas import (
     CustomerServiceRating,
 )
 from amira_api.db import get_db_session
-from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError, get_evidence_storage
+from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError, get_evidence_storage_resolver
 from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceDetail
 from amira_api.service_views import (
     CLAIM_OPEN,
@@ -48,7 +49,7 @@ MAX_OFFSET = 5000
 RATING_CONSTRAINT = "uq_rating_service"
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
-Storage = Annotated[EvidenceStorage, Depends(get_evidence_storage)]
+ResolveStorage = Annotated[Callable[[], EvidenceStorage], Depends(get_evidence_storage_resolver)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
@@ -168,7 +169,7 @@ def get_customer_delivery_photo(
     service_id: UUID,
     current_user: CurrentUser,
     session: Database,
-    storage: Storage,
+    resolve_storage: ResolveStorage,
     settings: AppSettings,
 ) -> DeliveryPhotoUrl:
     account_id = _customer_account_id(session, current_user)
@@ -179,6 +180,8 @@ def get_customer_delivery_photo(
         raise HTTPException(status_code=404, detail="Service not found.")
     if row[0] is None:
         raise HTTPException(status_code=404, detail="Delivery photo not found.")
+    # Storage is resolved only now, so a customer who cannot see the photo gets 404 even when storage is unconfigured.
+    storage = resolve_storage()
     try:
         return signed_delivery_photo(storage, row[0], settings.service_evidence_url_ttl_seconds)
     except EvidenceStorageError as error:

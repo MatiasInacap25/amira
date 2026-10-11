@@ -486,3 +486,41 @@ def test_storage_is_resolved_after_the_visibility_and_assignment_checks(api, db,
     assert assigned.status_code == 503
     assert assigned.json()["detail"] == "Delivery photo storage is not configured."
     assert _stored_service(db, fleet.service_a).status == "in_progress"
+
+
+def _unconfigure_storage(api: Api) -> None:
+    api.settings_kwargs["supabase_url"] = None
+    app.dependency_overrides.pop(get_evidence_storage, None)
+    app.dependency_overrides.pop(get_evidence_storage_resolver, None)
+
+
+def test_photo_reads_answer_404_before_503_when_storage_is_unconfigured(api, db, fleet: Fleet):
+    _start(db, fleet.service_a)
+    _unconfigure_storage(api)
+
+    unseen = _provider_photo(api, fleet.service_a, auth=OUTSIDER_AUTH)
+    provider_without_photo = _provider_photo(api, fleet.service_a)
+    customer_without_photo = _customer_photo(api, fleet.service_a)
+
+    assert unseen.status_code == 404
+    assert unseen.json()["detail"] == "Service not found."
+    assert provider_without_photo.status_code == 404
+    assert provider_without_photo.json()["detail"] == "Delivery photo not found."
+    assert customer_without_photo.status_code == 404
+    assert customer_without_photo.json()["detail"] == "Delivery photo not found."
+    assert api.storage.signed == []
+
+
+def test_a_visible_photo_read_is_503_when_storage_is_unconfigured(api, db, fleet: Fleet):
+    _start(db, fleet.service_a)
+    _complete(api, fleet.service_a)
+    _unconfigure_storage(api)
+
+    provider = _provider_photo(api, fleet.service_a)
+    customer = _customer_photo(api, fleet.service_a)
+
+    assert provider.status_code == 503
+    assert customer.status_code == 503
+    assert provider.json()["detail"] == "Delivery photo storage is not configured."
+    assert customer.json()["detail"] == "Delivery photo storage is not configured."
+    assert api.storage.signed == []

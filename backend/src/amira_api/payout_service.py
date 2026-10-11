@@ -65,8 +65,16 @@ def _due_service_ids(session: Session, now: datetime) -> list[UUID]:
     )
 
 
+def _checked_percent(percent: int) -> int:
+    # Settings already enforce 0..99; an explicit override from a caller must be checked here too.
+    if not 0 <= percent <= 99:
+        raise ValueError("Commission percent must be between 0 and 99.")
+    return percent
+
+
 def commission_for(gross: Decimal, percent: int) -> Decimal:
     """Commission in whole CLP: ``gross * percent / 100`` rounded half up (10% of 12345 is 1235)."""
+    percent = _checked_percent(percent)
     return (gross * percent / Decimal(100)).quantize(Decimal(1), rounding=ROUND_HALF_UP)
 
 
@@ -139,6 +147,7 @@ def release_due_payouts(
     ``commission_percent`` defaults to the ``PAYOUT_COMMISSION_PERCENT`` setting when omitted.
     """
     percent = get_settings().payout_commission_percent if commission_percent is None else commission_percent
+    percent = _checked_percent(percent)
     summary = PayoutSummary()
     service_ids = _due_service_ids(session, now)
     summary.due = len(service_ids)

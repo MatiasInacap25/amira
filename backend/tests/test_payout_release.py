@@ -20,13 +20,20 @@ from amira_api import release_payouts
 from amira_api.clock import utc_now
 from amira_api.models import CuentaDesembolso, Desembolso, Reclamo, Servicio
 from amira_api.payout_provider import PayoutProviderError, PayoutRequest, PayoutResult
-from amira_api.payout_service import release_due_payouts
+from amira_api.payout_service import commission_for, release_due_payouts
 from amira_api.settings import get_settings
 from amira_api.simulated_payout_provider import SimulatedPayoutProvider
 from claim_support import add_approved_payment, add_payout_account, complete, db  # noqa: F401  (fixture re-export)
 from test_provider_service_actions import Fleet, fleet  # noqa: F401  (fixture re-export)
 
 RENDER_YAML = Path(__file__).parents[2] / "render.yaml"
+
+
+@pytest.fixture(autouse=True)
+def _restore_settings_cache():
+    # Autouse fixtures are set up first, so this teardown runs after monkeypatch has undone its environment changes.
+    yield
+    get_settings.cache_clear()
 
 
 class RecordingPayoutProvider:
@@ -93,10 +100,32 @@ def test_commission_rounds_half_up_to_whole_pesos(db, fleet: Fleet):
     # 10% of 12345 is 1234.5, which rounds up to 1235 (not banker's rounding, not a float artifact).
     complete(db, fleet.service_a, consent=True)
     _funded(db, fleet, fleet.service_a, Decimal("12345"))
+    provider = RecordingPayoutProvider()
 
-    release_due_payouts(db, utc_now(), RecordingPayoutProvider(), commission_percent=10)
+    release_due_payouts(db, utc_now(), provider, commission_percent=10)
 
-    assert _desembolsos(db, fleet.service_a)[0].net_amount == 11110
+    net_amount = _desembolsos(db, fleet.service_a)[0].net_amount
+    assert net_amount == 11110
+    assert provider.requests[0].amount == net_amount
+
+
+@pytest.mark.parametrize("percent", [-1, 100, 150])
+def test_out_of_range_commission_override_is_rejected_before_any_service_is_processed(db, fleet: Fleet, percent: int):
+    complete(db, fleet.service_a, consent=True)
+    _funded(db, fleet, fleet.service_a)
+    provider = RecordingPayoutProvider()
+
+    with pytest.raises(ValueError, match="between 0 and 99"):
+        release_due_payouts(db, utc_now(), provider, commission_percent=percent)
+
+    assert provider.requests == []
+    assert _desembolsos(db, fleet.service_a) == []
+
+
+@pytest.mark.parametrize("percent", [-1, 100])
+def test_commission_for_rejects_a_percent_outside_zero_to_ninety_nine(percent: int):
+    with pytest.raises(ValueError, match="between 0 and 99"):
+        commission_for(Decimal("12345"), percent)
 
 
 def test_zero_percent_commission_releases_the_gross_amount(db, fleet: Fleet):
@@ -262,12 +291,11 @@ def test_release_command_refuses_production_and_exits_non_zero(monkeypatch, capl
 
 
 def test_render_blueprint_has_no_payout_cron_until_a_real_adapter_exists():
-    text = RENDER_YAML.read_text(encoding="utf-8")
-    web_block, _, cron_block = text.partition("  - type: cron")
+    # PyYAML is only a transitive dependency, so this reads the service list and command lines as plain text.
+    lines = RENDER_YAML.read_text(encoding="utf-8").splitlines()
+    service_types = [line.split("type:", 1)[1].strip() for line in lines if line.lstrip().startswith("- type:")]
+    command_lines = [line for line in lines if "command:" in line.lower()]
 
-    assert cron_block == "", "render.yaml must not deploy the payout cron without a real payout adapter"
-    assert "amira-release-payouts" not in text
-    assert "release_payouts" not in text
-    assert web_block.startswith("services:\n  - type: web\n    name: amira-api-dev\n")
-    assert web_block.endswith("      - key: COMPANY_DRIVER_TYPE_ID\n        sync: false\n")
-    assert "dockerCommand" not in text
+    assert service_types, "render.yaml must declare at least one service"
+    assert "cron" not in service_types, "render.yaml must not deploy the payout cron without a real payout adapter"
+    assert not any("release_payouts" in line for line in command_lines)

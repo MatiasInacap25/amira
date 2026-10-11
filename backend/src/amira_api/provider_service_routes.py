@@ -28,7 +28,6 @@ from amira_api.evidence_storage import (
     EvidenceStorage,
     EvidenceStorageError,
     detect_photo_type,
-    get_evidence_storage,
     get_evidence_storage_resolver,
     read_capped,
 )
@@ -64,7 +63,6 @@ SANTIAGO = ZoneInfo("America/Santiago")
 OPEN_STATUSES = ("confirmed", "in_progress")
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
-Storage = Annotated[EvidenceStorage, Depends(get_evidence_storage)]
 # Resolves the storage port only when a handler needs it, so checks that come first (404, 403, 409) win over a 503.
 ResolveStorage = Annotated[Callable[[], EvidenceStorage], Depends(get_evidence_storage_resolver)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
@@ -443,7 +441,7 @@ def get_provider_delivery_photo(
     service_id: UUID,
     current_user: CurrentUser,
     session: Database,
-    storage: Storage,
+    resolve_storage: ResolveStorage,
     settings: AppSettings,
 ) -> DeliveryPhotoUrl:
     viewer = _provider_viewer(session, current_user)
@@ -454,6 +452,8 @@ def get_provider_delivery_photo(
         raise HTTPException(status_code=404, detail="Service not found.")
     if row[0] is None:
         raise HTTPException(status_code=404, detail="Delivery photo not found.")
+    # Storage is resolved only now, so a viewer who cannot see the photo gets 404 even when storage is unconfigured.
+    storage = resolve_storage()
     try:
         return signed_delivery_photo(storage, row[0], settings.service_evidence_url_ttl_seconds)
     except EvidenceStorageError as error:
