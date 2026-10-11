@@ -83,10 +83,10 @@ Both endpoints use `get_current_user` and the S1 viewer rules: a non-provider ac
 - [x] T3 `GET /api/customer/services/{id}` detail. Extend the customer list with `status` only if this does not break the rating flow.
 - [x] T4 Tests: owner sees the profile's services; an employed driver sees only assigned ones; another provider gets 404; a customer gets 403 on provider routes; a customer cannot read another customer's service; migration structural test like the existing `test_*_migration.py`.
 
-### S2 — Backend: assignments and start
+### S2 — Backend: assignments and start (route: delegated direct, Haiku worker in a Herdr pane; writer trigger: 2+ non-trivial files)
 
-- [ ] T5 `PUT /api/provider/services/{id}/assignments` (owner only, status `confirmed`) replaces all pairs. It validates that drivers belong to the profile (or are the independent owner) and vehicles belong to the profile, and applies the same-day 409 with `confirmSameDayConflicts`.
-- [ ] T6 `POST /api/provider/services/{id}/start` (assigned driver or owner; needs ≥ 1 assignment; `FOR UPDATE` and re-check the status).
+- [x] T5 `PUT /api/provider/services/{id}/assignments` (owner only, status `confirmed`) replaces all pairs. It validates that drivers belong to the profile (or are the independent owner) and vehicles belong to the profile, and applies the same-day 409 with `confirmSameDayConflicts`.
+- [x] T6 `POST /api/provider/services/{id}/start` (assigned driver or owner; needs ≥ 1 assignment; `FOR UPDATE` and re-check the status).
 
 ### S3 — Backend: completion with delivery photo
 
@@ -114,6 +114,7 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - 2026-10-11: plan approved; branch `feat/services-lifecycle` created. Next: S1.
 - 2026-10-11: S1 done (route: delegated direct, writer trigger: 3+ non-trivial files). Migration `20261011_0003_service_assignments` adds `Servicio_Asignacion` (RLS, revoked from `anon`/`authenticated`, indexes on driver and vehicle), `Servicio.ID_Usuario_Inicio` (nullable FK, for S2) and `ck_service_status_allowed` (NOT VALID then VALIDATE). Shared query/shaping in `service_views.py`; provider routes in `provider_service_routes.py`; customer detail in `customer_routes.py`, and the customer list now also returns `status`. RED: new route tests failed at import (`ServicioAsignacion` missing), migration tests failed (file missing), customer list test failed (no `status`). GREEN: `uv run pytest` 428 passed; `uv lock --check` passed. Commit `441a4ca`. Native review (reliability lens): approved and acknowledged (lineage `review-7b7dfe5d20a480d3`). Parent spot check: `uv run pytest` 428 passed.
 - 2026-10-11: T10 done in parallel (route: delegated direct in an isolated worktree, Haiku worker), cherry-picked as `ab5a431`. Role comes from `GET /api/account/me` (`isProviderRole`); the menu entry is now "Mis servicios". RED exception: no frontend unit runner, Playwright not used. Parent check: `npm run lint` and `npm run build` passed. Native review (reliability lens): approved and acknowledged (lineage `review-c06172a440bbfa43`). Next: S2 (launch the worker in a Herdr pane, with Haiku).
+- 2026-10-11: S2 (T5, T6) done by `worker-1` (Haiku, Herdr pane), commit `f4c15fb`. RED: 19 of 22 new tests failed before implementation (routes missing). GREEN: `uv run pytest` 450 passed; `uv lock --check` passed. Parent spot check: `uv run pytest` 450 passed. The API contract (S2) section was added. Follow-ups: `R3-viewer-query-multiple-rows` cannot occur (`uq_conductor_user` and the unique `Perfil.ID_user` / `Usuario.ID_Auth_Supabase` limit the join to one row), but the lookup is now ordered and limited to one row anyway. `R3-started-by-fk-validate` was not reproducible (migration 0003 line 62 already validates `fk_service_started_by`), so no 0004 migration was added; a guard test was added instead. Native review (assess: medium, `slice_budget_reached`; reliability lens) granted, approved and acknowledged (lineage `review-ed85fcd06adaf678`). Next: S3 (T7).
 
 ### Review follow-ups (non-blocking)
 
@@ -123,7 +124,9 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - S1 `R3-provider-list-status-filter-untested-combo`: the status filter combined with employed-driver visibility is not tested.
 - T10 `R3-role-query-error-falls-back-to-customer` (`app/cuenta/servicios/page.tsx:20-29`): a failed role lookup shows the customer view to a provider.
 - T10: the role query (`["services-account-role"]`, staleTime 60 s) is not cleared on sign-out; there is also no retry on transient errors, and the 404 handling and list filter keys could be tightened.
-- Branch review (lineage `review-99ed10dbd12a7060`, approved): `R3-viewer-query-multiple-rows` (`provider_service_routes.py:41-47`): the viewer lookup may return several rows. `R3-started-by-fk-validate` (migration `0003`, lines 49-51): the `fk_service_started_by` FK is not validated. Fix both in S2.
+- Branch review (lineage `review-99ed10dbd12a7060`, approved): `R3-viewer-query-multiple-rows` (`provider_service_routes.py:41-47`): the viewer lookup may return several rows. `R3-started-by-fk-validate` (migration `0003`, lines 49-51): the `fk_service_started_by` FK is not validated. Fix both in S2. (Resolved in S2, see Progress.)
+- S2 `R3-001` (`provider_service_routes.py:149-167`, WARNING): the same-day conflict check is not serialized across services; two concurrent assignments of one driver to different services on the same day can both pass. Double booking is allowed by design, so only the warning is skipped.
+- S2 `R3-002` (`test_service_started_by_fk_migration.py:22-23`, SUGGESTION): the guard does not tie `NOT VALID` to the `fk_service_started_by` statement.
 
 ### API notes (S1)
 
