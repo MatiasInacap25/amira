@@ -7,7 +7,7 @@ import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import Depends, Response
+from fastapi import Depends, HTTPException, Response
 from sqlalchemy import UniqueConstraint
 
 from amira_api import auth
@@ -314,3 +314,43 @@ class FakeProvisioningSession:
 
     def rollback(self):
         pass
+
+
+def _aal1_password_identity() -> AuthenticatedUser:
+    return AuthenticatedUser(
+        id=UUID(USER_ID),
+        email="person@example.test",
+        session_id=UUID(SESSION_ID),
+        assurance="aal1",
+        authentication_methods=frozenset({"password"}),
+    )
+
+
+def test_model_constructed_settings_without_app_env_report_bypass_inactive():
+    settings = Settings.model_construct(dev_skip_sms_mfa=True)
+
+    assert settings.dev_sms_mfa_bypass_active is False
+
+
+def test_model_constructed_settings_with_production_report_bypass_inactive():
+    settings = Settings.model_construct(dev_skip_sms_mfa=True, app_env="production")
+
+    assert settings.dev_sms_mfa_bypass_active is False
+
+
+def test_model_constructed_settings_without_app_env_reject_aal1_password_session_with_403():
+    settings = Settings.model_construct(dev_skip_sms_mfa=True)
+
+    with pytest.raises(HTTPException) as excinfo:
+        get_current_user(current_user=_aal1_password_identity(), settings=settings, session=object(), fallback_proof=None)
+
+    assert excinfo.value.status_code == 403
+
+
+def test_model_constructed_settings_with_production_reject_aal1_password_session_with_403():
+    settings = Settings.model_construct(dev_skip_sms_mfa=True, app_env="production")
+
+    with pytest.raises(HTTPException) as excinfo:
+        get_current_user(current_user=_aal1_password_identity(), settings=settings, session=object(), fallback_proof=None)
+
+    assert excinfo.value.status_code == 403
