@@ -5,6 +5,7 @@ import { Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { CUSTOMER_SERVICES_LAYOUT, MarketplaceSkeleton } from "@/components/marketplace/marketplace-skeleton";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import {
   createCustomerServiceRating,
@@ -85,9 +86,6 @@ export function CustomerServicesView() {
           <h1>Mis servicios</h1>
           <p className="customer-services-intro">Valora los servicios completados. Tu valoración aparece en el perfil del prestador.</p>
 
-          {(sessionQuery.isPending || (userId && servicesQuery.isPending)) && (
-            <div aria-busy="true" className="marketplace-state" role="status"><span aria-hidden="true" className="state-spinner" />Cargando tus servicios…</div>
-          )}
           {needsSignIn && (
             <div className="marketplace-state marketplace-error" role="alert">
               <h2>No pudimos verificar tu sesión</h2>
@@ -110,6 +108,7 @@ export function CustomerServicesView() {
             </div>
           )}
 
+          <MarketplaceSkeleton label="Cargando tus servicios…" layout={CUSTOMER_SERVICES_LAYOUT} loading={sessionQuery.isPending || Boolean(userId && servicesQuery.isPending)} name="customer-services">
           {services.length > 0 && (
             <ul className="customer-service-list">
               {services.map((service) => (
@@ -119,6 +118,7 @@ export function CustomerServicesView() {
               ))}
             </ul>
           )}
+          </MarketplaceSkeleton>
 
           {servicesQuery.hasNextPage && (
             <button className="button button-secondary customer-services-more" disabled={servicesQuery.isFetchingNextPage} onClick={() => void servicesQuery.fetchNextPage()} type="button">

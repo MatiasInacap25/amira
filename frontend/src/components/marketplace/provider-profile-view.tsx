@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { QuoteRequestDialog } from "@/components/marketplace/quote-request-dialog";
+import { MarketplaceSkeleton, PROFILE_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { getProviderProfile, type ProviderProfile } from "@/lib/marketplace-api";
 
 export function ProviderProfileView({ profileId }: { profileId: string }) {
@@ -33,7 +34,6 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
       <main className="marketplace-main provider-profile-page" id="contenido">
         <a className="skip-link" href="#provider-profile-content">Ir al perfil</a>
         <div className="provider-profile-stage" id="provider-profile-content" tabIndex={-1}>
-          {query.isPending && <div aria-label="Cargando perfil" aria-busy="true" className="marketplace-state" role="status"><span aria-hidden="true" className="state-spinner" />Cargando perfil…</div>}
           {query.isError && (
             <div className="marketplace-state marketplace-error" role="alert">
               <h2>No pudimos cargar este perfil</h2>
@@ -41,6 +41,7 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
               <button className="button button-secondary" onClick={() => void query.refetch()} type="button">Reintentar</button>
             </div>
           )}
+          <MarketplaceSkeleton label="Cargando perfil…" layout={PROFILE_LAYOUT} loading={query.isPending} name="provider-profile">
           {profile && (
             <div className="provider-profile-shell">
               <aside className="provider-profile-sidebar">
@@ -150,6 +151,7 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
               </div>
             </div>
           )}
+          </MarketplaceSkeleton>
         </div>
         {profile && (
           <div className="provider-quote-bar">
