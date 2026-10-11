@@ -94,8 +94,45 @@ def test_bypass_is_off_by_default(monkeypatch):
 
 def test_bypass_reads_dev_skip_sms_mfa_environment_variable(monkeypatch):
     monkeypatch.setenv("DEV_SKIP_SMS_MFA", "true")
+    monkeypatch.setenv("APP_ENV", "development")
 
     assert Settings(_env_file=None).dev_skip_sms_mfa is True
+
+
+def test_bypass_on_with_app_env_unset_fails_closed(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+
+    with pytest.raises(RuntimeError, match="set explicitly to development, local or test"):
+        Settings(_env_file=None, dev_skip_sms_mfa=True)
+
+
+def test_bypass_on_with_app_env_unset_fails_closed_even_though_default_is_allowlisted(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+
+    assert Settings(_env_file=None).app_env == "development"
+    with pytest.raises(RuntimeError, match="set explicitly"):
+        Settings(_env_file=None, dev_skip_sms_mfa=True)
+
+
+def test_bypass_on_with_app_env_explicitly_development_works(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+
+    assert Settings(_env_file=None, app_env="development", dev_skip_sms_mfa=True).dev_sms_mfa_bypass_active is True
+
+
+def test_bypass_on_with_app_env_from_environment_variable_works(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "local")
+
+    assert Settings(_env_file=None, dev_skip_sms_mfa=True).dev_sms_mfa_bypass_active is True
+
+
+def test_bypass_off_with_app_env_unset_works(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+
+    settings = Settings(_env_file=None, dev_skip_sms_mfa=False)
+
+    assert settings.app_env == "development"
+    assert settings.dev_sms_mfa_bypass_active is False
 
 
 def test_bypass_off_rejects_aal1_password_session_without_proof(monkeypatch):
@@ -194,7 +231,7 @@ def test_startup_warning_is_logged_only_when_bypass_is_active(caplog):
     assert caplog.records == []
 
     with caplog.at_level(logging.WARNING, logger="amira_api.settings"):
-        warn_if_dev_sms_mfa_bypass_active(Settings(_env_file=None, dev_skip_sms_mfa=True))
+        warn_if_dev_sms_mfa_bypass_active(Settings(_env_file=None, app_env="development", dev_skip_sms_mfa=True))
     assert len(caplog.records) == 1
     assert caplog.records[0].levelno == logging.WARNING
     assert "DEV_SKIP_SMS_MFA" in caplog.records[0].getMessage()
@@ -208,7 +245,7 @@ def test_provisioning_accepts_aal1_password_session_under_bypass():
         assurance="aal1",
         authentication_methods=frozenset({"password"}),
     )
-    settings = Settings(_env_file=None, dev_skip_sms_mfa=True)
+    settings = Settings(_env_file=None, app_env="development", dev_skip_sms_mfa=True)
     current_user = get_current_user(current_user=identity, settings=settings, session=object(), fallback_proof=None)
     session = FakeProvisioningSession(
         [

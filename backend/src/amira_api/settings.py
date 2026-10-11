@@ -39,12 +39,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def fail_closed_dev_sms_mfa_bypass_outside_allowlist(self) -> "Settings":
-        # Fail closed: any environment outside the allowlist (including typos and empty values) refuses the bypass.
+        # Fail closed: an unset APP_ENV (which defaults to an allowlisted value) and any value outside the
+        # allowlist (including typos and empty values) refuse the bypass.
         # RuntimeError, not ValueError: pydantic wraps ValueError and echoes every input
         # (including DATABASE_URL) into the traceback, which would leak secrets into logs.
-        if self.dev_skip_sms_mfa and self.app_env.strip().lower() not in DEV_SMS_MFA_BYPASS_APP_ENVS:
-            allowed = ", ".join(sorted(DEV_SMS_MFA_BYPASS_APP_ENVS))
-            raise RuntimeError(f"DEV_SKIP_SMS_MFA requires APP_ENV to be one of: {allowed}.")
+        if self.dev_skip_sms_mfa:
+            if "app_env" not in self.model_fields_set:
+                raise RuntimeError("DEV_SKIP_SMS_MFA requires APP_ENV to be set explicitly to development, local or test.")
+            if self.app_env.strip().lower() not in DEV_SMS_MFA_BYPASS_APP_ENVS:
+                allowed = ", ".join(sorted(DEV_SMS_MFA_BYPASS_APP_ENVS))
+                raise RuntimeError(f"DEV_SKIP_SMS_MFA requires APP_ENV to be one of: {allowed}.")
         return self
 
 
