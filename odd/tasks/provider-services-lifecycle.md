@@ -180,7 +180,7 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 
 - [x] T10 Shared presentational `ServiceCard` / `ServiceDetail`; role-based containers at `/cuenta/servicios` and `/cuenta/servicios/[serviceId]`; rename the menu entry to "Mis servicios".
 - [x] T11 Assignment form with the same-day warning dialog; Iniciar / Finalizar (with photo) actions.
-- [ ] T12 Customer: delivery photo, deadline countdown, "Todo conforme", "Reclamar".
+- [x] T12 Customer: delivery photo, deadline countdown, "Todo conforme", "Reclamar".
 
 ## Checks
 
@@ -198,6 +198,7 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - 2026-10-11: T11 done by `worker-2` (Haiku, second Herdr pane, in parallel with S4; frontend-only surface), commit `0460973`. RED exception: no frontend unit runner, Playwright not used. `npm run lint` and `npm run build` passed (worker); parent spot check `npm run lint` passed.
 - 2026-10-11: S4 (T8, T9) done by `worker-1`, commit `ee05151`. RED: claim/consent tests got 404 (routes missing, detail texts asserted); payout tests failed at import. GREEN: `uv run pytest` 522 passed; `uv lock --check` passed. Parent spot check: 522 passed. No new env variables.
 - 2026-10-11: a branch-wide review (5035 lines) stopped with `lens_context_budget_exceeded`; the reduced candidate T11 + S4 (base `66fbe7b`, 1777 lines) was granted, approved and acknowledged (lineage `review-e20c3dcf15c36461`). Next: T12.
+- 2026-10-11: T12 done by `worker-2`, commit `de94225`. RED exception: no frontend unit runner, Playwright not used. `npm run lint` and `npm run build` passed (worker); parent spot check `npm run lint` passed. Shared query keys in `service-query-keys.ts`; provider mutations now also invalidate the customer list (closes that T11 gap). Native review (assess: medium, `slice_budget_reached`; base `ee05151`) granted, approved and acknowledged (lineage `review-d0f3cd3ef53bbc61`). All tasks done. Next: user decisions on follow-ups, then delivery (push/PR) when the user asks.
 
 ### Review follow-ups (non-blocking)
 
@@ -223,6 +224,10 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - S4 `R3-002` (`test_payout_release.py:202-205`): the production-refusal CLI test only asserts exit 1, which other failures also produce.
 - S4 `R3-003` (`customer_routes.py:318-323`): consent is accepted after the payout was already released.
 - S4 environment note: with `DEV_SKIP_SMS_MFA` set, settings reject `APP_ENV=production`; check the real deploy config.
+- T12 `R3-001` (`claim-window-countdown.tsx:22`): before mount the window counts as open, so "Reclamar" can flash for an expired window (the backend still rejects with 409).
+- T12 `R3-002` (`claim-window-countdown.tsx:40`): a missing deadline is shown as "Plazo vencido. El pago se libera sin reclamo."
+- T12 `R3-003`/`R3-004`: the countdown transition and the 409 copy mapping (which matches the backend's English `detail` strings) are untested; there is no frontend unit runner.
+- T12 `R3-005` (`customer-service-actions.tsx:68`): the double-submit guard reads a render-time `busy`, so two fast clicks can send two POSTs.
 
 ### API notes (S1)
 
