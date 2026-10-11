@@ -158,11 +158,17 @@ class ServiceRequestCreated(PublicResponse):
     status: str
 
 
+class ProviderRequestCounts(PublicResponse):
+    pending: int
+    accepted: int
+    rejected: int
+
+
 class ProviderRequestItem(PublicResponse):
     request_id: UUID
     status: str
-    origin: str
-    destination: str
+    origin: str | None
+    destination: str | None
     requested_at: datetime | None
     created_at: datetime
     estimated_weight: Decimal | None
@@ -171,6 +177,16 @@ class ProviderRequestItem(PublicResponse):
     cargo_measurements: str | None
     service_name: str
     chat_id: UUID | None
+    origin_commune_code: str | None = None
+    origin_commune_name: str | None = None
+    origin_region_name: str | None = None
+    destination_commune_code: str | None = None
+    destination_commune_name: str | None = None
+    destination_region_name: str | None = None
+    is_exclusive: bool = False
+    customer_first_name: str
+    # Shared with the provider only after acceptance; see the customer name policy in the inbox task.
+    customer_last_name: str | None = None
 
 
 class ProviderRequestPage(PublicResponse):
@@ -178,6 +194,7 @@ class ProviderRequestPage(PublicResponse):
     total: int
     limit: int
     offset: int
+    counts: ProviderRequestCounts
 
 
 class ProviderRequestDecision(PublicResponse):

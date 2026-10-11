@@ -5,9 +5,9 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import Select, and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
@@ -44,6 +44,7 @@ from amira_api.public_schemas import (
     PublicServiceTypePage,
     PublicSharedRoute,
     PublicSharedRoutePage,
+    ProviderRequestCounts,
     ProviderRequestDecision,
     ProviderRequestItem,
     ProviderRequestPage,
@@ -299,18 +300,37 @@ def _owned_provider(session: Session, current_user: AuthenticatedUser) -> tuple[
     return account_id, profile_id
 
 
-@router.get("/provider/requests", response_model=ProviderRequestPage)
-def list_provider_requests(
-    current_user: CurrentUser,
-    session: Database,
-    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
-    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
-) -> ProviderRequestPage:
-    _, profile_id = _owned_provider(session, current_user)
-    total = session.execute(
-        select(func.count()).select_from(FormularioServicio).where(FormularioServicio.profile_id == profile_id)
-    ).scalar_one()
-    rows = session.execute(
+PROVIDER_REQUEST_STATUSES = ("pending", "accepted", "rejected")
+
+
+def _provider_status_filter(status: str | None) -> str | None:
+    if status is None:
+        return None
+    if status not in PROVIDER_REQUEST_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "loc": ["query", "status"],
+                    "msg": "Selecciona un estado válido: pending, accepted o rejected.",
+                    "type": "value_error",
+                }
+            ],
+        )
+    return status
+
+
+def _customer_name_for_provider(status: str, first_name: str, last_name: str | None) -> tuple[str, str | None]:
+    """Providers see the customer's first name before acceptance; the last name is shared only after it."""
+    return first_name, (last_name if status == "accepted" else None)
+
+
+def _provider_request_rows(profile_id: UUID) -> Select:
+    origin_commune = aliased(Commune)
+    origin_region = aliased(Region)
+    destination_commune = aliased(Commune)
+    destination_region = aliased(Region)
+    return (
         select(
             FormularioServicio.id.label("request_id"),
             FormularioServicio.status.label("status"),
@@ -322,19 +342,91 @@ def list_provider_requests(
             FormularioServicio.estimated_volume.label("estimated_volume"),
             FormularioServicio.description.label("description"),
             FormularioServicio.cargo_measurements.label("cargo_measurements"),
+            FormularioServicio.is_exclusive.label("is_exclusive"),
+            FormularioServicio.origin_commune_code.label("origin_commune_code"),
+            origin_commune.name.label("origin_commune_name"),
+            origin_region.name.label("origin_region_name"),
+            FormularioServicio.destination_commune_code.label("destination_commune_code"),
+            destination_commune.name.label("destination_commune_name"),
+            destination_region.name.label("destination_region_name"),
+            Usuario.first_name.label("customer_first_name"),
+            Usuario.last_name.label("customer_last_name"),
             TipoServicio.name.label("service_name"),
             Chat.id.label("chat_id"),
         )
         .join(TipoServicio, TipoServicio.id == FormularioServicio.service_type_id)
+        .join(Usuario, Usuario.id == FormularioServicio.customer_id)
         .outerjoin(Chat, Chat.form_id == FormularioServicio.id)
+        .outerjoin(origin_commune, origin_commune.code == FormularioServicio.origin_commune_code)
+        .outerjoin(origin_region, origin_region.code == origin_commune.region_code)
+        .outerjoin(destination_commune, destination_commune.code == FormularioServicio.destination_commune_code)
+        .outerjoin(destination_region, destination_region.code == destination_commune.region_code)
         .where(FormularioServicio.profile_id == profile_id)
+    )
+
+
+def _provider_request_item(row) -> ProviderRequestItem:
+    payload = dict(row)
+    first_name, last_name = _customer_name_for_provider(
+        payload["status"], payload.pop("customer_first_name"), payload.pop("customer_last_name")
+    )
+    return ProviderRequestItem(**payload, customer_first_name=first_name, customer_last_name=last_name)
+
+
+def _provider_request_counts(session: Session, profile_id: UUID) -> ProviderRequestCounts:
+    # Counts ignore the status filter so each tab can show its badge while another tab is open.
+    status_rows = session.execute(
+        select(FormularioServicio.status, func.count())
+        .where(FormularioServicio.profile_id == profile_id)
+        .group_by(FormularioServicio.status)
+    ).all()
+    by_status = dict(status_rows)
+    return ProviderRequestCounts(**{status: int(by_status.get(status, 0)) for status in PROVIDER_REQUEST_STATUSES})
+
+
+@router.get("/provider/requests", response_model=ProviderRequestPage)
+def list_provider_requests(
+    current_user: CurrentUser,
+    session: Database,
+    status: Annotated[str | None, Query(max_length=20)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
+    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
+) -> ProviderRequestPage:
+    _, profile_id = _owned_provider(session, current_user)
+    status_filter = _provider_status_filter(status)
+    status_clause = [FormularioServicio.status == status_filter] if status_filter else []
+    counts = _provider_request_counts(session, profile_id)
+    total = session.execute(
+        select(func.count())
+        .select_from(FormularioServicio)
+        .where(FormularioServicio.profile_id == profile_id, *status_clause)
+    ).scalar_one()
+    rows = session.execute(
+        _provider_request_rows(profile_id)
+        .where(*status_clause)
         .order_by(FormularioServicio.created_at.desc(), FormularioServicio.id.desc())
         .limit(limit)
         .offset(offset)
     ).mappings().all()
     return ProviderRequestPage(
-        items=[ProviderRequestItem(**row) for row in rows], total=total, limit=limit, offset=offset
+        items=[_provider_request_item(row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+        counts=counts,
     )
+
+
+@router.get("/provider/requests/{request_id}", response_model=ProviderRequestItem)
+def get_provider_request(request_id: UUID, current_user: CurrentUser, session: Database) -> ProviderRequestItem:
+    _, profile_id = _owned_provider(session, current_user)
+    # Requests owned by another profile and unknown ids both return 404, so existence is not leaked.
+    row = session.execute(
+        _provider_request_rows(profile_id).where(FormularioServicio.id == request_id)
+    ).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Provider request not found.")
+    return _provider_request_item(row)
 
 
 def _decide_provider_request(
