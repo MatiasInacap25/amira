@@ -18,6 +18,7 @@ from amira_api.models import (
     Commune,
     Conductor,
     Cotizacion,
+    Desembolso,
     FormularioServicio,
     Perfil,
     Reclamo,
@@ -69,6 +70,11 @@ def open_claim_exists():
     return exists().where(Reclamo.service_id == Servicio.id, Reclamo.status == CLAIM_OPEN)
 
 
+def payout_released_exists():
+    """True once a payout (``Desembolso``) exists for the service. Correlated to the enclosing ``Servicio``."""
+    return exists().where(Desembolso.service_id == Servicio.id)
+
+
 def service_count(*conditions) -> Select:
     return _service_relation(select(func.count(Servicio.id))).where(*conditions)
 
@@ -99,6 +105,7 @@ def service_rows(*conditions) -> Select:
             Servicio.payout_deadline_at.label("payout_deadline_at"),
             Servicio.delivery_evidence_key.label("delivery_evidence_key"),
             Servicio.customer_consent_at.label("customer_consent_at"),
+            payout_released_exists().label("payout_released"),
             # A claim moves the service to disputed and only claims do; resolution is out of scope. Reading the status
             # keeps the shared detail query free of a Reclamo join, so detail views never depend on that table.
             (Servicio.status == "disputed").label("claim_open"),
@@ -171,7 +178,7 @@ def load_assignments(session: Session, service_id: UUID) -> list[ServiceAssignme
 
 def _customer_actions(row, viewer_role: ViewerRole) -> tuple[bool, bool]:
     """(can_claim, can_consent) for the viewer. Mirrors the rules enforced by the customer claim and consent routes."""
-    if viewer_role != "customer":
+    if viewer_role != "customer" or row["payout_released"]:
         return False, False
     if row["status"] != "completed" or row["claim_open"] or row["customer_consent_at"] is not None:
         return False, False
@@ -181,7 +188,12 @@ def _customer_actions(row, viewer_role: ViewerRole) -> tuple[bool, bool]:
 
 
 def shape_detail(
-    row, viewer_role: ViewerRole, *, can_manage: bool, assignments: list[ServiceAssignment]
+    row,
+    viewer_role: ViewerRole,
+    *,
+    can_manage: bool,
+    viewer_assigned: bool,
+    assignments: list[ServiceAssignment],
 ) -> ServiceDetail:
     can_claim, can_consent = _customer_actions(row, viewer_role)
     return ServiceDetail(
@@ -194,6 +206,7 @@ def shape_detail(
         payout_deadline_at=row["payout_deadline_at"],
         viewer_role=viewer_role,
         can_manage=can_manage,
+        viewer_assigned=viewer_assigned,
         delivery_photo_available=row["delivery_evidence_key"] is not None,
         customer_consent_at=row["customer_consent_at"],
         claim_open=bool(row["claim_open"]),

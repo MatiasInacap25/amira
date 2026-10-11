@@ -5,19 +5,21 @@ reaches the network. Only an assigned driver can complete; the owner who is not 
 cannot see the service gets 404.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.clock import as_utc, utc_now
 from amira_api.db import get_db_session
-from amira_api.evidence_storage import EvidenceStorageError, get_evidence_storage
+from amira_api.evidence_storage import EvidenceStorageError, get_evidence_storage, get_evidence_storage_resolver
 from amira_api.main import app
 from amira_api.models import RolUsuario, Servicio, Usuario
 from amira_api.settings import Settings, get_settings
@@ -40,13 +42,24 @@ SIGNED_BASE = "https://storage.example.test"
 class FakeEvidenceStorage:
     def __init__(self) -> None:
         self.fail_upload = False
+        self.fail_delete = False
         self.uploads: dict[str, tuple[bytes, str]] = {}
+        self.deleted: list[str] = []
         self.signed: list[tuple[str, int]] = []
+        # Runs inside upload, after the bytes are accepted, to simulate another request acting meanwhile.
+        self.on_upload: Callable[[], None] | None = None
 
     def upload(self, key: str, content: bytes, content_type: str) -> None:
         if self.fail_upload:
             raise EvidenceStorageError("storage unavailable")
         self.uploads[key] = (content, content_type)
+        if self.on_upload is not None:
+            self.on_upload()
+
+    def delete(self, key: str) -> None:
+        if self.fail_delete:
+            raise EvidenceStorageError("storage unavailable")
+        self.deleted.append(key)
 
     def create_signed_url(self, key: str, expires_in: int) -> str:
         self.signed.append((key, expires_in))
@@ -80,9 +93,10 @@ def api(db: Session, storage: FakeEvidenceStorage):
     settings_kwargs: dict = {}
     app.dependency_overrides[get_db_session] = lambda: db
     app.dependency_overrides[get_evidence_storage] = lambda: storage
+    app.dependency_overrides[get_evidence_storage_resolver] = lambda: (lambda: storage)
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, **settings_kwargs)
     yield Api(TestClient(app), storage, settings_kwargs)
-    for dependency in (get_db_session, get_current_user, get_evidence_storage, get_settings):
+    for dependency in (get_db_session, get_current_user, get_evidence_storage, get_evidence_storage_resolver, get_settings):
         app.dependency_overrides.pop(dependency, None)
 
 
@@ -379,3 +393,96 @@ def test_unseen_provider_gets_404_for_the_delivery_photo(api, db, fleet: Fleet):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Service not found."
+
+
+# --- Upload outside the row lock, cleanup of an orphaned photo, storage resolved after the checks ----------------------
+
+
+def test_the_photo_is_uploaded_without_holding_the_service_row_lock(api, db, fleet: Fleet):
+    _start(db, fleet.service_a)
+    in_transaction_during_upload: list[bool] = []
+    api.storage.on_upload = lambda: in_transaction_during_upload.append(db.in_transaction())
+
+    response = _complete(api, fleet.service_a)
+
+    assert response.status_code == 200
+    assert in_transaction_during_upload == [False]
+    assert api.storage.deleted == []
+
+
+def test_a_photo_is_deleted_when_the_service_changed_while_it_was_uploading(api, db, fleet: Fleet):
+    _start(db, fleet.service_a)
+
+    def cancel_meanwhile() -> None:
+        db.execute(update(Servicio).where(Servicio.id == fleet.service_a.id).values(status="disputed"))
+        db.commit()
+
+    api.storage.on_upload = cancel_meanwhile
+
+    response = _complete(api, fleet.service_a)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Only in-progress services can be completed."
+    assert len(api.storage.uploads) == 1
+    assert api.storage.deleted == list(api.storage.uploads)
+    row = _stored_service(db, fleet.service_a)
+    assert row.status == "disputed"
+    assert row.delivery_evidence_key is None
+
+
+def test_a_failed_cleanup_does_not_mask_the_conflict_response(api, db, fleet: Fleet):
+    _start(db, fleet.service_a)
+    api.storage.fail_delete = True
+
+    def cancel_meanwhile() -> None:
+        db.execute(update(Servicio).where(Servicio.id == fleet.service_a.id).values(status="disputed"))
+        db.commit()
+
+    api.storage.on_upload = cancel_meanwhile
+
+    response = _complete(api, fleet.service_a)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Only in-progress services can be completed."
+
+
+def test_a_commit_failure_after_the_upload_deletes_the_photo_and_writes_nothing(api, db, fleet: Fleet, monkeypatch):
+    _start(db, fleet.service_a)
+
+    def failing_commit() -> None:
+        raise RuntimeError("database connection lost")
+
+    monkeypatch.setattr(db, "commit", failing_commit)
+    with pytest.raises(RuntimeError, match="database connection lost"):
+        _complete(api, fleet.service_a)
+    monkeypatch.undo()
+
+    assert len(api.storage.uploads) == 1
+    assert api.storage.deleted == list(api.storage.uploads)
+    row = _stored_service(db, fleet.service_a)
+    assert row.status == "in_progress"
+    assert row.delivery_evidence_key is None
+
+
+def test_unconfigured_storage_raises_503_with_the_documented_message():
+    with pytest.raises(HTTPException) as error:
+        get_evidence_storage(Settings(_env_file=None, supabase_url=None))
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Delivery photo storage is not configured."
+
+
+def test_storage_is_resolved_after_the_visibility_and_assignment_checks(api, db, fleet: Fleet):
+    api.settings_kwargs["supabase_url"] = None
+    app.dependency_overrides.pop(get_evidence_storage_resolver, None)
+    _start(db, fleet.service_a)
+
+    unseen = _complete(api, fleet.service_a, auth=OUTSIDER_AUTH)
+    not_assigned = _complete(api, fleet.service_a, auth=OWNER_AUTH)
+    assigned = _complete(api, fleet.service_a)
+
+    assert unseen.status_code == 404
+    assert not_assigned.status_code == 403
+    assert assigned.status_code == 503
+    assert assigned.json()["detail"] == "Delivery photo storage is not configured."
+    assert _stored_service(db, fleet.service_a).status == "in_progress"

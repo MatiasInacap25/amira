@@ -42,6 +42,14 @@ class SupabaseEvidenceStorage:
         except httpx.HTTPError as error:
             raise EvidenceStorageError("Supabase Storage rejected the upload.") from error
 
+    def delete(self, key: str) -> None:
+        # The bulk remove endpoint, the same call supabase-js makes for remove(): DELETE /object/{bucket} with prefixes.
+        try:
+            response = self._client.request("DELETE", f"/object/{self._bucket}", json={"prefixes": [key]})
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise EvidenceStorageError("Supabase Storage could not delete the object.") from error
+
     def create_signed_url(self, key: str, expires_in: int) -> str:
         try:
             response = self._client.post(

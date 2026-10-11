@@ -86,3 +86,34 @@ def test_signed_url_response_without_a_url_raises_a_storage_error() -> None:
 
     with pytest.raises(EvidenceStorageError):
         storage.create_signed_url(OBJECT_KEY, 300)
+
+
+def test_delete_removes_the_object_through_the_bulk_remove_endpoint() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=[{"name": OBJECT_KEY}])
+
+    _storage(handler).delete(OBJECT_KEY)
+
+    request = seen[0]
+    assert request.method == "DELETE"
+    assert str(request.url) == f"{BASE_URL}/storage/v1/object/{BUCKET}"
+    assert request.headers["authorization"] == f"Bearer {SERVICE_KEY}"
+    assert json.loads(request.content) == {"prefixes": [OBJECT_KEY]}
+
+
+def test_delete_rejected_by_storage_raises_a_storage_error() -> None:
+    storage = _storage(lambda request: httpx.Response(500, json={"message": "boom"}))
+
+    with pytest.raises(EvidenceStorageError):
+        storage.delete(OBJECT_KEY)
+
+
+def test_delete_network_failure_raises_a_storage_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    with pytest.raises(EvidenceStorageError):
+        _storage(handler).delete(OBJECT_KEY)

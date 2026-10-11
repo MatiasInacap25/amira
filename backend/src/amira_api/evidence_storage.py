@@ -3,6 +3,7 @@
 The composition root is ``get_evidence_storage``. Routes depend on it, and tests override it with an in-memory fake.
 """
 
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated, NamedTuple, Protocol
 
@@ -24,6 +25,10 @@ class EvidenceStorage(Protocol):
 
     def create_signed_url(self, key: str, expires_in: int) -> str:
         """A URL that reads ``key`` for ``expires_in`` seconds and nothing else. Raises EvidenceStorageError on failure."""
+        ...
+
+    def delete(self, key: str) -> None:
+        """Remove ``key`` from the private bucket. Raises EvidenceStorageError on failure."""
         ...
 
 
@@ -65,6 +70,13 @@ def get_evidence_storage(settings: Annotated[Settings, Depends(get_settings)]) -
         settings.supabase_service_role_key.get_secret_value(),
         settings.service_evidence_bucket,
     )
+
+
+def get_evidence_storage_resolver(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Callable[[], EvidenceStorage]:
+    """Defers the composition root until a handler calls it, so earlier checks in that handler run before a 503."""
+    return lambda: get_evidence_storage(settings)
 
 
 @lru_cache

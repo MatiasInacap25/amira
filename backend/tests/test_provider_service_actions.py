@@ -13,7 +13,8 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
@@ -362,3 +363,23 @@ def test_customer_cannot_start_a_service(call, fleet: Fleet):
     response = call("POST", _start_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH)
 
     assert response.status_code == 403
+
+
+def test_requested_drivers_are_locked_in_id_order_before_the_same_day_check(call, db, fleet: Fleet):
+    """SQLite ignores FOR UPDATE, so the statements are captured and compiled for PostgreSQL instead."""
+    executed: list[str] = []
+
+    def record(orm_execute_state) -> None:
+        executed.append(str(orm_execute_state.statement.compile(dialect=postgresql.dialect())))
+
+    event.listen(db, "do_orm_execute", record)
+    try:
+        response = _put(call, fleet.service_next_day, [_pair(fleet.eli, fleet.van)])
+    finally:
+        event.remove(db, "do_orm_execute", record)
+
+    assert response.status_code == 200
+    lock = next(sql for sql in executed if sql.startswith('SELECT "Conductor"."ID"') and "FOR UPDATE" in sql)
+    conflict = next(sql for sql in executed if sql.startswith('SELECT "Servicio_Asignacion"."ID_Conductor"'))
+    assert "ORDER BY" in lock and '"Conductor"."ID"' in lock.split("ORDER BY", 1)[1]
+    assert executed.index(lock) < executed.index(conflict)

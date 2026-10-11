@@ -8,6 +8,8 @@ gets 403. A service the viewer cannot see answers 404, never 403.
 Only the profile owner assigns drivers and vehicles. Assigned drivers and the owner can start a service.
 """
 
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
 from typing import Annotated
@@ -27,6 +29,7 @@ from amira_api.evidence_storage import (
     EvidenceStorageError,
     detect_photo_type,
     get_evidence_storage,
+    get_evidence_storage_resolver,
     read_capped,
 )
 from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, Usuario, Vehiculo
@@ -53,6 +56,7 @@ from amira_api.service_views import (
 )
 from amira_api.settings import Settings, get_settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/provider", tags=["provider-services"])
 MAX_PAGE_SIZE = 50
 MAX_OFFSET = 5000
@@ -61,6 +65,8 @@ OPEN_STATUSES = ("confirmed", "in_progress")
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
 Storage = Annotated[EvidenceStorage, Depends(get_evidence_storage)]
+# Resolves the storage port only when a handler needs it, so checks that come first (404, 403, 409) win over a 503.
+ResolveStorage = Annotated[Callable[[], EvidenceStorage], Depends(get_evidence_storage_resolver)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
 PHOTO_MAX_SIZE_MESSAGE = "The delivery photo is larger than the allowed size."
 PHOTO_TYPE_MESSAGE = "The delivery photo must be a JPEG, PNG or WebP image."
@@ -112,8 +118,13 @@ def _visible_detail(session: Session, viewer: ProviderViewer, service_id: UUID) 
     row = session.execute(service_rows(Servicio.id == service_id, *viewer.visibility())).mappings().one_or_none()
     if row is None:
         return None
+    assignments = load_assignments(session, service_id)
     return shape_detail(
-        row, "provider", can_manage=viewer.is_owner, assignments=load_assignments(session, service_id)
+        row,
+        "provider",
+        can_manage=viewer.is_owner,
+        viewer_assigned=any(assignment.driver_id == viewer.driver_id for assignment in assignments),
+        assignments=assignments,
     )
 
 
@@ -153,9 +164,14 @@ def _assignable_vehicle_filter(profile_id: UUID):
 
 
 def _ensure_drivers_belong(session: Session, viewer: ProviderViewer, driver_ids: list[UUID]) -> None:
+    # Locks the requested driver rows in id order before the same-day check. Requests that name the same drivers
+    # serialize here, and the fixed order keeps two requests from locking the rows in opposite orders.
     belonging = set(
         session.execute(
-            select(Conductor.id).where(Conductor.id.in_(driver_ids), _assignable_driver_filter(viewer))
+            select(Conductor.id)
+            .where(Conductor.id.in_(driver_ids), _assignable_driver_filter(viewer))
+            .order_by(Conductor.id)
+            .with_for_update()
         ).scalars()
     )
     if belonging != set(driver_ids):
@@ -354,7 +370,7 @@ def complete_provider_service(
     service_id: UUID,
     current_user: CurrentUser,
     session: Database,
-    storage: Storage,
+    resolve_storage: ResolveStorage,
     settings: AppSettings,
     photo: Annotated[UploadFile, File()],
 ) -> ServiceDetail:
@@ -364,7 +380,10 @@ def complete_provider_service(
         raise HTTPException(status_code=403, detail="Only an assigned driver can complete this service.")
     if service.status != "in_progress":
         raise HTTPException(status_code=409, detail="Only in-progress services can be completed.")
+    # The row lock is released before the photo is read and uploaded, so a slow upload never blocks other writers.
+    session.rollback()
 
+    storage = resolve_storage()
     content = read_capped(photo, settings.service_evidence_max_bytes)
     if content is None:
         raise HTTPException(status_code=413, detail=PHOTO_MAX_SIZE_MESSAGE)
@@ -377,9 +396,25 @@ def complete_provider_service(
     try:
         storage.upload(key, content, photo_type.content_type)
     except EvidenceStorageError as error:
-        session.rollback()
         raise HTTPException(status_code=502, detail=PHOTO_STORAGE_MESSAGE) from error
 
+    try:
+        _record_completion(session, viewer, service_id, key, settings)
+    except Exception:
+        # The photo is not referenced by any service, so it is removed. Nothing else is written on this path.
+        session.rollback()
+        _discard_photo(storage, key)
+        raise
+    return _visible_detail(session, viewer, service_id)
+
+
+def _record_completion(
+    session: Session, viewer: ProviderViewer, service_id: UUID, key: str, settings: Settings
+) -> None:
+    """Lock the service again, re-check that it is still in progress, then write the completion."""
+    service = _lock_visible_service(session, viewer, service_id)
+    if service.status != "in_progress":
+        raise HTTPException(status_code=409, detail="Only in-progress services can be completed.")
     now = utc_now()
     session.execute(
         update(Servicio)
@@ -393,7 +428,14 @@ def complete_provider_service(
         )
     )
     session.commit()
-    return _visible_detail(session, viewer, service_id)
+
+
+def _discard_photo(storage: EvidenceStorage, key: str) -> None:
+    """Best effort: a failed delete leaves a stored but unreferenced photo, so it is logged and never raised."""
+    try:
+        storage.delete(key)
+    except EvidenceStorageError:
+        logger.warning("Could not delete the unreferenced delivery photo %s.", key, exc_info=True)
 
 
 @router.get("/services/{service_id}/delivery-photo", response_model=DeliveryPhotoUrl)

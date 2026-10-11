@@ -31,6 +31,7 @@ from amira_api.service_views import (
 )
 from amira_api.settings import Settings, get_settings
 from amira_api.models import (
+    Desembolso,
     FormularioServicio,
     Perfil,
     Reclamo,
@@ -157,7 +158,9 @@ def get_customer_service(service_id: UUID, current_user: CurrentUser, session: D
     ).mappings().one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Service not found.")
-    return shape_detail(row, "customer", can_manage=False, assignments=load_assignments(session, service_id))
+    return shape_detail(
+        row, "customer", can_manage=False, viewer_assigned=False, assignments=load_assignments(session, service_id)
+    )
 
 
 @router.get("/services/{service_id}/delivery-photo", response_model=DeliveryPhotoUrl)
@@ -262,11 +265,18 @@ def _has_open_claim(session: Session, service_id: UUID) -> bool:
     )
 
 
+def _payout_released(session: Session, service_id: UUID) -> bool:
+    """True once a payout exists for the service. Checked under the service lock, like the release job does."""
+    return session.execute(select(Desembolso.id).where(Desembolso.service_id == service_id).limit(1)).first() is not None
+
+
 def _customer_service_detail(session: Session, account_id: UUID, service_id: UUID) -> ServiceDetail:
     row = session.execute(
         service_rows(Servicio.id == service_id, Servicio.customer_id == account_id)
     ).mappings().one()
-    return shape_detail(row, "customer", can_manage=False, assignments=load_assignments(session, service_id))
+    return shape_detail(
+        row, "customer", can_manage=False, viewer_assigned=False, assignments=load_assignments(session, service_id)
+    )
 
 
 @router.post("/services/{service_id}/claims", response_model=ServiceDetail)
@@ -316,6 +326,8 @@ def give_customer_service_consent(
         raise HTTPException(status_code=409, detail="A service with an open claim cannot receive consent.")
     if service.status != "completed":
         raise HTTPException(status_code=409, detail="Only completed services can receive consent.")
+    if _payout_released(session, service.id):
+        raise HTTPException(status_code=409, detail="The payout for this service has already been released.")
     if service.customer_consent_at is not None:
         raise HTTPException(status_code=409, detail="Consent was already given for this service.")
     # Consent makes the payout due immediately; the release job picks it up on its next run.

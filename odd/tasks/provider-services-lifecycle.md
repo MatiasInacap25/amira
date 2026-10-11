@@ -52,6 +52,7 @@ Public JSON is camelCase. All endpoints use `get_current_user`. A service that t
 3. `GET /api/customer/services/{serviceId}` → `ServiceDetail` for the customer who owns it.
 4. List item: `{serviceId, status, serviceTypeName, serviceAt, amount, currency, originCommune, destinationCommune, isExclusive, counterpartName, assignmentCount}`. `counterpartName` is the provider's display name for the customer, and the customer's first name for the provider. No contact details.
 5. `ServiceDetail` = list item fields + `{chatId, description, createdAt, startedAt, completedAt, payoutDeadlineAt, viewerRole: "customer"|"provider", canManage: bool, assignments: [{driverId, driverFirstName, vehicleId, vehicleLabel ("Marca Modelo"), plate}]}`. `canManage` is true only for the profile owner.
+   - `viewerAssigned: bool` is true when the viewer is one of the drivers assigned to the service (a `Servicio_Asignacion` row for the viewer's driver); always false for customers.
 
 ## API contract (S2)
 
@@ -86,25 +87,26 @@ Public JSON is camelCase. All endpoints use `get_current_user` and the S1 viewer
 1. `POST /api/provider/services/{serviceId}/complete`: `multipart/form-data` with one required file field, `photo`. No other fields.
    - Only an assigned driver can complete: the viewer's `Conductor` must have a `Servicio_Asignacion` row for the service. The profile owner who is not assigned gets 403. The service row is locked `FOR UPDATE` and its status is re-checked after the lock.
    - The type is decided by magic bytes (JPEG, PNG or WebP). The declared content type and the client file name are ignored.
-   - The bytes are uploaded before any write, to the private bucket under `services/{serviceId}/{uuid}.{jpg|png|webp}`. The database is written only after the upload succeeds.
+   - The row lock is released before the photo is read and uploaded. The bytes go to the private bucket under `services/{serviceId}/{uuid}.{jpg|png|webp}`. Then the service is locked again, `status` is re-checked, and the database is written and committed. If that re-check or the commit fails, the uploaded object is deleted (best effort; a failed delete is logged, not returned). The database is written only after the upload succeeds.
    - Sets `status` to `completed`, `delivery_evidence_key`, `completed_at` = now, `completion_notified_at` = now and `payout_deadline_at` = now + `SERVICE_CLAIM_WINDOW_HOURS`.
    - 200: `ServiceDetail` with `status: "completed"` and `deliveryPhotoAvailable: true`.
    - Errors, in evaluation order:
+     - 422 FastAPI validation when `photo` is missing (before any handler check)
      - 404 `Service not found.` (not visible to the viewer)
      - 403 `Only an assigned driver can complete this service.` (visible, not assigned)
      - 409 `Only in-progress services can be completed.` (also on a second completion)
+     - 503 `Delivery photo storage is not configured.` (`SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` unset; resolved after the checks above and before the photo is read, so 404 and 403 win over 503)
      - 413 `The delivery photo is larger than the allowed size.` (cap: `SERVICE_EVIDENCE_MAX_BYTES`; the size is counted on the bytes read, not on Content-Length)
      - 415 `The delivery photo must be a JPEG, PNG or WebP image.`
      - 502 `The delivery photo could not be stored. Try again.` (nothing written; the service stays `in_progress`)
-     - 422 FastAPI validation when `photo` is missing
-     - 503 `Delivery photo storage is not configured.` (`SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` unset; the storage dependency resolves before the handler, so this applies to every request on the route)
+     - 409 `Only in-progress services can be completed.` also applies when the re-check after the upload finds the service no longer `in_progress` (the photo is deleted)
 2. `GET /api/provider/services/{serviceId}/delivery-photo`: any provider viewer who can see the service (owner or assigned driver).
 3. `GET /api/customer/services/{serviceId}/delivery-photo`: the customer who owns the service.
    - 200: `{url, expiresAt}`. `url` is a signed read URL valid for `SERVICE_EVIDENCE_URL_TTL_SECONDS`; `expiresAt` is now + that TTL.
    - 404 `Service not found.` (not visible, not owned, including another customer's service).
    - 404 `Delivery photo not found.` (no evidence yet).
    - 502 `The delivery photo could not be retrieved. Try again.` (signing failed).
-   - 503 as in endpoint 1.
+   - 503 as in endpoint 1. Unlike endpoint 1, these two GET routes still resolve storage before their 404 checks, so an unconfigured deployment answers 503 first (open follow-up; not part of F6).
 4. `ServiceDetail` (provider and customer detail) gains `deliveryPhotoAvailable: bool`. The storage key and signed URLs never appear in list, detail or completion responses.
 
 New settings (read from the backend environment; setup in `backend/README.md`, "Delivery photos"):
@@ -131,6 +133,7 @@ Public JSON is camelCase. The customer routes use `get_current_user` and the cus
 2. `POST /api/customer/services/{serviceId}/consent`: no body. Checks run in this order:
    - 409 `A service with an open claim cannot receive consent.`
    - 409 `Only completed services can receive consent.`
+   - 409 `The payout for this service has already been released.` (a `Desembolso` exists, including a release made after the window closed without consent)
    - 409 `Consent was already given for this service.`
    - 200 on success: sets `customerConsentAt` to now, keeps `status` `completed`, and returns `ServiceDetail`. The payout is due at the next release run.
 3. `ServiceDetail` (provider and customer) gains:
@@ -140,7 +143,7 @@ Public JSON is camelCase. The customer routes use `get_current_user` and the cus
    | `customerConsentAt` | datetime or null | When the customer gave consent |
    | `claimOpen` | bool | True while a claim on the service is open |
    | `canClaim` | bool | Customer only: completed, no open claim, no consent, inside the claim window |
-   | `canConsent` | bool | Customer only: completed, no open claim, no consent yet |
+   | `canConsent` | bool | Customer only: completed, no open claim, no consent yet, no payout released |
 
    Providers always get `canClaim: false` and `canConsent: false`. No claim text is exposed in any response.
 

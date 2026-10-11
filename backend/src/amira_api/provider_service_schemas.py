@@ -20,7 +20,8 @@ class ServiceListItem(PublicResponse):
     service_type_name: str
     service_at: datetime | None
     amount: int | None
-    currency: Literal["CLP"]
+    # Any ISO 4217 code, as stored on the accepted quotation. A narrower type would fail the whole page on one row.
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
     origin_commune: str | None
     destination_commune: str | None
     is_exclusive: bool
@@ -52,6 +53,8 @@ class ServiceDetail(ServiceListItem):
     payout_deadline_at: datetime | None
     viewer_role: Literal["customer", "provider"]
     can_manage: bool
+    # True when the viewer is one of the drivers assigned to the service. Always false for customers.
+    viewer_assigned: bool
     # True once the completion photo exists. The storage key and the signed URL are never part of any response.
     delivery_photo_available: bool
     # Customer-only: the consent time and the claim state. Providers always get false for the actions.

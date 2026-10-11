@@ -5,6 +5,7 @@ and no payout yet. Releasing needs an approved payment and an enabled payout acc
 Running the release twice creates no second payout, and one failing provider call does not block other services.
 """
 
+import logging
 from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +19,7 @@ from amira_api.clock import utc_now
 from amira_api.models import CuentaDesembolso, Desembolso, Reclamo, Servicio
 from amira_api.payout_provider import PayoutProviderError, PayoutRequest, PayoutResult
 from amira_api.payout_service import release_due_payouts
+from amira_api.settings import get_settings
 from amira_api.simulated_payout_provider import SimulatedPayoutProvider
 from claim_support import add_approved_payment, add_payout_account, complete, db  # noqa: F401  (fixture re-export)
 from test_provider_service_actions import Fleet, fleet  # noqa: F401  (fixture re-export)
@@ -200,10 +202,17 @@ def test_simulated_payout_adapter_is_deterministic_per_idempotency_key():
     assert provider.create_payout(request).provider_payout_id == provider.create_payout(request).provider_payout_id
 
 
-def test_release_command_refuses_production_and_exits_non_zero(monkeypatch):
+def test_release_command_refuses_production_and_exits_non_zero(monkeypatch, caplog):
+    # get_settings is cached: clear it so the APP_ENV set here is the one the command reads.
+    get_settings.cache_clear()
     monkeypatch.setenv("APP_ENV", "production")
+    try:
+        with caplog.at_level(logging.ERROR, logger="amira_api.release_payouts"):
+            assert release_payouts.main() == 1
+    finally:
+        get_settings.cache_clear()
 
-    assert release_payouts.main() == 1
+    assert "Payout release cannot run: The simulated payout provider requires APP_ENV to be one of:" in caplog.text
 
 
 def test_release_command_is_wired_to_a_fifteen_minute_render_cron_with_the_web_env():

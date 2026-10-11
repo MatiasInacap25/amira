@@ -51,7 +51,7 @@ def db():
     event.listen(engine, "connect", _register_btrim)
     tables = (
         "Rol_Usuario", "Usuario", "Perfil", "Conductor", "Vehiculo", "Formulario_servicio", "Chat",
-        "Cotizacion", "Servicio", "Servicio_Asignacion",
+        "Cotizacion", "Servicio", "Servicio_Asignacion", "Pago", "Cuenta_Desembolso", "Desembolso",
     )
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
     with engine.begin() as connection:
@@ -288,3 +288,60 @@ def test_provider_account_gets_403_on_customer_detail(api, scenario: Scenario):
     response = api(f"/api/customer/services/{scenario.company_assigned.id}", as_auth_id=OWNER_AUTH)
 
     assert response.status_code == 403
+
+
+def test_viewer_assigned_is_true_only_for_the_assigned_driver(api, scenario: Scenario):
+    assigned = api(f"/api/provider/services/{scenario.company_assigned.id}", as_auth_id=EMPLOYED_DRIVER_AUTH).json()
+    owner = api(f"/api/provider/services/{scenario.company_assigned.id}", as_auth_id=OWNER_AUTH).json()
+    unassigned_driver_view = api(
+        f"/api/provider/services/{scenario.company_unassigned.id}", as_auth_id=OWNER_AUTH
+    ).json()
+
+    assert assigned["viewerAssigned"] is True
+    assert owner["viewerAssigned"] is False
+    assert owner["canManage"] is True
+    assert unassigned_driver_view["viewerAssigned"] is False
+
+
+def test_viewer_assigned_is_false_for_an_independent_owner_on_their_own_unassigned_service(api, scenario: Scenario):
+    body = api(f"/api/provider/services/{scenario.independent.id}", as_auth_id=INDEPENDENT_AUTH).json()
+
+    assert body["viewerAssigned"] is False
+
+
+def test_viewer_assigned_is_false_for_customers(api, scenario: Scenario):
+    body = api(f"/api/customer/services/{scenario.company_assigned.id}", as_auth_id=CUSTOMER_AUTH).json()
+
+    assert body["viewerAssigned"] is False
+
+
+def test_status_filter_applies_inside_the_employed_driver_visibility(api, db, scenario: Scenario):
+    # company_unassigned is completed but not assigned to the employed driver, so the filter must not reveal it.
+    scenario.company_unassigned.status = "completed"
+    db.commit()
+
+    driver_completed = api("/api/provider/services?status=completed", as_auth_id=EMPLOYED_DRIVER_AUTH).json()
+    driver_confirmed = api("/api/provider/services?status=confirmed", as_auth_id=EMPLOYED_DRIVER_AUTH).json()
+    owner_completed = api("/api/provider/services?status=completed", as_auth_id=OWNER_AUTH).json()
+
+    assert driver_completed["total"] == 0 and driver_completed["items"] == []
+    assert _ids(driver_confirmed) == [str(scenario.company_assigned.id)]
+    assert _ids(owner_completed) == [str(scenario.company_unassigned.id)]
+
+
+def test_currency_accepts_any_iso_code_so_one_non_clp_row_does_not_break_the_list():
+    from amira_api.provider_service_schemas import ServiceListItem
+
+    item = ServiceListItem(
+        service_id=uuid4(), status="confirmed", service_type_name="Mudanzas", service_at=None, amount=None,
+        currency="USD", origin_commune=None, destination_commune=None, is_exclusive=False,
+        counterpart_name="Pat", assignment_count=0,
+    )
+
+    assert item.currency == "USD"
+    with pytest.raises(ValueError):
+        ServiceListItem(
+            service_id=uuid4(), status="confirmed", service_type_name="Mudanzas", service_at=None, amount=None,
+            currency="usd", origin_commune=None, destination_commune=None, is_exclusive=False,
+            counterpart_name="Pat", assignment_count=0,
+        )

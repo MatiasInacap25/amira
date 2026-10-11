@@ -12,8 +12,11 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from amira_api.clock import utc_now
 from amira_api.models import Reclamo, RolUsuario, Servicio, Usuario
-from claim_support import complete, db  # noqa: F401  (pytest fixture re-export)
+from amira_api.payout_service import release_due_payouts
+from amira_api.simulated_payout_provider import SimulatedPayoutProvider
+from claim_support import add_approved_payment, add_payout_account, complete, db  # noqa: F401  (pytest fixture re-export)
 from test_provider_service_actions import Fleet, call, fleet  # noqa: F401  (fixture re-export)
 from test_provider_service_routes import CUSTOMER_AUTH, OTHER_CUSTOMER_AUTH, OWNER_AUTH
 
@@ -199,3 +202,46 @@ def test_provider_detail_never_offers_claim_or_consent(call, db, fleet: Fleet):
 
     assert body["canClaim"] is False
     assert body["canConsent"] is False
+
+
+def _release_payout(db: Session, fleet: Fleet, service: Servicio) -> None:
+    """Release a completed service through the payout job, as the cron would once its deadline has passed."""
+    add_approved_payment(db, service)
+    add_payout_account(db, fleet.company)
+    summary = release_due_payouts(db, utc_now(), SimulatedPayoutProvider(app_env="development"))
+    assert summary.released == 1
+
+
+def test_consent_after_the_payout_was_released_is_409_and_changes_nothing(call, db, fleet: Fleet):
+    complete(db, fleet.service_a, deadline_in=timedelta(hours=-1))
+    _release_payout(db, fleet, fleet.service_a)
+
+    response = call("POST", _consent_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "The payout for this service has already been released."
+    assert _stored(db, fleet.service_a).customer_consent_at is None
+
+
+def test_released_service_offers_no_consent_to_the_customer(call, db, fleet: Fleet):
+    complete(db, fleet.service_a, deadline_in=timedelta(hours=-1))
+    _release_payout(db, fleet, fleet.service_a)
+
+    body = call("GET", _customer_detail_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH).json()
+
+    assert body["canConsent"] is False
+    assert body["canClaim"] is False
+
+
+def test_customer_detail_lists_the_assignments_of_the_service(call, db, fleet: Fleet):
+    body = call("GET", _customer_detail_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH).json()
+
+    assert body["assignmentCount"] == 1
+    assert body["assignments"] == [{
+        "driverId": str(fleet.eli.id),
+        "driverFirstName": "Eli",
+        "vehicleId": str(fleet.van.id),
+        "vehicleLabel": f"{fleet.van.brand} {fleet.van.model}",
+        "plate": fleet.van.plate,
+    }]
+    assert body["viewerAssigned"] is False

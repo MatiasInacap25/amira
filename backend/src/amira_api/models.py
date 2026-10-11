@@ -472,7 +472,7 @@ class Servicio(Base):
     # Set when the service actually starts; started_by_user_id records who started it.
     starts_at: Mapped[datetime | None] = mapped_column("Fecha_Inicio", DateTime(timezone=True))
     started_by_user_id: Mapped[UUID | None] = mapped_column(
-        "ID_Usuario_Inicio", ForeignKey("Usuario.ID", name="fk_service_started_by", ondelete="RESTRICT")
+        "ID_Usuario_Inicio", ForeignKey("Usuario.ID", name="fk_service_started_by", ondelete="SET NULL")
     )
     vehicle_id: Mapped[UUID | None] = mapped_column("ID_Vehiculo", ForeignKey("Vehiculo.ID", ondelete="RESTRICT"))
     trip_id: Mapped[UUID | None] = mapped_column("ID_Viaje", ForeignKey("Viaje.ID", ondelete="RESTRICT"))
