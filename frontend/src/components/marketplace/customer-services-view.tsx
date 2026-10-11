@@ -14,6 +14,7 @@ import {
   type CustomerService,
 } from "@/lib/marketplace-api";
 import { normalizeRatingComment, RATING_COMMENT_MAX_LENGTH, validateRatingDraft, type RatingDraftErrors } from "@/lib/customer-rating-validation";
+import { mapRatingRejection } from "@/lib/customer-rating-errors";
 import { nextCustomerServicesOffset } from "@/lib/customer-services-pagination";
 import { shouldClearCustomerCache } from "@/lib/customer-cache-policy";
 import { sendWithTokenRetry } from "@/lib/customer-request-retry";
@@ -180,7 +181,7 @@ function RatingForm({ serviceId }: { serviceId: string }) {
     setFieldErrors(errors);
     setSubmitError("");
     setNeedsSignIn(false);
-    if (errors.rating !== undefined || rating === null) return;
+    if (rating === null || Object.keys(errors).length > 0) return;
 
     setBusy(true);
     try {
@@ -201,7 +202,11 @@ function RatingForm({ serviceId }: { serviceId: string }) {
       else if (response.status === 409) {
         setSubmitError("Este servicio ya fue valorado.");
         await queryClient.invalidateQueries({ queryKey: SERVICES_QUERY_KEY });
-      } else if (response.status === 422) setSubmitError("Solo puedes valorar servicios completados.");
+      } else if (response.status === 422) {
+        const rejection = mapRatingRejection(await response.json().catch(() => null));
+        setFieldErrors(rejection.fieldErrors);
+        setSubmitError(rejection.submitError);
+      }
       else setSubmitError("No pudimos guardar la valoración. Inténtalo nuevamente.");
     } catch (cause) {
       if (cause instanceof CustomerSessionError) {
