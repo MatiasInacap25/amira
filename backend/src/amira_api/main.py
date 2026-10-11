@@ -7,6 +7,7 @@ from amira_api.customer_routes import router as customer_router
 from amira_api.fallback_routes import router as fallback_router
 from amira_api.invitation_routes import router as invitation_router
 from amira_api.location_routes import router as location_router
+from amira_api.provider_service_routes import router as provider_service_router
 from amira_api.public_routes import router as public_router
 from amira_api.payment_routes import router as payment_router
 from amira_api.quotation_routes import router as quotation_router
@@ -21,6 +22,7 @@ app.include_router(customer_router)
 app.include_router(fallback_router)
 app.include_router(invitation_router)
 app.include_router(location_router)
+app.include_router(provider_service_router)
 app.include_router(public_router)
 app.include_router(quotation_router)
 app.include_router(payment_router)

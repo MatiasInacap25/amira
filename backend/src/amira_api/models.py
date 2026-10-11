@@ -434,6 +434,10 @@ class Servicio(Base):
             '("ID_Viaje" IS NOT NULL AND "ID_Parada_Retiro" IS NOT NULL AND "ID_Parada_Entrega" IS NOT NULL)',
             name="ck_service_trip_stops_pair",
         ),
+        CheckConstraint(
+            "\"Estado\" IN ('confirmed', 'in_progress', 'completed', 'disputed')",
+            name="ck_service_status_allowed",
+        ),
         ForeignKeyConstraint(
             ["ID_Viaje", "ID_Vehiculo"],
             ["Viaje_Vehiculo.ID_Viaje", "Viaje_Vehiculo.ID_Vehiculo"],
@@ -465,7 +469,11 @@ class Servicio(Base):
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False, server_default=func.now())
     amount: Mapped[Decimal | None] = mapped_column("Valor", Numeric(18, 4))
     contracted_driver_id: Mapped[UUID | None] = mapped_column("ID_Conductor", ForeignKey("Conductor.ID", ondelete="SET NULL"), index=True)
+    # Set when the service actually starts; started_by_user_id records who started it.
     starts_at: Mapped[datetime | None] = mapped_column("Fecha_Inicio", DateTime(timezone=True))
+    started_by_user_id: Mapped[UUID | None] = mapped_column(
+        "ID_Usuario_Inicio", ForeignKey("Usuario.ID", name="fk_service_started_by", ondelete="SET NULL")
+    )
     vehicle_id: Mapped[UUID | None] = mapped_column("ID_Vehiculo", ForeignKey("Vehiculo.ID", ondelete="RESTRICT"))
     trip_id: Mapped[UUID | None] = mapped_column("ID_Viaje", ForeignKey("Viaje.ID", ondelete="RESTRICT"))
     pickup_stop_id: Mapped[UUID | None] = mapped_column("ID_Parada_Retiro", Uuid(as_uuid=True))
@@ -492,6 +500,28 @@ class Servicio(Base):
     rating: Mapped[Valoracion | None] = relationship(back_populates="service", uselist=False)
     claims: Mapped[list[Reclamo]] = relationship(back_populates="service")
     payouts: Mapped[list[Desembolso]] = relationship(back_populates="service")
+    assignments: Mapped[list[ServicioAsignacion]] = relationship(back_populates="service", cascade="all, delete-orphan")
+
+
+class ServicioAsignacion(Base):
+    """One (driver, vehicle) pair assigned to a contracted service; a service may have several."""
+
+    __tablename__ = "Servicio_Asignacion"
+    __table_args__ = (
+        UniqueConstraint("ID_Servicio", "ID_Conductor", name="uq_service_assignment_driver"),
+        UniqueConstraint("ID_Servicio", "ID_Vehiculo", name="uq_service_assignment_vehicle"),
+    )
+
+    id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    service_id: Mapped[UUID] = mapped_column("ID_Servicio", ForeignKey("Servicio.ID", ondelete="CASCADE"), nullable=False)
+    driver_id: Mapped[UUID] = mapped_column("ID_Conductor", ForeignKey("Conductor.ID", ondelete="RESTRICT"), nullable=False, index=True)
+    vehicle_id: Mapped[UUID] = mapped_column("ID_Vehiculo", ForeignKey("Vehiculo.ID", ondelete="RESTRICT"), nullable=False, index=True)
+    assigned_at: Mapped[datetime] = mapped_column("Fecha_Asignacion", DateTime(timezone=True), nullable=False, server_default=func.now())
+    assigned_by_user_id: Mapped[UUID] = mapped_column("ID_Usuario_Asigna", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False)
+
+    service: Mapped[Servicio] = relationship(back_populates="assignments")
+    driver: Mapped[Conductor] = relationship()
+    vehicle: Mapped[Vehiculo] = relationship()
 
 
 class Viaje(Base):

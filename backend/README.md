@@ -46,6 +46,72 @@ A checkout link is bound to its payment and to the paying customer, expires afte
 
 `POST /api/payments/confirm` is server-to-server only: it requires the `X-Amira-Payment-Webhook-Secret` header, compared in constant time with `PAYMENT_WEBHOOK_SECRET` (401 when wrong or missing, 503 when the secret is not configured). It refuses confirmations from the simulated provider with 403, so a browser can never obtain an approval through it. Confirmations are applied under row locks and are idempotent on the provider payment; a conflicting result for an already-decided payment is refused with 409.
 
+## Contracted services
+
+A `Servicio` moves through `confirmed`, `in_progress`, `completed` and `disputed` (`ck_service_status_allowed`). Providers assign one or more (driver, vehicle) pairs per service in `Servicio_Asignacion`.
+
+- `GET /api/provider/services?status=&limit=20&offset=0` and `GET /api/provider/services/{serviceId}`: the owner of a provider `Perfil` sees every service of that profile; a company-employed driver (`Conductor.ID_perfil` set) who owns no profile sees only the services they are assigned to. Any other account gets 403.
+- `GET /api/customer/services/{serviceId}`: the customer who owns the service.
+
+A service the viewer cannot see answers 404. Responses name the counterpart (provider display name for customers, customer first name for providers) and never include phone, email or RUT. `canManage` is true only for the profile owner.
+
+### Delivery photos (private Supabase Storage bucket)
+
+`POST /api/provider/services/{serviceId}/complete` takes a multipart `photo` field from the assigned driver. The photo is stored in a private bucket and read back only through a signed URL (`GET .../delivery-photo` for the provider and the customer). The bucket is not created by code or migrations, so create it once per Supabase project:
+
+1. In the Supabase dashboard, open Storage and create a bucket named `service-evidence` (or the value of `SERVICE_EVIDENCE_BUCKET`). Leave **Public** switched off.
+2. Set `SUPABASE_URL` (the project URL) and `SUPABASE_SERVICE_ROLE_KEY` in the backend environment. The service-role key is server-side only; never put it in a `NEXT_PUBLIC_*` variable.
+
+Optional settings and defaults: `SERVICE_EVIDENCE_MAX_BYTES` (8 MiB), `SERVICE_EVIDENCE_URL_TTL_SECONDS` (300), `SERVICE_CLAIM_WINDOW_HOURS` (24). Without the Supabase settings, the delivery-photo endpoints answer 503.
+
+### Claims, consent and payout release
+
+A customer can act on a completed service once: `POST /api/customer/services/{serviceId}/claims` with `{reason}` (trimmed, 1 to 1000 characters) opens a claim and moves the service to `disputed`; `POST /api/customer/services/{serviceId}/consent` (no body) records that the customer is satisfied. Both lock the service row. A claim is refused after the claim window (`SERVICE_CLAIM_WINDOW_HOURS` from completion) and after consent; consent is refused while a claim is open. Claim resolution and refunds are out of scope.
+
+Payouts are released by `python -m amira_api.release_payouts`. No scheduled job is deployed: `render.yaml` defines only the web service. The only payout adapter is the simulated one (`simulated_payout_provider.py`), which never moves money and runs only when `APP_ENV` is set explicitly to `development`, `local` or `test`. Scheduling the job in production is therefore deferred until a real adapter exists behind the `PayoutProvider` port.
+
+Until then, run the release by hand from `backend/` against a development database:
+
+```bash
+APP_ENV=development DATABASE_URL=<development database URL> uv run python -m amira_api.release_payouts
+```
+
+A completed service is released when the customer consented or its claim window has closed, it has no open claim, and it has no payout yet. The release needs an approved payment and an enabled `Cuenta_Desembolso` on the provider profile; services without one are counted as `missing_account` or `missing_payment` and stay due. Each service is released in its own transaction, the job is idempotent, and a provider failure is logged without stopping the other services. The command exits 1 only when the job cannot run (for example the adapter is refused for this `APP_ENV`, or the database is not configured).
+
+The platform keeps a commission on each payout. `PAYOUT_COMMISSION_PERCENT` (default `10`, an integer from `0` to `99`) sets it as a percent of the gross approved payment. The commission is `gross * percent / 100`, rounded half up to whole CLP, and the provider receives `gross - commission`. `Desembolso.Monto_Neto` stores that net amount; the gross stays in `Pago`, and no commission column exists.
+
+When a real payout adapter is added, re-add the Render cron job to `render.yaml` under `services:`, after the web service. This is the block removed from the blueprint:
+
+```yaml
+  - type: cron
+    name: amira-release-payouts-dev
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    schedule: "*/15 * * * *"
+    dockerCommand: python -m amira_api.release_payouts
+    envVars:
+      - key: APP_NAME
+        value: Amira API
+      - key: APP_ENV
+        value: production
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: INDEPENDENT_DRIVER_TYPE_ID
+        sync: false
+      - key: COMPANY_DRIVER_TYPE_ID
+        sync: false
+```
+
+The block still sets `APP_ENV=production`, which the simulated adapter refuses. Replace the cron with the real adapter's configuration before deploying it. Add `PAYOUT_COMMISSION_PERCENT` to its `envVars` only if the commission differs from the default.
+
 ## Checks
 
 ```powershell

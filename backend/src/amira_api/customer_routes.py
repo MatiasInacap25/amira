@@ -1,5 +1,6 @@
 """Authenticated customer service history and one-time service ratings."""
 
+from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -9,16 +10,32 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
+from amira_api.clock import as_utc, utc_now
 from amira_api.customer_schemas import (
+    CustomerClaimCreate,
     CustomerRatingCreate,
     CustomerServiceItem,
     CustomerServicePage,
     CustomerServiceRating,
 )
 from amira_api.db import get_db_session
+from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError, get_evidence_storage_resolver
+from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceDetail
+from amira_api.service_views import (
+    CLAIM_OPEN,
+    DELIVERY_PHOTO_LINK_MESSAGE,
+    load_assignments,
+    provider_display_name,
+    service_rows,
+    shape_detail,
+    signed_delivery_photo,
+)
+from amira_api.settings import Settings, get_settings
 from amira_api.models import (
+    Desembolso,
     FormularioServicio,
     Perfil,
+    Reclamo,
     RolUsuario,
     Servicio,
     TipoServicio,
@@ -30,9 +47,10 @@ router = APIRouter(prefix="/api/customer", tags=["customer"])
 MAX_PAGE_SIZE = 50
 MAX_OFFSET = 5000
 RATING_CONSTRAINT = "uq_rating_service"
-PROVIDER_FALLBACK_NAME = "Prestador"
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
+ResolveStorage = Annotated[Callable[[], EvidenceStorage], Depends(get_evidence_storage_resolver)]
+AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
 def _customer_account_id(session: Session, current_user: AuthenticatedUser) -> UUID:
@@ -70,15 +88,6 @@ def _customer_services_relation(statement: Select, account_id: UUID) -> Select:
     )
 
 
-def _provider_display_name(kind: str, profile_name: str | None, first_name: str | None, last_name: str | None) -> str:
-    """Return a non-empty provider name; independent drivers use their real name, never the profile handle."""
-    if kind == "independent_driver":
-        name = " ".join(part.strip() for part in (first_name, last_name) if part and part.strip())
-    else:
-        name = (profile_name or "").strip()
-    return name or PROVIDER_FALLBACK_NAME
-
-
 @router.get("/services", response_model=CustomerServicePage)
 def list_customer_services(
     current_user: CurrentUser,
@@ -94,6 +103,7 @@ def list_customer_services(
         _customer_services_relation(
             select(
                 Servicio.id.label("service_id"),
+                Servicio.status.label("status"),
                 Perfil.id.label("provider_profile_id"),
                 Perfil.kind.label("provider_kind"),
                 Perfil.name.label("profile_name"),
@@ -116,8 +126,9 @@ def list_customer_services(
     items = [
         CustomerServiceItem(
             service_id=row["service_id"],
+            status=row["status"],
             provider_profile_id=row["provider_profile_id"],
-            provider_name=_provider_display_name(
+            provider_name=provider_display_name(
                 row["provider_kind"],
                 row["profile_name"],
                 row["owner_first_name"],
@@ -138,6 +149,43 @@ def list_customer_services(
         for row in rows
     ]
     return CustomerServicePage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/services/{service_id}", response_model=ServiceDetail)
+def get_customer_service(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceDetail:
+    account_id = _customer_account_id(session, current_user)
+    row = session.execute(
+        service_rows(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    return shape_detail(
+        row, "customer", can_manage=False, viewer_assigned=False, assignments=load_assignments(session, service_id)
+    )
+
+
+@router.get("/services/{service_id}/delivery-photo", response_model=DeliveryPhotoUrl)
+def get_customer_delivery_photo(
+    service_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+    resolve_storage: ResolveStorage,
+    settings: AppSettings,
+) -> DeliveryPhotoUrl:
+    account_id = _customer_account_id(session, current_user)
+    row = session.execute(
+        select(Servicio.delivery_evidence_key).where(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    if row[0] is None:
+        raise HTTPException(status_code=404, detail="Delivery photo not found.")
+    # Storage is resolved only now, so a customer who cannot see the photo gets 404 even when storage is unconfigured.
+    storage = resolve_storage()
+    try:
+        return signed_delivery_photo(storage, row[0], settings.service_evidence_url_ttl_seconds)
+    except EvidenceStorageError as error:
+        raise HTTPException(status_code=502, detail=DELIVERY_PHOTO_LINK_MESSAGE) from error
 
 
 @router.post(
@@ -199,3 +247,93 @@ def create_customer_service_rating(
     stored = CustomerServiceRating(rating=rating.rating, comment=rating.comment, created_at=rating.created_at)
     session.commit()
     return stored
+
+
+def _lock_customer_service(session: Session, account_id: UUID, service_id: UUID) -> Servicio:
+    """Lock the customer's own service row; a service the customer does not own is a 404."""
+    service = session.execute(
+        select(Servicio).where(Servicio.id == service_id, Servicio.customer_id == account_id).with_for_update()
+    ).scalar_one_or_none()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    return service
+
+
+def _has_open_claim(session: Session, service_id: UUID) -> bool:
+    return (
+        session.execute(
+            select(Reclamo.id).where(Reclamo.service_id == service_id, Reclamo.status == CLAIM_OPEN).limit(1)
+        ).first()
+        is not None
+    )
+
+
+def _payout_released(session: Session, service_id: UUID) -> bool:
+    """True once a payout exists for the service. Checked under the service lock, like the release job does."""
+    return session.execute(select(Desembolso.id).where(Desembolso.service_id == service_id).limit(1)).first() is not None
+
+
+def _customer_service_detail(session: Session, account_id: UUID, service_id: UUID) -> ServiceDetail:
+    row = session.execute(
+        service_rows(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).mappings().one()
+    return shape_detail(
+        row, "customer", can_manage=False, viewer_assigned=False, assignments=load_assignments(session, service_id)
+    )
+
+
+@router.post("/services/{service_id}/claims", response_model=ServiceDetail)
+def create_customer_service_claim(
+    service_id: UUID,
+    payload: CustomerClaimCreate,
+    current_user: CurrentUser,
+    session: Database,
+) -> ServiceDetail:
+    account_id = _customer_account_id(session, current_user)
+    service = _lock_customer_service(session, account_id, service_id)
+    if _has_open_claim(session, service.id):
+        raise HTTPException(status_code=409, detail="This service already has an open claim.")
+    if service.status != "completed":
+        raise HTTPException(status_code=409, detail="Only completed services can be claimed.")
+    if service.customer_consent_at is not None:
+        raise HTTPException(status_code=409, detail="Consent was already given for this service.")
+    now = utc_now()
+    if service.payout_deadline_at is None or now >= as_utc(service.payout_deadline_at):
+        raise HTTPException(status_code=409, detail="The claim window for this service has closed.")
+
+    # The claim holds the payout: the service leaves completed until the claim is resolved outside this scope.
+    session.add(
+        Reclamo(
+            id=uuid4(),
+            service_id=service.id,
+            user_id=account_id,
+            reason=payload.reason,
+            status=CLAIM_OPEN,
+            created_at=now,
+        )
+    )
+    service.status = "disputed"
+    session.commit()
+    return _customer_service_detail(session, account_id, service_id)
+
+
+@router.post("/services/{service_id}/consent", response_model=ServiceDetail)
+def give_customer_service_consent(
+    service_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+) -> ServiceDetail:
+    account_id = _customer_account_id(session, current_user)
+    service = _lock_customer_service(session, account_id, service_id)
+    if _has_open_claim(session, service.id):
+        raise HTTPException(status_code=409, detail="A service with an open claim cannot receive consent.")
+    if service.status != "completed":
+        raise HTTPException(status_code=409, detail="Only completed services can receive consent.")
+    if _payout_released(session, service.id):
+        raise HTTPException(status_code=409, detail="The payout for this service has already been released.")
+    if service.customer_consent_at is not None:
+        raise HTTPException(status_code=409, detail="Consent was already given for this service.")
+    # Consent makes the payout due immediately; the release job picks it up on its next run.
+    service.customer_consent_at = utc_now()
+    session.commit()
+    return _customer_service_detail(session, account_id, service_id)

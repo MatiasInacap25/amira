@@ -71,6 +71,23 @@ export const SERVICE_RESULTS_LAYOUT = gridLayout("service-results", 3, 6, 240);
 export const ROUTE_RESULTS_LAYOUT = gridLayout("route-results", 3, 6, 240);
 export const CUSTOMER_SERVICES_LAYOUT = listLayout("customer-services", 4, 84, 12);
 export const PROVIDER_REQUESTS_LAYOUT = listLayout("provider-requests", 4, 132, 16);
+export const PROVIDER_SERVICES_LAYOUT = listLayout("provider-services", 4, 140, 12);
+
+/** Service detail: back link, heading with status, facts grid, then assignments. */
+export const SERVICE_DETAIL_LAYOUT: Layout = {
+  name: "service-detail",
+  viewportWidth: 1280,
+  width: 1000,
+  height: 520,
+  bones: [
+    [0, 0, 18, 14, 6],
+    [0, 36, 46, 30, 6],
+    [0, 80, 26, 16, 6],
+    [0, 120, 48, 110, 12],
+    [0, 250, 30, 18, 6],
+    [0, 290, 100, 120, 12],
+  ],
+};
 
 /** Provider request detail: back link, heading with status, then summary and cargo sections. */
 export const CHAT_LIST_LAYOUT = listLayout("chat-list", 5, 96, 12);

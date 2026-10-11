@@ -51,12 +51,13 @@ def test_database_engine_forces_psycopg_tls_and_bounded_timeouts(monkeypatch) ->
 def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
     migration = load_public_migration()
 
-    assert len(Base.metadata.tables) == 31
+    assert len(Base.metadata.tables) == 32
     assert (
         (set(migration.PUBLIC_TABLES) - {"alembic_version"})
         | set(load_auth_migration().RLS_TABLES)
         | {"DriverInvitationAttempt"}
         | set(load_location_migration().RLS_TABLES)
+        | set(load_service_assignment_migration().RLS_TABLES)
     ) == set(Base.metadata.tables)
     assert "alembic_version" in migration.PUBLIC_TABLES
 
@@ -76,6 +77,15 @@ def test_demo_seed_is_labeled_and_does_not_create_auth_or_payment_records() -> N
 def load_location_migration():
     migration_path = Path(__file__).parents[1] / "alembic" / "versions" / "20261010_0001_location_catalog.py"
     spec = spec_from_file_location("location_catalog_migration", migration_path)
+    migration = module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(migration)
+    return migration
+
+
+def load_service_assignment_migration():
+    migration_path = Path(__file__).parents[1] / "alembic" / "versions" / "20261011_0003_service_assignments.py"
+    spec = spec_from_file_location("service_assignment_migration", migration_path)
     migration = module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(migration)

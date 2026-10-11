@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from amira_api.provider_service_schemas import ServiceStatus
 from amira_api.public_schemas import PublicResponse, _to_camel
 
 
@@ -16,6 +17,7 @@ class CustomerServiceRating(PublicResponse):
 
 class CustomerServiceItem(PublicResponse):
     service_id: UUID
+    status: ServiceStatus
     provider_profile_id: UUID
     provider_name: str
     service_type_name: str
@@ -45,3 +47,14 @@ class CustomerRatingCreate(BaseModel):
     @classmethod
     def blank_comment_is_absent(cls, value: str | None) -> str | None:
         return value or None
+
+
+class CustomerClaimCreate(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    reason: str = Field(min_length=1, max_length=1000)
