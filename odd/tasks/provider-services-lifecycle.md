@@ -220,6 +220,12 @@ Backend (one commit):
 Frontend (one commit):
 - [x] H4 On sign-out/account change, also clear the provider services list, service detail and customer services queries (not only the role key).
 
+### I — Sign-out cache test (2026-10-11, user decision; route: delegated direct, one Haiku worker in a Herdr pane)
+
+Decisions: only CLP is accepted (`ck_quote_currency_clp` stays); the Supabase `delete` is not tested against live Supabase.
+
+- [ ] I1 Extract the sign-out cache clearing into a pure function (for example `clearAccountScopedQueries(queryClient)` in `frontend/src/lib/service-query-keys.ts`), use it in `site-navigation.tsx`, and cover it with a browserless spec run by the Playwright runner (no `page`, like `tests/rut.spec.ts`), using a real `QueryClient`: the role, provider list (with filter), service detail and customer list (with user id) queries are removed, and an unrelated query survives. User-approved exception to "no Playwright": this spec only, no browser.
+
 ## Checks
 
 - Backend: `uv run pytest`, `uv lock --check`. Frontend: `npm run lint`, `npm run build`. Playwright is not used for verification.
