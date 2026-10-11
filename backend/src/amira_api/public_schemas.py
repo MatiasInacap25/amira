@@ -80,6 +80,7 @@ class PublicSharedRoutePage(PublicResponse):
 class PublicProviderDriver(PublicResponse):
     first_name: str
     last_name: str
+    is_owner: bool
 
 
 class PublicProviderVehicle(PublicResponse):
@@ -107,6 +108,9 @@ class PublicProviderProfile(PublicResponse):
     kind: Literal["company", "independent_driver"]
     description: str | None
     location: str | None
+    commune_code: str | None = None
+    commune_name: str | None = None
+    region_name: str | None = None
     owner_name: str
     drivers: list[PublicProviderDriver]
     services: list[PublicProviderService]
