@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from amira_api.account_routes import router as account_router
+from amira_api.chat_routes import router as chat_router
 from amira_api.customer_routes import router as customer_router
 from amira_api.fallback_routes import router as fallback_router
 from amira_api.invitation_routes import router as invitation_router
@@ -13,6 +14,7 @@ settings = get_settings()
 warn_if_dev_sms_mfa_bypass_active(settings)
 app = FastAPI(title=settings.app_name)
 app.include_router(account_router)
+app.include_router(chat_router)
 app.include_router(customer_router)
 app.include_router(fallback_router)
 app.include_router(invitation_router)
