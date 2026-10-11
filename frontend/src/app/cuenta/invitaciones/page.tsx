@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authenticatedApiFetch } from "@/lib/auth/account-api";
+import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
 import { formatRut, normalizeRut } from "@/lib/validation/rut";
 import { createClient } from "@/lib/supabase/client";
 
@@ -42,7 +43,7 @@ export default function CompanyInvitationsPage() {
           return;
         }
         const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (assuranceError || assurance.currentLevel !== "aal2") {
+        if (assuranceError || !acceptsAssuranceLevel(assurance.currentLevel)) {
           router.replace("/login?next=%2Fcuenta%2Finvitaciones");
           return;
         }

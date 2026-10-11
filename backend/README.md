@@ -21,6 +21,12 @@ Account provisioning requires the trusted `INDEPENDENT_DRIVER_TYPE_ID` mapping f
 
 Set `CORS_ORIGINS` to a comma-separated list of exact browser origins, including scheme and port, for example `http://localhost:3000`. Do not use wildcard origins when sending credentials. The API connects lazily when a database-backed request runs; Alembic reads `DATABASE_URL` and reports a clear error if migrations are run before one is configured.
 
+## Development-only SMS MFA bypass
+
+`DEV_SKIP_SMS_MFA` (default `false`) lets an `aal1` session that was authenticated with a password skip the SMS MFA step and the email-fallback proof, so a developer with one test phone can create several accounts and sign in with email and password. The bypass only applies when the token passes the same signature, issuer, audience, expiry, role, email, and `is_anonymous` checks as every other request; anonymous, non-password, or otherwise unverifiable sessions are still rejected. Accepted requests carry the assurance `dev_password_bypass`. Phone numbers are not unique, so several accounts may share one test number.
+
+The API refuses to start when `DEV_SKIP_SMS_MFA=true` and `APP_ENV` is `production` (case-insensitive, surrounding whitespace ignored), and logs a warning at startup whenever the bypass is active. Never enable it in a deployed environment. `render.yaml` does not set it.
+
 ## Public browse API
 
 - `GET /api/services?q=&regionCode=&communeCode=&limit=20&offset=0` returns provider/service catalog entries. `regionCode` (2 digits) and `communeCode` (5 digits) are official CUT codes from `GET /api/locations`.

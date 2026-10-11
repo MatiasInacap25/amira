@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Truck } from "lucide-r
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { accountApiFetch, authenticatedApiFetch } from "@/lib/auth/account-api";
+import { acceptsAssuranceLevel, devSkipSmsMfa } from "@/lib/auth/dev-mfa";
 import { safeNextPath } from "@/lib/auth/safe-next-path";
 import { formatRut, normalizeRut } from "@/lib/validation/rut";
 import { createClient } from "@/lib/supabase/client";
@@ -209,6 +210,11 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
       throw new Error("Confirma tu correo antes de continuar.");
     }
     setConfirmedUser(user);
+    if (devSkipSmsMfa) {
+      // Development only: the aal1 password session continues without the SMS factor.
+      await completeAuthentication(supabase);
+      return;
+    }
     const { data, error: factorsError } = await supabase.auth.mfa.listFactors();
     if (factorsError) throw factorsError;
     const phoneFactors = data.phone as PhoneFactor[];
@@ -327,17 +333,21 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
   async function completeAuthentication(supabase: SupabaseClient) {
     const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (assuranceError) throw assuranceError;
-    if (assurance.currentLevel !== "aal2") throw new Error("La verificación SMS todavía no está completa. Intenta nuevamente.");
+    if (!acceptsAssuranceLevel(assurance.currentLevel)) throw new Error("La verificación SMS todavía no está completa. Intenta nuevamente.");
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session?.access_token) throw sessionError ?? new Error("La sesión expiró. Inicia sesión nuevamente.");
     const accountResponse = await fetchAccount(sessionData.session.access_token);
     if (accountResponse.status === 404) {
       setStep("account");
-      setNotice("Tu correo está confirmado y el teléfono verificado. Completa los datos de tu cuenta.");
+      setNotice(devSkipSmsMfa
+        ? "Tu correo está confirmado. Completa los datos de tu cuenta."
+        : "Tu correo está confirmado y el teléfono verificado. Completa los datos de tu cuenta.");
       return;
     }
     if (!accountResponse.ok) {
-      if (accountResponse.status === 403) throw new Error("La API todavía no reconoce la verificación SMS. Vuelve a iniciar sesión e intenta otra vez.");
+      if (accountResponse.status === 403) throw new Error(devSkipSmsMfa
+        ? "La API todavía no acepta sesiones sin SMS. Revisa la configuración de desarrollo del backend."
+        : "La API todavía no reconoce la verificación SMS. Vuelve a iniciar sesión e intenta otra vez.");
       throw new Error("No pudimos comprobar tu cuenta. Intenta nuevamente en unos minutos.");
     }
     router.replace(getSafeNext());
@@ -387,7 +397,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
         throw new Error("La sesión no corresponde a un correo confirmado. Inicia sesión nuevamente.");
       }
       const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (assuranceError || assurance.currentLevel !== "aal2") throw new Error("Completa la verificación SMS antes de crear tu cuenta.");
+      if (assuranceError || !acceptsAssuranceLevel(assurance.currentLevel)) throw new Error("Completa la verificación SMS antes de crear tu cuenta.");
       const { data: sessionData, error: sessionError } = await client.auth.getSession();
       if (sessionError || !sessionData.session?.access_token) throw sessionError ?? new Error("La sesión expiró. Inicia sesión nuevamente.");
       if (provisionRole !== "client" && !regionCommune.communeCode) throw new Error("Elige una región y una comuna para continuar.");
@@ -502,6 +512,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
             <p>{step === "account" ? "Estos datos crean tu cuenta de Amira; no se envían a Supabase como metadatos de autorización." : step === "email-pending" ? "Te enviaremos a este mismo flujo después de confirmar el correo." : step === "enroll" || step === "verify" ? `Cuenta: ${email || confirmedUser?.email || "correo confirmado"}` : mode === "login" ? "Ingresa para continuar donde quedaste." : "Regístrate con tu correo y confirma la dirección antes de completar tu perfil."}</p>
           </div>
 
+          {devSkipSmsMfa && <p className="auth-notice" role="note">Modo desarrollo: verificación SMS desactivada</p>}
           {notice && <p aria-live="polite" className="auth-notice" role="status">{notice}</p>}
           {(error || configError) && <p aria-live="assertive" className="auth-error" role="alert">{error || configError}</p>}
 

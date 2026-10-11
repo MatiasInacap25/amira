@@ -169,6 +169,19 @@ def get_current_user(
 ) -> AuthenticatedUser:
     if current_user.assurance == "aal2":
         return current_user
+    if (
+        current_user.assurance == "aal1"
+        and "password" in current_user.authentication_methods
+        and settings.dev_sms_mfa_bypass_active
+    ):
+        # Development-only: the token was already verified by get_verified_user.
+        return AuthenticatedUser(
+            id=current_user.id,
+            email=current_user.email,
+            session_id=current_user.session_id,
+            assurance="dev_password_bypass",
+            authentication_methods=current_user.authentication_methods,
+        )
     if current_user.assurance == "aal1" and "password" in current_user.authentication_methods and verify_email_fallback_proof(
         {"sub": str(current_user.id), "session_id": str(current_user.session_id), "aal": "aal1", "amr": [{"method": method} for method in current_user.authentication_methods]},
         fallback_proof,
