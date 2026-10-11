@@ -208,6 +208,18 @@ Frontend (one commit):
 - [x] G1 Fixed 10% commission: `commission = round_half_up(gross * percent / 100)` in integer CLP, `Desembolso.Monto_Neto = gross - commission`; percent is a setting (default 10). Store the commission only if `Desembolso` already has a column for it (no new migration).
 - [x] G2 Remove the payout cron job from `render.yaml` until a real payout adapter exists; document the block and the manual CLI in `backend/README.md`.
 
+### H — Remaining review follow-up fixes (2026-10-11, at the user's request; route: delegated direct, one Haiku worker in a Herdr pane)
+
+Excluded: `ck_quote_currency_clp` (accepting other currencies is a product decision) and testing the Supabase `delete` against live Supabase (operational).
+
+Backend (one commit):
+- [ ] H1 `commission_for` and `release_due_payouts` reject a commission percent outside 0..99 (`ValueError`), with tests; a test pins the provider request amount == `Monto_Neto` in the rounding case; the commission-default test restores the settings cache; the no-cron blueprint test checks behavior (no service of type cron, no `release_payouts` command) instead of the web block's exact text.
+- [ ] H2 The two GET delivery-photo routes resolve storage after their 404 checks (404 before 503), like the completion route; tests.
+- [ ] H3 Migration `0004` docstring: describe the lock behavior correctly (DROP holds ACCESS EXCLUSIVE until commit).
+
+Frontend (one commit):
+- [ ] H4 On sign-out/account change, also clear the provider services list, service detail and customer services queries (not only the role key).
+
 ## Checks
 
 - Backend: `uv run pytest`, `uv lock --check`. Frontend: `npm run lint`, `npm run build`. Playwright is not used for verification.
