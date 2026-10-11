@@ -3,7 +3,7 @@ import logging
 from uuid import UUID
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     payment_simulator_secret: SecretStr | None = None
     # Server-to-server secret for POST /api/payments/confirm, sent in the X-Amira-Payment-Webhook-Secret header.
     payment_webhook_secret: SecretStr | None = None
+    # Supabase Storage for delivery photos. The service-role key is server-side only; never a NEXT_PUBLIC_* value.
+    supabase_url: str | None = None
+    supabase_service_role_key: SecretStr | None = None
+    # The bucket is private and is created by an operator (see backend/README.md), never by code.
+    service_evidence_bucket: str = "service-evidence"
+    service_evidence_max_bytes: int = Field(default=8 * 1024 * 1024, gt=0)
+    service_evidence_url_ttl_seconds: int = Field(default=300, gt=0)
+    service_claim_window_hours: int = Field(default=24, gt=0)
 
     @property
     def allowed_origins(self) -> list[str]:

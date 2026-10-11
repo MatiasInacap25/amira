@@ -14,7 +14,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import and_, delete, exists, or_, select, update
 from sqlalchemy.orm import Session
@@ -22,8 +22,16 @@ from sqlalchemy.orm import Session
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.clock import as_utc, utc_now
 from amira_api.db import get_db_session
+from amira_api.evidence_storage import (
+    EvidenceStorage,
+    EvidenceStorageError,
+    detect_photo_type,
+    get_evidence_storage,
+    read_capped,
+)
 from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, Usuario, Vehiculo
 from amira_api.provider_service_schemas import (
+    DeliveryPhotoUrl,
     SameDayConflict,
     SameDayConflictResponse,
     ServiceAssignmentsUpdate,
@@ -31,7 +39,16 @@ from amira_api.provider_service_schemas import (
     ServicePage,
     ServiceStatus,
 )
-from amira_api.service_views import load_assignments, service_count, service_rows, shape_detail, shape_list_item
+from amira_api.service_views import (
+    DELIVERY_PHOTO_LINK_MESSAGE,
+    load_assignments,
+    service_count,
+    service_rows,
+    shape_detail,
+    shape_list_item,
+    signed_delivery_photo,
+)
+from amira_api.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api/provider", tags=["provider-services"])
 MAX_PAGE_SIZE = 50
@@ -40,6 +57,11 @@ SANTIAGO = ZoneInfo("America/Santiago")
 OPEN_STATUSES = ("confirmed", "in_progress")
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
+Storage = Annotated[EvidenceStorage, Depends(get_evidence_storage)]
+AppSettings = Annotated[Settings, Depends(get_settings)]
+PHOTO_MAX_SIZE_MESSAGE = "The delivery photo is larger than the allowed size."
+PHOTO_TYPE_MESSAGE = "The delivery photo must be a JPEG, PNG or WebP image."
+PHOTO_STORAGE_MESSAGE = "The delivery photo could not be stored. Try again."
 
 
 @dataclass(frozen=True)
@@ -261,3 +283,85 @@ def start_provider_service(service_id: UUID, current_user: CurrentUser, session:
     )
     session.commit()
     return _visible_detail(session, viewer, service_id)
+
+
+def _is_assigned_driver(session: Session, viewer: ProviderViewer, service_id: UUID) -> bool:
+    if viewer.driver_id is None:
+        return False
+    return session.execute(
+        select(
+            exists().where(
+                ServicioAsignacion.service_id == service_id,
+                ServicioAsignacion.driver_id == viewer.driver_id,
+            )
+        )
+    ).scalar_one()
+
+
+@router.post("/services/{service_id}/complete", response_model=ServiceDetail)
+def complete_provider_service(
+    service_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+    storage: Storage,
+    settings: AppSettings,
+    photo: Annotated[UploadFile, File()],
+) -> ServiceDetail:
+    viewer = _provider_viewer(session, current_user)
+    service = _lock_visible_service(session, viewer, service_id)
+    if not _is_assigned_driver(session, viewer, service_id):
+        raise HTTPException(status_code=403, detail="Only an assigned driver can complete this service.")
+    if service.status != "in_progress":
+        raise HTTPException(status_code=409, detail="Only in-progress services can be completed.")
+
+    content = read_capped(photo, settings.service_evidence_max_bytes)
+    if content is None:
+        raise HTTPException(status_code=413, detail=PHOTO_MAX_SIZE_MESSAGE)
+    photo_type = detect_photo_type(content[:12])
+    if photo_type is None:
+        raise HTTPException(status_code=415, detail=PHOTO_TYPE_MESSAGE)
+
+    # The upload happens before any write: if it fails, nothing is recorded and the service stays in progress.
+    key = f"services/{service_id}/{uuid4()}.{photo_type.extension}"
+    try:
+        storage.upload(key, content, photo_type.content_type)
+    except EvidenceStorageError as error:
+        session.rollback()
+        raise HTTPException(status_code=502, detail=PHOTO_STORAGE_MESSAGE) from error
+
+    now = utc_now()
+    session.execute(
+        update(Servicio)
+        .where(Servicio.id == service_id)
+        .values(
+            status="completed",
+            delivery_evidence_key=key,
+            completed_at=now,
+            completion_notified_at=now,
+            payout_deadline_at=now + timedelta(hours=settings.service_claim_window_hours),
+        )
+    )
+    session.commit()
+    return _visible_detail(session, viewer, service_id)
+
+
+@router.get("/services/{service_id}/delivery-photo", response_model=DeliveryPhotoUrl)
+def get_provider_delivery_photo(
+    service_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+    storage: Storage,
+    settings: AppSettings,
+) -> DeliveryPhotoUrl:
+    viewer = _provider_viewer(session, current_user)
+    row = session.execute(
+        select(Servicio.delivery_evidence_key).where(Servicio.id == service_id, *viewer.visibility())
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    if row[0] is None:
+        raise HTTPException(status_code=404, detail="Delivery photo not found.")
+    try:
+        return signed_delivery_photo(storage, row[0], settings.service_evidence_url_ttl_seconds)
+    except EvidenceStorageError as error:
+        raise HTTPException(status_code=502, detail=DELIVERY_PHOTO_LINK_MESSAGE) from error

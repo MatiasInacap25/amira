@@ -16,8 +16,17 @@ from amira_api.customer_schemas import (
     CustomerServiceRating,
 )
 from amira_api.db import get_db_session
-from amira_api.provider_service_schemas import ServiceDetail
-from amira_api.service_views import load_assignments, provider_display_name, service_rows, shape_detail
+from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError, get_evidence_storage
+from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceDetail
+from amira_api.service_views import (
+    DELIVERY_PHOTO_LINK_MESSAGE,
+    load_assignments,
+    provider_display_name,
+    service_rows,
+    shape_detail,
+    signed_delivery_photo,
+)
+from amira_api.settings import Settings, get_settings
 from amira_api.models import (
     FormularioServicio,
     Perfil,
@@ -34,6 +43,8 @@ MAX_OFFSET = 5000
 RATING_CONSTRAINT = "uq_rating_service"
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
+Storage = Annotated[EvidenceStorage, Depends(get_evidence_storage)]
+AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
 def _customer_account_id(session: Session, current_user: AuthenticatedUser) -> UUID:
@@ -143,6 +154,28 @@ def get_customer_service(service_id: UUID, current_user: CurrentUser, session: D
     if row is None:
         raise HTTPException(status_code=404, detail="Service not found.")
     return shape_detail(row, "customer", can_manage=False, assignments=load_assignments(session, service_id))
+
+
+@router.get("/services/{service_id}/delivery-photo", response_model=DeliveryPhotoUrl)
+def get_customer_delivery_photo(
+    service_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+    storage: Storage,
+    settings: AppSettings,
+) -> DeliveryPhotoUrl:
+    account_id = _customer_account_id(session, current_user)
+    row = session.execute(
+        select(Servicio.delivery_evidence_key).where(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    if row[0] is None:
+        raise HTTPException(status_code=404, detail="Delivery photo not found.")
+    try:
+        return signed_delivery_photo(storage, row[0], settings.service_evidence_url_ttl_seconds)
+    except EvidenceStorageError as error:
+        raise HTTPException(status_code=502, detail=DELIVERY_PHOTO_LINK_MESSAGE) from error
 
 
 @router.post(

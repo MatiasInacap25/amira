@@ -7,9 +7,13 @@ same relation, so the total never counts a service the item query cannot return.
 from typing import Literal
 from uuid import UUID
 
+from datetime import timedelta
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, aliased
 
+from amira_api.clock import utc_now
+from amira_api.evidence_storage import EvidenceStorage
 from amira_api.models import (
     Commune,
     Conductor,
@@ -22,8 +26,9 @@ from amira_api.models import (
     Usuario,
     Vehiculo,
 )
-from amira_api.provider_service_schemas import ServiceAssignment, ServiceDetail, ServiceListItem
+from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceAssignment, ServiceDetail, ServiceListItem
 
+DELIVERY_PHOTO_LINK_MESSAGE = "The delivery photo could not be retrieved. Try again."
 PROVIDER_FALLBACK_NAME = "Prestador"
 CUSTOMER_FALLBACK_NAME = "Cliente"
 ViewerRole = Literal["customer", "provider"]
@@ -85,6 +90,7 @@ def service_rows(*conditions) -> Select:
             Servicio.starts_at.label("started_at"),
             Servicio.completed_at.label("completed_at"),
             Servicio.payout_deadline_at.label("payout_deadline_at"),
+            Servicio.delivery_evidence_key.label("delivery_evidence_key"),
             Perfil.kind.label("provider_kind"),
             Perfil.name.label("profile_name"),
             _provider_owner.first_name.label("owner_first_name"),
@@ -165,5 +171,14 @@ def shape_detail(
         payout_deadline_at=row["payout_deadline_at"],
         viewer_role=viewer_role,
         can_manage=can_manage,
+        delivery_photo_available=row["delivery_evidence_key"] is not None,
         assignments=assignments,
+    )
+
+
+def signed_delivery_photo(storage: EvidenceStorage, key: str, ttl_seconds: int) -> DeliveryPhotoUrl:
+    """A short-lived read URL for the completion photo. The key itself never leaves the server."""
+    return DeliveryPhotoUrl(
+        url=storage.create_signed_url(key, ttl_seconds),
+        expires_at=utc_now() + timedelta(seconds=ttl_seconds),
     )

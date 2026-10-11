@@ -52,7 +52,14 @@ class ServiceDetail(ServiceListItem):
     payout_deadline_at: datetime | None
     viewer_role: Literal["customer", "provider"]
     can_manage: bool
+    # True once the completion photo exists. The storage key and the signed URL are never part of any response.
+    delivery_photo_available: bool
     assignments: list[ServiceAssignment]
+
+
+class DeliveryPhotoUrl(PublicResponse):
+    url: str
+    expires_at: datetime
 
 
 class ServiceAssignmentPair(BaseModel):

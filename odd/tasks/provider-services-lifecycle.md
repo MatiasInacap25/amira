@@ -74,6 +74,45 @@ Both endpoints use `get_current_user` and the S1 viewer rules: a non-provider ac
      - 409 `Only confirmed services can be started.` (also returned on a second start)
      - 409 `Assign at least one driver and vehicle before starting.`
 
+## API contract (S3)
+
+Public JSON is camelCase. All endpoints use `get_current_user` and the S1 viewer rules: a non-provider account gets 403 on provider routes, a non-customer gets 403 on customer routes, and a service the viewer cannot see gets 404.
+
+1. `POST /api/provider/services/{serviceId}/complete`: `multipart/form-data` with one required file field, `photo`. No other fields.
+   - Only an assigned driver can complete: the viewer's `Conductor` must have a `Servicio_Asignacion` row for the service. The profile owner who is not assigned gets 403. The service row is locked `FOR UPDATE` and its status is re-checked after the lock.
+   - The type is decided by magic bytes (JPEG, PNG or WebP). The declared content type and the client file name are ignored.
+   - The bytes are uploaded before any write, to the private bucket under `services/{serviceId}/{uuid}.{jpg|png|webp}`. The database is written only after the upload succeeds.
+   - Sets `status` to `completed`, `delivery_evidence_key`, `completed_at` = now, `completion_notified_at` = now and `payout_deadline_at` = now + `SERVICE_CLAIM_WINDOW_HOURS`.
+   - 200: `ServiceDetail` with `status: "completed"` and `deliveryPhotoAvailable: true`.
+   - Errors, in evaluation order:
+     - 404 `Service not found.` (not visible to the viewer)
+     - 403 `Only an assigned driver can complete this service.` (visible, not assigned)
+     - 409 `Only in-progress services can be completed.` (also on a second completion)
+     - 413 `The delivery photo is larger than the allowed size.` (cap: `SERVICE_EVIDENCE_MAX_BYTES`; the size is counted on the bytes read, not on Content-Length)
+     - 415 `The delivery photo must be a JPEG, PNG or WebP image.`
+     - 502 `The delivery photo could not be stored. Try again.` (nothing written; the service stays `in_progress`)
+     - 422 FastAPI validation when `photo` is missing
+     - 503 `Delivery photo storage is not configured.` (`SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` unset; the storage dependency resolves before the handler, so this applies to every request on the route)
+2. `GET /api/provider/services/{serviceId}/delivery-photo`: any provider viewer who can see the service (owner or assigned driver).
+3. `GET /api/customer/services/{serviceId}/delivery-photo`: the customer who owns the service.
+   - 200: `{url, expiresAt}`. `url` is a signed read URL valid for `SERVICE_EVIDENCE_URL_TTL_SECONDS`; `expiresAt` is now + that TTL.
+   - 404 `Service not found.` (not visible, not owned, including another customer's service).
+   - 404 `Delivery photo not found.` (no evidence yet).
+   - 502 `The delivery photo could not be retrieved. Try again.` (signing failed).
+   - 503 as in endpoint 1.
+4. `ServiceDetail` (provider and customer detail) gains `deliveryPhotoAvailable: bool`. The storage key and signed URLs never appear in list, detail or completion responses.
+
+New settings (read from the backend environment; setup in `backend/README.md`, "Delivery photos"):
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| `SUPABASE_URL` | unset | Project URL. Required for photo endpoints. |
+| `SUPABASE_SERVICE_ROLE_KEY` | unset | Server-side only. Never a `NEXT_PUBLIC_*` value. |
+| `SERVICE_EVIDENCE_BUCKET` | `service-evidence` | Private bucket, created by an operator, not by code. |
+| `SERVICE_EVIDENCE_MAX_BYTES` | `8388608` (8 MiB) | Must be positive. |
+| `SERVICE_EVIDENCE_URL_TTL_SECONDS` | `300` | Must be positive. |
+| `SERVICE_CLAIM_WINDOW_HOURS` | `24` | Must be positive. |
+
 ## Tasks
 
 ### S1 — Backend: assignments table and query endpoints (route: delegated direct, writer trigger: 3+ non-trivial files)

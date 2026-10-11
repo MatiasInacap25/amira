@@ -55,6 +55,15 @@ A `Servicio` moves through `confirmed`, `in_progress`, `completed` and `disputed
 
 A service the viewer cannot see answers 404. Responses name the counterpart (provider display name for customers, customer first name for providers) and never include phone, email or RUT. `canManage` is true only for the profile owner.
 
+### Delivery photos (private Supabase Storage bucket)
+
+`POST /api/provider/services/{serviceId}/complete` takes a multipart `photo` field from the assigned driver. The photo is stored in a private bucket and read back only through a signed URL (`GET .../delivery-photo` for the provider and the customer). The bucket is not created by code or migrations, so create it once per Supabase project:
+
+1. In the Supabase dashboard, open Storage and create a bucket named `service-evidence` (or the value of `SERVICE_EVIDENCE_BUCKET`). Leave **Public** switched off.
+2. Set `SUPABASE_URL` (the project URL) and `SUPABASE_SERVICE_ROLE_KEY` in the backend environment. The service-role key is server-side only; never put it in a `NEXT_PUBLIC_*` variable.
+
+Optional settings and defaults: `SERVICE_EVIDENCE_MAX_BYTES` (8 MiB), `SERVICE_EVIDENCE_URL_TTL_SECONDS` (300), `SERVICE_CLAIM_WINDOW_HOURS` (24). Without the Supabase settings, the delivery-photo endpoints answer 503.
+
 ## Checks
 
 ```powershell
