@@ -8,56 +8,60 @@ import { useEffect, useState, type FormEvent } from "react";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import {
   createCustomerServiceRating,
-  getCustomerServices,
+  requestCustomerServices,
+  type CustomerServicePage,
   type CustomerService,
 } from "@/lib/marketplace-api";
 import { normalizeRatingComment, RATING_COMMENT_MAX_LENGTH, validateRatingDraft, type RatingDraftErrors } from "@/lib/customer-rating-validation";
 import { nextCustomerServicesOffset } from "@/lib/customer-services-pagination";
+import { shouldClearCustomerCache } from "@/lib/customer-cache-policy";
+import { sendWithTokenRetry } from "@/lib/customer-request-retry";
+import {
+  CustomerSessionError,
+  readAccessToken,
+  readCustomerUserId,
+  refreshAccessToken,
+} from "@/lib/customer-session";
 import { createClient } from "@/lib/supabase/client";
 
-// Services are cached per user; the session root is cleared on auth changes because
-// its user id is only known after it resolves.
+// Services are cached per user. The auth query holds only the user id; tokens are read per request.
 const AUTH_QUERY_KEY = ["customer-auth"];
 const SERVICES_QUERY_KEY = ["customer-services"];
-
-class CustomerSessionError extends Error {}
-
-type CustomerSession = { userId: string; accessToken: string };
-
-async function readSession(): Promise<CustomerSession> {
-  const client = createClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user?.email_confirmed_at) throw new CustomerSessionError();
-  const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (assuranceError || assurance.currentLevel !== "aal2") throw new CustomerSessionError();
-  const { data: sessionData, error: sessionError } = await client.auth.getSession();
-  if (sessionError || !sessionData.session?.access_token) throw new CustomerSessionError();
-  return { userId: userData.user.id, accessToken: sessionData.session.access_token };
-}
+const SIGN_IN_HREF = "/login?next=%2Fcuenta%2Fservicios";
 
 export function CustomerServicesView() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     queryKey: AUTH_QUERY_KEY,
-    queryFn: readSession,
+    queryFn: async () => ({ userId: await readCustomerUserId() }),
     retry: false,
     staleTime: 60_000,
   });
   const userId = sessionQuery.data?.userId ?? "";
-  const token = sessionQuery.data?.accessToken ?? "";
   const servicesQuery = useInfiniteQuery({
     queryKey: [...SERVICES_QUERY_KEY, userId],
-    queryFn: ({ pageParam, signal }) => getCustomerServices(token, pageParam, signal),
+    queryFn: async ({ pageParam, signal }) => {
+      const response = await sendWithTokenRetry(
+        (accessToken) => requestCustomerServices(accessToken, pageParam, signal),
+        readAccessToken,
+        refreshAccessToken,
+      );
+      if (response.status === 401) throw new CustomerSessionError();
+      if (!response.ok) throw new Error(`Customer services failed (${response.status})`);
+      return response.json() as Promise<CustomerServicePage>;
+    },
     initialPageParam: 0,
     getNextPageParam: nextCustomerServicesOffset,
-    enabled: Boolean(token),
+    enabled: Boolean(userId),
     retry: false,
   });
 
   useEffect(() => {
-    const { data } = createClient().auth.onAuthStateChange((event) => {
-      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+    const { data } = createClient().auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION") return;
+      const cachedUserId = queryClient.getQueryData<{ userId: string }>(AUTH_QUERY_KEY)?.userId;
+      if (!shouldClearCustomerCache(event, cachedUserId, session?.user.id)) return;
       queryClient.removeQueries({ queryKey: SERVICES_QUERY_KEY });
       void queryClient.resetQueries({ queryKey: AUTH_QUERY_KEY });
     });
@@ -66,11 +70,12 @@ export function CustomerServicesView() {
 
   const sessionExpired = sessionQuery.error instanceof CustomerSessionError;
   useEffect(() => {
-    if (sessionExpired) router.replace("/login?next=%2Fcuenta%2Fservicios");
+    if (sessionExpired) router.replace(SIGN_IN_HREF);
   }, [router, sessionExpired]);
 
   const services = servicesQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const sessionFailed = sessionQuery.isError && !(sessionQuery.error instanceof CustomerSessionError);
+  const needsSignIn = sessionQuery.isError || servicesQuery.error instanceof CustomerSessionError;
+  const servicesFailed = servicesQuery.isError && !(servicesQuery.error instanceof CustomerSessionError);
 
   return (
     <>
@@ -80,17 +85,17 @@ export function CustomerServicesView() {
           <h1>Mis servicios</h1>
           <p className="customer-services-intro">Valora los servicios completados. Tu valoración aparece en el perfil del prestador.</p>
 
-          {(sessionQuery.isPending || (token && servicesQuery.isPending)) && (
+          {(sessionQuery.isPending || (userId && servicesQuery.isPending)) && (
             <div aria-busy="true" className="marketplace-state" role="status"><span aria-hidden="true" className="state-spinner" />Cargando tus servicios…</div>
           )}
-          {sessionFailed && (
+          {needsSignIn && (
             <div className="marketplace-state marketplace-error" role="alert">
               <h2>No pudimos verificar tu sesión</h2>
               <p>Inicia sesión de nuevo para ver tus servicios.</p>
-              <Link className="button button-secondary" href="/login?next=%2Fcuenta%2Fservicios">Iniciar sesión</Link>
+              <Link className="button button-secondary" href={SIGN_IN_HREF}>Iniciar sesión</Link>
             </div>
           )}
-          {servicesQuery.isError && (
+          {servicesFailed && (
             <div className="marketplace-state marketplace-error" role="alert">
               <h2>No pudimos cargar tus servicios</h2>
               <p>Inténtalo nuevamente en unos minutos.</p>
@@ -109,7 +114,7 @@ export function CustomerServicesView() {
             <ul className="customer-service-list">
               {services.map((service) => (
                 <li className="customer-service-row" key={service.serviceId}>
-                  <ServiceRatingRow service={service} token={token} />
+                  <ServiceRatingRow service={service} />
                 </li>
               ))}
             </ul>
@@ -127,7 +132,7 @@ export function CustomerServicesView() {
   );
 }
 
-function ServiceRatingRow({ service, token }: { service: CustomerService; token: string }) {
+function ServiceRatingRow({ service }: { service: CustomerService }) {
   return (
     <article aria-labelledby={`service-${service.serviceId}-title`} className="customer-service-card">
       <header>
@@ -141,7 +146,7 @@ function ServiceRatingRow({ service, token }: { service: CustomerService; token:
           <time dateTime={service.rating.createdAt}>Valorado el {formatDate(service.rating.createdAt)}</time>
         </div>
       ) : service.completedAt ? (
-        <RatingForm serviceId={service.serviceId} token={token} />
+        <RatingForm serviceId={service.serviceId} />
       ) : (
         <p className="customer-service-pending">Podrás valorar este servicio cuando esté completado.</p>
       )}
@@ -159,12 +164,13 @@ function StarDisplay({ value }: { value: number }) {
   );
 }
 
-function RatingForm({ serviceId, token }: { serviceId: string; token: string }) {
+function RatingForm({ serviceId }: { serviceId: string }) {
   const queryClient = useQueryClient();
   const [rating, setRating] = useState<number | null>(null);
   const [comment, setComment] = useState("");
   const [fieldErrors, setFieldErrors] = useState<RatingDraftErrors>({});
   const [submitError, setSubmitError] = useState("");
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -173,24 +179,37 @@ function RatingForm({ serviceId, token }: { serviceId: string; token: string }) 
     const errors = validateRatingDraft({ rating, comment });
     setFieldErrors(errors);
     setSubmitError("");
+    setNeedsSignIn(false);
     if (errors.rating !== undefined || rating === null) return;
 
     setBusy(true);
     try {
-      const response = await createCustomerServiceRating(serviceId, { rating, comment: normalizeRatingComment(comment) }, token);
+      const response = await sendWithTokenRetry(
+        (accessToken) => createCustomerServiceRating(serviceId, { rating, comment: normalizeRatingComment(comment) }, accessToken),
+        readAccessToken,
+        refreshAccessToken,
+      );
       if (response.ok) {
         await queryClient.invalidateQueries({ queryKey: SERVICES_QUERY_KEY });
         return;
       }
-      if (response.status === 401) setSubmitError("Tu sesión expiró. Inicia sesión nuevamente para continuar.");
+      if (response.status === 401) {
+        setNeedsSignIn(true);
+        setSubmitError("Tu sesión expiró. Inicia sesión nuevamente para continuar.");
+      }
       else if (response.status === 404) setSubmitError("No encontramos este servicio en tu cuenta. Actualiza la página e inténtalo nuevamente.");
       else if (response.status === 409) {
         setSubmitError("Este servicio ya fue valorado.");
         await queryClient.invalidateQueries({ queryKey: SERVICES_QUERY_KEY });
       } else if (response.status === 422) setSubmitError("Solo puedes valorar servicios completados.");
       else setSubmitError("No pudimos guardar la valoración. Inténtalo nuevamente.");
-    } catch {
-      setSubmitError("No pudimos guardar la valoración. Revisa tu conexión e inténtalo nuevamente.");
+    } catch (cause) {
+      if (cause instanceof CustomerSessionError) {
+        setNeedsSignIn(true);
+        setSubmitError("Tu sesión expiró. Inicia sesión nuevamente para continuar.");
+      } else {
+        setSubmitError("No pudimos guardar la valoración. Revisa tu conexión e inténtalo nuevamente.");
+      }
     } finally {
       setBusy(false);
     }
@@ -227,7 +246,12 @@ function RatingForm({ serviceId, token }: { serviceId: string; token: string }) 
         />
         {fieldErrors.comment && <p className="customer-field-error" id={commentErrorId}>{fieldErrors.comment}</p>}
       </div>
-      {submitError && <p className="customer-submit-error" role="alert">{submitError}</p>}
+      {submitError && (
+        <div className="customer-submit-error" role="alert">
+          <p>{submitError}</p>
+          {needsSignIn && <Link href={SIGN_IN_HREF}>Iniciar sesión</Link>}
+        </div>
+      )}
       <button className="button button-primary customer-rating-submit" disabled={busy} type="submit">{busy ? "Guardando…" : "Enviar valoración"}</button>
     </form>
   );

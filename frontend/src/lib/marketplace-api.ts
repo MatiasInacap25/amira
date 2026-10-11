@@ -184,16 +184,14 @@ export async function createServiceRequest(input: ServiceRequestInput, accessTok
   );
 }
 
-export async function getCustomerServices(accessToken: string, offset: number, signal?: AbortSignal) {
+export function requestCustomerServices(accessToken: string, offset: number, signal?: AbortSignal) {
   const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
-  const response = await authenticatedApiFetch(
+  return authenticatedApiFetch(
     `/api/customer/services?${params.toString()}`,
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
     { headers: { Accept: "application/json" }, cache: "no-store", signal },
   );
-  if (!response.ok) throw new Error(`Customer services failed (${response.status})`);
-  return response.json() as Promise<CustomerServicePage>;
 }
 
 export async function createCustomerServiceRating(serviceId: string, input: { rating: number; comment: string | null }, accessToken: string) {

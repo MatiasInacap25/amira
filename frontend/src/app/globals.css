@@ -683,6 +683,7 @@ h1, h2, h3, p { margin-top: 0; }
 .customer-rating-form textarea:focus-visible { outline: 3px solid rgba(48, 113, 131, .17); border-color: #327183; }
 .customer-field-error, .customer-submit-error { margin: 0; color: #8a4035; font-size: 12px; line-height: 1.5; }
 .customer-submit-error { padding: 10px 12px; border: 1px solid #ead3cc; border-radius: 8px; background: #fff8f5; }
+.customer-submit-error a { display: inline-block; margin-top: 6px; color: #173f55; font-weight: 700; text-underline-offset: 3px; }
 .customer-rating-submit { justify-self: start; }
 .customer-services-more { justify-self: center; }
 @media (max-width: 760px) {
