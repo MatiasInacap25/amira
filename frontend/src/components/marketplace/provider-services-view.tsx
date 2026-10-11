@@ -16,6 +16,7 @@ import {
 import { nextProviderRequestOffset } from "@/lib/provider-requests";
 import { CustomerSessionError, readAccessToken, refreshAccessToken } from "@/lib/customer-session";
 import { sendWithTokenRetry } from "@/lib/customer-request-retry";
+import { PROVIDER_SERVICES_KEY } from "@/lib/service-query-keys";
 import { SERVICE_STATUSES, serviceStatusLabel } from "@/lib/service-status";
 
 const PAGE_SIZE = 20;
@@ -40,7 +41,7 @@ function filterLabel(filter: StatusFilter) {
 export function ProviderServicesView() {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const servicesQuery = useInfiniteQuery({
-    queryKey: ["provider-services", filter],
+    queryKey: [...PROVIDER_SERVICES_KEY, filter],
     queryFn: async ({ pageParam, signal }) => {
       const response = await sendWithTokenRetry(
         (accessToken) => requestProviderServices(

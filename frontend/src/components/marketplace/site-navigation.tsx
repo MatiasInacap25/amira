@@ -16,12 +16,7 @@ import {
 } from "@/lib/provider-nav-cache";
 import { currentAccessToken } from "@/lib/provider-request-access";
 import { isProviderRole, pendingBadgeLabel } from "@/lib/provider-requests";
-import {
-  ACCOUNT_ROLE_KEY,
-  CUSTOMER_SERVICES_KEY,
-  PROVIDER_SERVICES_KEY,
-  SERVICE_DETAIL_KEY,
-} from "@/lib/service-query-keys";
+import { clearAccountScopedQueries } from "@/lib/service-query-keys";
 import { createClient } from "@/lib/supabase/client";
 
 type NavAccount = { userId: string | null };
@@ -36,10 +31,7 @@ function useProviderNavAccountScope() {
       if (shouldClearCustomerCache(event, cachedUserId, session?.user.id)) {
         for (const key of providerNavStaleKeys()) queryClient.removeQueries({ queryKey: key });
         queryClient.removeQueries({ queryKey: CHAT_ROOT_KEY });
-        // "Mis servicios" data is per account: the role decides which list is visible, and the lists and details must not outlive it.
-        for (const key of [ACCOUNT_ROLE_KEY, PROVIDER_SERVICES_KEY, SERVICE_DETAIL_KEY, CUSTOMER_SERVICES_KEY]) {
-          queryClient.removeQueries({ queryKey: key });
-        }
+        clearAccountScopedQueries(queryClient);
       }
       void queryClient.invalidateQueries({ queryKey: PROVIDER_NAV_USER_KEY });
     });
