@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { ServiceDetail as ServiceDetailData } from "@/lib/marketplace-api";
 import {
   formatServiceAmount,
@@ -10,12 +11,16 @@ import {
 
 type ServiceDetailProps = {
   service: ServiceDetailData;
+  // Provider-only slots, supplied by the container. Each is omitted when the viewer cannot use it.
+  actions?: ReactNode;
+  assignmentEditor?: ReactNode;
+  deliveryPhoto?: ReactNode;
 };
 
 const NO_VALUE_LABEL = "No indicado";
 
-/** Read-only body of a service. The viewer's role decides how the other party is labelled. */
-export function ServiceDetail({ service }: ServiceDetailProps) {
+/** Body of a service. The viewer's role decides how the other party is labelled. */
+export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto }: ServiceDetailProps) {
   const counterpartLabel = service.viewerRole === "customer" ? "Prestador" : "Cliente";
   return (
     <article aria-labelledby="account-service-detail-title" className="account-service-detail">
@@ -71,20 +76,36 @@ export function ServiceDetail({ service }: ServiceDetailProps) {
 
       <section aria-labelledby="account-service-assignments-title" className="account-service-section">
         <h2 id="account-service-assignments-title">Conductores asignados</h2>
-        {service.assignments.length === 0 ? (
-          <p className="account-service-empty">Aún no hay conductores asignados</p>
-        ) : (
-          <ul className="account-service-assignments">
-            {service.assignments.map((assignment) => (
-              <li key={`${assignment.driverId}-${assignment.vehicleId}`}>
-                <strong>{assignment.driverFirstName || NO_VALUE_LABEL}</strong>
-                <span>{assignment.vehicleLabel || NO_VALUE_LABEL}</span>
-                <span className="account-service-plate">{assignment.plate || NO_VALUE_LABEL}</span>
-              </li>
-            ))}
-          </ul>
+        {assignmentEditor ?? (
+          service.assignments.length === 0 ? (
+            <p className="account-service-empty">Aún no hay conductores asignados</p>
+          ) : (
+            <ul className="account-service-assignments">
+              {service.assignments.map((assignment) => (
+                <li key={`${assignment.driverId}-${assignment.vehicleId}`}>
+                  <strong>{assignment.driverFirstName || NO_VALUE_LABEL}</strong>
+                  <span>{assignment.vehicleLabel || NO_VALUE_LABEL}</span>
+                  <span className="account-service-plate">{assignment.plate || NO_VALUE_LABEL}</span>
+                </li>
+              ))}
+            </ul>
+          )
         )}
       </section>
+
+      {actions && (
+        <section aria-labelledby="account-service-actions-title" className="account-service-section">
+          <h2 id="account-service-actions-title">Acciones</h2>
+          {actions}
+        </section>
+      )}
+
+      {deliveryPhoto && (
+        <section aria-labelledby="account-service-photo-title" className="account-service-section">
+          <h2 id="account-service-photo-title">Foto de entrega</h2>
+          {deliveryPhoto}
+        </section>
+      )}
 
       {service.chatId && (
         <Link className="button button-secondary account-service-chat" href={`/mensajes/${encodeURIComponent(service.chatId)}`}>

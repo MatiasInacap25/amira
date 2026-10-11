@@ -129,9 +129,41 @@ export type ServiceDetail = ServiceListItem & {
   viewerRole: "customer" | "provider";
   canManage: boolean;
   assignments: ServiceAssignment[];
+  deliveryPhotoAvailable: boolean;
 };
 
 export type ServiceListPage = PagedResponse<ServiceListItem>;
+
+export type ServiceAssignmentOptions = {
+  drivers: Array<{ driverId: string; firstName: string; lastName: string; isOwner: boolean }>;
+  vehicles: Array<{ vehicleId: string; vehicleLabel: string; plate: string }>;
+};
+
+export type ServiceAssignmentInput = {
+  driverId: string;
+  vehicleId: string;
+};
+
+export type ServiceAssignmentUpdate = {
+  assignments: ServiceAssignmentInput[];
+  confirmSameDayConflicts: boolean;
+};
+
+export type ServiceSameDayConflict = {
+  driverId: string;
+  serviceId: string;
+  serviceAt: string;
+};
+
+// A 409 with conflicts is an expected outcome the user can confirm, so it is returned, not thrown.
+export type ServiceAssignmentSaveResult =
+  | { status: "saved"; service: ServiceDetail }
+  | { status: "same_day_conflicts"; conflicts: ServiceSameDayConflict[] };
+
+export type DeliveryPhotoLink = {
+  url: string;
+  expiresAt: string;
+};
 
 export type ProviderServiceQuery = {
   status?: ServiceStatus;
@@ -311,6 +343,69 @@ export function requestCustomerServiceDetail(accessToken: string, serviceId: str
 export async function parseServiceResponse<T>(response: Response): Promise<T> {
   if (!response.ok) throw new ServiceRequestError(response.status);
   return response.json() as Promise<T>;
+}
+
+export function requestProviderAssignmentOptions(accessToken: string, serviceId: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}/assignment-options`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+export function requestProviderAssignmentUpdate(accessToken: string, serviceId: string, update: ServiceAssignmentUpdate) {
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}/assignments`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(update),
+    },
+  );
+}
+
+// Only the same-day 409 is typed; any other failure goes through parseServiceResponse and throws.
+export async function parseAssignmentSaveResponse(response: Response): Promise<ServiceAssignmentSaveResult> {
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as { conflicts?: unknown } | null;
+    if (Array.isArray(body?.conflicts)) {
+      return { status: "same_day_conflicts", conflicts: body.conflicts as ServiceSameDayConflict[] };
+    }
+  }
+  return { status: "saved", service: await parseServiceResponse<ServiceDetail>(response) };
+}
+
+export function requestProviderServiceStart(accessToken: string, serviceId: string) {
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}/start`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { Accept: "application/json" } },
+  );
+}
+
+// No Content-Type header: the browser sets the multipart boundary.
+export function requestProviderServiceComplete(accessToken: string, serviceId: string, photo: File) {
+  const body = new FormData();
+  body.append("photo", photo);
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}/complete`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { Accept: "application/json" }, body },
+  );
+}
+
+export function requestProviderDeliveryPhoto(accessToken: string, serviceId: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}/delivery-photo`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
 }
 
 export async function getProviderRequests(

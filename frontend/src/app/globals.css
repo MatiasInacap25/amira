@@ -724,6 +724,29 @@ h1, h2, h3, p { margin-top: 0; }
 .account-service-assignments strong { color: #172532; }
 .account-service-plate { font-variant-numeric: tabular-nums; letter-spacing: .05em; }
 .account-service-chat { justify-self: start; }
+.account-service-hint { margin: 0; color: #6a7985; font-size: 12px; line-height: 1.5; }
+.account-service-form-error { margin: 0; color: #9b2c2c; font-size: 13px; font-weight: 600; }
+.account-service-inline-action { padding: 0; border: 0; background: none; color: #173f55; font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.account-service-inline-action:focus-visible { outline: 2px solid #df6e3e; outline-offset: 2px; }
+.account-service-assignment-form, .account-service-complete-form { display: grid; gap: 14px; }
+.account-service-assignment-hint { margin: 0; color: #3d4f5c; font-size: 13px; line-height: 1.5; }
+.account-service-assignment-rows { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.account-service-assignment-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; gap: 12px; align-items: end; }
+.account-service-assignment-add { justify-self: start; }
+.account-service-actions, .account-service-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.account-service-photo { display: grid; gap: 8px; margin: 0; justify-items: start; }
+.account-service-photo-image, .account-service-photo-preview { max-width: 100%; height: auto; border: 1px solid #e0e8e8; border-radius: 10px; object-fit: cover; }
+.account-service-photo-image { width: min(100%, 420px); }
+.account-service-photo-preview { width: 160px; height: 160px; }
+.same-day-conflict-body { display: grid; gap: 16px; padding: 19px 24px 22px; }
+.same-day-conflict-body p { margin: 0; color: #3d4f5c; font-size: 14px; line-height: 1.55; }
+.same-day-conflict-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.same-day-conflict-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 10px 12px; border: 1px solid #e4e9ee; border-radius: 10px; color: #3d4f5c; font-size: 13px; }
+.same-day-conflict-list strong { color: #172532; }
+@media (max-width: 640px) {
+  .account-service-assignment-row { grid-template-columns: 1fr; }
+  .same-day-conflict-body { padding: 16px; }
+}
 @media (max-width: 760px) {
   .account-service-card-heading, .account-service-detail-heading { flex-direction: column; }
   .account-service-detail { padding: 16px; }

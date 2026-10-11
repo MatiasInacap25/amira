@@ -1,28 +1,48 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { DeliveryPhoto } from "@/components/marketplace/delivery-photo";
+import { ServiceActions } from "@/components/marketplace/service-actions";
+import { ServiceAssignmentForm } from "@/components/marketplace/service-assignment-form";
 import { MarketplaceSkeleton, SERVICE_DETAIL_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { ServiceDetail } from "@/components/marketplace/service-detail";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { accountApiFetch } from "@/lib/auth/account-api";
 import {
+  parseAssignmentSaveResponse,
   parseServiceResponse,
+  type DeliveryPhotoLink,
   requestCustomerServiceDetail,
+  requestProviderAssignmentOptions,
+  requestProviderAssignmentUpdate,
+  requestProviderDeliveryPhoto,
+  requestProviderServiceComplete,
   requestProviderServiceDetail,
+  requestProviderServiceStart,
   ServiceRequestError,
+  type ServiceAssignmentOptions,
+  type ServiceAssignmentUpdate,
   type ServiceDetail as ServiceDetailData,
 } from "@/lib/marketplace-api";
-import { sendWithTokenRetry } from "@/lib/customer-request-retry";
+import { sendWithTokenRetry, type StatusResponse } from "@/lib/customer-request-retry";
 import { CustomerSessionError, readAccessToken, refreshAccessToken } from "@/lib/customer-session";
 import { isProviderRole } from "@/lib/provider-requests";
+import { serviceActionErrorMessage } from "@/lib/service-status";
 
 const ACCOUNT_ROLE_KEY = ["services-account-role"];
+const SERVICE_DETAIL_KEY = ["service-detail"];
+const PROVIDER_SERVICES_KEY = ["provider-services"];
 const SIGN_IN_HREF = "/login?next=%2Fcuenta%2Fservicios";
 const LIST_HREF = "/cuenta/servicios";
 
 class ServiceNotFoundError extends Error {}
+
+// Sends with the session token, retrying once with a refreshed token on 401. A second 401 is returned to the caller.
+function sendProviderRequest<T extends StatusResponse>(send: (accessToken: string) => Promise<T>) {
+  return sendWithTokenRetry(send, readAccessToken, refreshAccessToken);
+}
 
 /**
  * Resolves whether the signed-in account is a provider, which selects the detail endpoint.
@@ -47,9 +67,54 @@ export function useServiceAccountRole() {
   });
 }
 
+// Provider mutations refresh the detail and every provider list, since a status or assignment change shows in both.
+function useProviderServiceMutations(serviceId: string) {
+  const queryClient = useQueryClient();
+
+  function refreshProviderViews() {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: SERVICE_DETAIL_KEY }),
+      queryClient.invalidateQueries({ queryKey: PROVIDER_SERVICES_KEY }),
+    ]);
+  }
+
+  const saveAssignments = useMutation({
+    mutationFn: async (update: ServiceAssignmentUpdate) => {
+      const response = await sendProviderRequest((accessToken) => requestProviderAssignmentUpdate(accessToken, serviceId, update));
+      return parseAssignmentSaveResponse(response);
+    },
+    onSuccess: (result) => {
+      if (result.status === "saved") return refreshProviderViews();
+    },
+  });
+
+  const startService = useMutation({
+    mutationFn: async () => {
+      const response = await sendProviderRequest((accessToken) => requestProviderServiceStart(accessToken, serviceId));
+      return parseServiceResponse<ServiceDetailData>(response);
+    },
+    onSuccess: refreshProviderViews,
+  });
+
+  const completeService = useMutation({
+    mutationFn: async (photo: File) => {
+      const response = await sendProviderRequest((accessToken) => requestProviderServiceComplete(accessToken, serviceId, photo));
+      return parseServiceResponse<ServiceDetailData>(response);
+    },
+    onSuccess: refreshProviderViews,
+  });
+
+  return { saveAssignments, startService, completeService };
+}
+
+function assignmentSignature(assignments: ServiceDetailData["assignments"]) {
+  return assignments.map((assignment) => `${assignment.driverId}:${assignment.vehicleId}`).join("|");
+}
+
 export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   const roleQuery = useServiceAccountRole();
   const provider = roleQuery.data?.provider ?? false;
+  const mutations = useProviderServiceMutations(serviceId);
 
   const detailQuery = useQuery({
     queryKey: ["service-detail", provider ? "provider" : "customer", serviceId],
@@ -69,11 +134,27 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
     retry: false,
   });
 
+  const detail = detailQuery.data;
+  // Only the profile owner can manage assignments, and only before the service starts.
+  const showAssignmentForm = Boolean(detail?.canManage && detail.status === "confirmed");
+
+  const optionsQuery = useQuery({
+    queryKey: ["service-assignment-options", serviceId],
+    queryFn: async () => {
+      const response = await sendProviderRequest((accessToken) => requestProviderAssignmentOptions(accessToken, serviceId));
+      return parseServiceResponse<ServiceAssignmentOptions>(response);
+    },
+    enabled: showAssignmentForm,
+    retry: false,
+  });
+
   const error = roleQuery.isError ? roleQuery.error : detailQuery.error;
   const needsSignIn = error instanceof CustomerSessionError;
   const notFound = error instanceof ServiceNotFoundError;
   const failed = Boolean(error) && !needsSignIn && !notFound;
   const loading = roleQuery.isPending || (roleQuery.isSuccess && detailQuery.isPending);
+
+  const isProviderViewer = detail?.viewerRole === "provider";
 
   return (
     <>
@@ -114,7 +195,38 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
 
           {!error && (
             <MarketplaceSkeleton label="Cargando servicio…" layout={SERVICE_DETAIL_LAYOUT} loading={loading} name="service-detail">
-              {detailQuery.data && <ServiceDetail service={detailQuery.data} />}
+              {detail && (
+                <ServiceDetail
+                  actions={isProviderViewer ? (
+                    <ServiceActions
+                      completePending={mutations.completeService.isPending}
+                      hasAssignments={detail.assignments.length > 0}
+                      onComplete={(photo) => mutations.completeService.mutateAsync(photo)}
+                      onStart={() => mutations.startService.mutateAsync()}
+                      startPending={mutations.startService.isPending}
+                      status={detail.status}
+                    />
+                  ) : undefined}
+                  assignmentEditor={showAssignmentForm ? (
+                    <ServiceAssignmentForm
+                      // Remounts when the saved assignments change, so the form is prefilled from the server state.
+                      key={assignmentSignature(detail.assignments)}
+                      assignments={detail.assignments}
+                      onSave={(update) => mutations.saveAssignments.mutateAsync(update)}
+                      options={optionsQuery.data}
+                      optionsErrorMessage={optionsQuery.isError ? serviceActionErrorMessage(optionsQuery.error, "load-options") : undefined}
+                      optionsPending={optionsQuery.isPending}
+                    />
+                  ) : undefined}
+                  deliveryPhoto={isProviderViewer && detail.deliveryPhotoAvailable ? (
+                    <DeliveryPhoto
+                      onLoad={() => sendProviderRequest((accessToken) => requestProviderDeliveryPhoto(accessToken, serviceId))
+                        .then((response) => parseServiceResponse<DeliveryPhotoLink>(response))}
+                    />
+                  ) : undefined}
+                  service={detail}
+                />
+              )}
             </MarketplaceSkeleton>
           )}
         </div>
