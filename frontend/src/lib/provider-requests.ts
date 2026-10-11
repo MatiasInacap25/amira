@@ -53,6 +53,22 @@ export function isProviderRole(role: string | null | undefined): boolean {
   return (PROVIDER_ROLES as readonly string[]).includes(role ?? "");
 }
 
+// While a tab switch is loading, previous-tab rows are kept only for the counts. They must not
+// render as the new tab's rows, and load-more would fetch the wrong status.
+export function resolveInboxPanel(input: {
+  pending: boolean;
+  placeholder: boolean;
+  hasItems: boolean;
+  hasNextPage: boolean;
+}): { busy: boolean; showRows: boolean; showLoadMore: boolean } {
+  const busy = input.pending || input.placeholder;
+  return {
+    busy,
+    showRows: !busy,
+    showLoadMore: !busy && input.hasNextPage,
+  };
+}
+
 export function pendingBadgeLabel(count: number): string | undefined {
   if (count <= 0) return undefined;
   return count > 99 ? "99+" : String(count);

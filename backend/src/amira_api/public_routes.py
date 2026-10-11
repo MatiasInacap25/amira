@@ -325,37 +325,51 @@ def _customer_name_for_provider(status: str, first_name: str, last_name: str | N
     return first_name, (last_name if status == "accepted" else None)
 
 
+def _provider_requests_from(statement: Select) -> Select:
+    """The inbox relation: requests that have a service type and a customer row.
+
+    Rows, total and counts all build from this one relation, so pagination and badges never count a
+    request that the list cannot return. The customer FK is NOT NULL, so this join only drops rows the
+    schema should already prevent; no placeholder customer name is invented for them.
+    """
+    return (
+        statement.select_from(FormularioServicio)
+        .join(TipoServicio, TipoServicio.id == FormularioServicio.service_type_id)
+        .join(Usuario, Usuario.id == FormularioServicio.customer_id)
+    )
+
+
 def _provider_request_rows(profile_id: UUID) -> Select:
     origin_commune = aliased(Commune)
     origin_region = aliased(Region)
     destination_commune = aliased(Commune)
     destination_region = aliased(Region)
     return (
-        select(
-            FormularioServicio.id.label("request_id"),
-            FormularioServicio.status.label("status"),
-            FormularioServicio.origin.label("origin"),
-            FormularioServicio.destination.label("destination"),
-            FormularioServicio.requested_at.label("requested_at"),
-            FormularioServicio.created_at.label("created_at"),
-            FormularioServicio.estimated_weight.label("estimated_weight"),
-            FormularioServicio.estimated_volume.label("estimated_volume"),
-            FormularioServicio.description.label("description"),
-            FormularioServicio.cargo_measurements.label("cargo_measurements"),
-            FormularioServicio.is_exclusive.label("is_exclusive"),
-            FormularioServicio.origin_commune_code.label("origin_commune_code"),
-            origin_commune.name.label("origin_commune_name"),
-            origin_region.name.label("origin_region_name"),
-            FormularioServicio.destination_commune_code.label("destination_commune_code"),
-            destination_commune.name.label("destination_commune_name"),
-            destination_region.name.label("destination_region_name"),
-            Usuario.first_name.label("customer_first_name"),
-            Usuario.last_name.label("customer_last_name"),
-            TipoServicio.name.label("service_name"),
-            Chat.id.label("chat_id"),
+        _provider_requests_from(
+            select(
+                FormularioServicio.id.label("request_id"),
+                FormularioServicio.status.label("status"),
+                FormularioServicio.origin.label("origin"),
+                FormularioServicio.destination.label("destination"),
+                FormularioServicio.requested_at.label("requested_at"),
+                FormularioServicio.created_at.label("created_at"),
+                FormularioServicio.estimated_weight.label("estimated_weight"),
+                FormularioServicio.estimated_volume.label("estimated_volume"),
+                FormularioServicio.description.label("description"),
+                FormularioServicio.cargo_measurements.label("cargo_measurements"),
+                FormularioServicio.is_exclusive.label("is_exclusive"),
+                FormularioServicio.origin_commune_code.label("origin_commune_code"),
+                origin_commune.name.label("origin_commune_name"),
+                origin_region.name.label("origin_region_name"),
+                FormularioServicio.destination_commune_code.label("destination_commune_code"),
+                destination_commune.name.label("destination_commune_name"),
+                destination_region.name.label("destination_region_name"),
+                Usuario.first_name.label("customer_first_name"),
+                Usuario.last_name.label("customer_last_name"),
+                TipoServicio.name.label("service_name"),
+                Chat.id.label("chat_id"),
+            )
         )
-        .join(TipoServicio, TipoServicio.id == FormularioServicio.service_type_id)
-        .join(Usuario, Usuario.id == FormularioServicio.customer_id)
         .outerjoin(Chat, Chat.form_id == FormularioServicio.id)
         .outerjoin(origin_commune, origin_commune.code == FormularioServicio.origin_commune_code)
         .outerjoin(origin_region, origin_region.code == origin_commune.region_code)
@@ -376,7 +390,7 @@ def _provider_request_item(row) -> ProviderRequestItem:
 def _provider_request_counts(session: Session, profile_id: UUID) -> ProviderRequestCounts:
     # Counts ignore the status filter so each tab can show its badge while another tab is open.
     status_rows = session.execute(
-        select(FormularioServicio.status, func.count())
+        _provider_requests_from(select(FormularioServicio.status, func.count()))
         .where(FormularioServicio.profile_id == profile_id)
         .group_by(FormularioServicio.status)
     ).all()
@@ -397,8 +411,7 @@ def list_provider_requests(
     status_clause = [FormularioServicio.status == status_filter] if status_filter else []
     counts = _provider_request_counts(session, profile_id)
     total = session.execute(
-        select(func.count())
-        .select_from(FormularioServicio)
+        _provider_requests_from(select(func.count()))
         .where(FormularioServicio.profile_id == profile_id, *status_clause)
     ).scalar_one()
     rows = session.execute(

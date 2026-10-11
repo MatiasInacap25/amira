@@ -10,6 +10,7 @@ import {
   customerDisplayName,
   formatRouteEndpoint,
   nextProviderRequestOffset,
+  resolveInboxPanel,
   type ProviderRequestStatus,
 } from "@/lib/provider-requests";
 
@@ -44,7 +45,7 @@ export function ProviderRequestInbox() {
     queryFn: async ({ pageParam }) => getProviderRequests(await currentAccessToken(), { status, limit: PAGE_SIZE, offset: pageParam }),
     initialPageParam: 0,
     getNextPageParam: nextProviderRequestOffset,
-    // Keeps the previous tab's rows and counts on screen while the next tab loads.
+    // Keeps the previous tab's counts while the next tab loads. Its rows are hidden via resolveInboxPanel.
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -52,6 +53,13 @@ export function ProviderRequestInbox() {
   const pages = requestsQuery.data?.pages ?? [];
   const items = pages.flatMap((page) => page.items);
   const counts = pages[0]?.counts;
+  const panel = resolveInboxPanel({
+    pending: requestsQuery.isPending,
+    placeholder: requestsQuery.isPlaceholderData,
+    hasItems: items.length > 0,
+    hasNextPage: Boolean(requestsQuery.hasNextPage),
+  });
+  const rows = panel.showRows ? items : [];
   const error = requestsQuery.isError ? requestsQuery.error : null;
   const activeTab = TABS.find((tab) => tab.status === status) ?? TABS[0];
 
@@ -100,7 +108,7 @@ export function ProviderRequestInbox() {
         })}
       </div>
 
-      <div aria-labelledby={`provider-tab-${status}`} className="provider-inbox-panel" id="provider-inbox-panel" role="tabpanel">
+      <div aria-busy={panel.busy} aria-labelledby={`provider-tab-${status}`} className="provider-inbox-panel" id="provider-inbox-panel" role="tabpanel">
         {isSignInRequired(error) && (
           <div className="marketplace-state">
             <p role="alert">{requestErrorMessage(error)}</p>
@@ -118,10 +126,10 @@ export function ProviderRequestInbox() {
           <MarketplaceSkeleton
             label="Cargando solicitudes…"
             layout={PROVIDER_REQUESTS_LAYOUT}
-            loading={requestsQuery.isPending}
+            loading={panel.busy}
             name="provider-requests"
           >
-            {items.length === 0 ? (
+            {rows.length === 0 ? (
               <div className="marketplace-state marketplace-empty" role="status">
                 <h2>{activeTab.empty}</h2>
                 <p>Cuando un cliente solicite una cotización para tu perfil, aparecerá aquí.</p>
@@ -129,7 +137,7 @@ export function ProviderRequestInbox() {
             ) : (
               <>
                 <ul className="provider-request-list">
-                  {items.map((item) => {
+                  {rows.map((item) => {
                     const route = routeLabel(item);
                     return (
                       <li key={item.requestId}>
@@ -152,7 +160,7 @@ export function ProviderRequestInbox() {
                     );
                   })}
                 </ul>
-                {requestsQuery.hasNextPage && (
+                {panel.showLoadMore && (
                   <div className="provider-inbox-more">
                     <button
                       className="button button-secondary"

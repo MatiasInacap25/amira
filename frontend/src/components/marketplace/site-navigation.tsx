@@ -2,38 +2,73 @@
 
 import { ArrowRight, Menu, Truck, X } from "lucide-react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { shouldClearCustomerCache } from "@/lib/customer-cache-policy";
 import { accountApiFetch } from "@/lib/auth/account-api";
 import { getProviderRequests } from "@/lib/marketplace-api";
+import {
+  PROVIDER_NAV_USER_KEY,
+  providerNavPendingKey,
+  providerNavRoleKey,
+  providerNavStaleKeys,
+} from "@/lib/provider-nav-cache";
 import { currentAccessToken } from "@/lib/provider-request-access";
 import { isProviderRole, pendingBadgeLabel } from "@/lib/provider-requests";
 import { createClient } from "@/lib/supabase/client";
 
+type NavAccount = { userId: string | null };
+
+// Drops the header's per-account provider data on sign-out or account change, and re-reads the session user.
+function useProviderNavAccountScope() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const { data } = createClient().auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION") return;
+      const cachedUserId = queryClient.getQueryData<NavAccount>(PROVIDER_NAV_USER_KEY)?.userId ?? undefined;
+      if (shouldClearCustomerCache(event, cachedUserId, session?.user.id)) {
+        for (const key of providerNavStaleKeys()) queryClient.removeQueries({ queryKey: key });
+      }
+      void queryClient.invalidateQueries({ queryKey: PROVIDER_NAV_USER_KEY });
+    });
+    return () => data.subscription.unsubscribe();
+  }, [queryClient]);
+}
+
 // Shown only to provider accounts with an active session; anonymous and client visitors get nothing.
 function ProviderRequestsLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+  const userQuery = useQuery({
+    queryKey: PROVIDER_NAV_USER_KEY,
+    queryFn: async (): Promise<NavAccount> => {
+      const { data } = await createClient().auth.getSession();
+      return { userId: data.session?.user.id ?? null };
+    },
+    retry: false,
+    staleTime: 0,
+  });
+  const userId = userQuery.data?.userId ?? null;
+
   const roleQuery = useQuery({
-    queryKey: ["provider-nav-role"],
+    queryKey: providerNavRoleKey(userId ?? ""),
     queryFn: async () => {
-      const { data: session } = await createClient().auth.getSession();
-      if (!session.session) return null;
       const response = await accountApiFetch("/api/account/me", await currentAccessToken(), process.env.NEXT_PUBLIC_API_URL);
       if (!response.ok) return null;
       const body = await response.json() as { role?: string };
       return body.role ?? null;
     },
+    enabled: Boolean(userId),
     retry: false,
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
   });
   const provider = isProviderRole(roleQuery.data);
 
   const pendingQuery = useQuery({
-    queryKey: ["provider-nav-pending"],
+    queryKey: providerNavPendingKey(userId ?? ""),
     queryFn: async () => {
       const page = await getProviderRequests(await currentAccessToken(), { status: "pending", limit: 1, offset: 0 });
       return page.counts.pending;
     },
-    enabled: provider,
+    enabled: provider && Boolean(userId),
     retry: false,
     staleTime: 60_000,
   });
@@ -51,6 +86,7 @@ function ProviderRequestsLink({ className, onNavigate }: { className?: string; o
 
 export function MarketplaceHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  useProviderNavAccountScope();
 
   return (
     <header className="site-header">

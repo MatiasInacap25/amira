@@ -76,6 +76,9 @@ def request_row(*, status="pending", profile_id=PROFILE_ID, **overrides) -> dict
     return row
 
 
+FAKE_ONLY_KEYS = {"customer_present", "service_present"}
+
+
 class InboxSession:
     """Answers the two ownership queries, then serves the inbox queries from a row list.
 
@@ -99,21 +102,28 @@ class InboxSession:
         self.statements.append(sql)
         status_filter = re.search(r'"Estado" = \'(\w+)\'', sql)
         request_filter = re.search(r'"Formulario_servicio"\."ID" = \'([0-9a-f-]{36})\'', sql)
-        matching = [
+        # Inner joins drop requests whose customer or service row is missing, exactly as the database would.
+        relation = [
             row for row in self.rows
             if row["profile_id"] == PROFILE_ID
-            and (status_filter is None or row["status"] == status_filter.group(1))
+            and (row.get("customer_present", True) or 'JOIN "Usuario"' not in sql)
+            and (row.get("service_present", True) or 'JOIN "Tipos_Servicio"' not in sql)
+        ]
+        matching = [
+            row for row in relation
+            if (status_filter is None or row["status"] == status_filter.group(1))
             and (request_filter is None or str(row["request_id"]) == request_filter.group(1))
         ]
         if "group by" in sql.lower():
             statuses = ("pending", "accepted", "rejected")
             return FakeResult(rows=[
-                (status, sum(1 for row in self.rows if row["profile_id"] == PROFILE_ID and row["status"] == status))
+                (status, sum(1 for row in relation if row["status"] == status))
                 for status in statuses
             ])
         if "count(" in sql.lower():
             return FakeResult(scalar=len(matching))
-        return FakeResult(row=matching[0] if matching else None, rows=matching)
+        exposed = [{key: value for key, value in row.items() if key not in FAKE_ONLY_KEYS} for row in matching]
+        return FakeResult(row=exposed[0] if exposed else None, rows=exposed)
 
     def add(self, value):
         raise AssertionError("The inbox is read-only")
@@ -319,3 +329,41 @@ def test_detail_queries_never_select_customer_phone_or_email():
         assert '"Telefono"' not in sql
     assert CUSTOMER_EMAIL not in response.text
     assert CUSTOMER_PHONE not in response.text
+
+
+def test_total_and_counts_match_reachable_items_when_a_customer_row_is_missing():
+    orphan = request_row(status="pending", customer_present=False)
+    rows = [request_row(status="pending"), request_row(status="accepted", customer_last_name="Customer"), orphan]
+
+    response, _ = get_inbox("/api/provider/requests", rows)
+
+    body = response.json()
+    assert body["total"] == len(body["items"]) == 2
+    assert sum(body["counts"].values()) == body["total"]
+    assert body["counts"] == {"pending": 1, "accepted": 1, "rejected": 0}
+    assert str(orphan["request_id"]) not in [item["requestId"] for item in body["items"]]
+
+
+def test_total_and_counts_match_reachable_items_when_a_service_row_is_missing():
+    orphan = request_row(status="rejected", service_present=False)
+    rows = [request_row(status="pending"), orphan]
+
+    response, _ = get_inbox("/api/provider/requests", rows)
+
+    body = response.json()
+    assert body["total"] == len(body["items"]) == 1
+    assert body["counts"] == {"pending": 1, "accepted": 0, "rejected": 0}
+
+
+def test_filtered_total_matches_reachable_items_when_a_customer_row_is_missing():
+    rows = [
+        request_row(status="pending"),
+        request_row(status="pending", customer_present=False),
+        request_row(status="pending", customer_present=False),
+    ]
+
+    response, _ = get_inbox("/api/provider/requests?status=pending", rows)
+
+    body = response.json()
+    assert body["total"] == len(body["items"]) == 1
+    assert body["counts"]["pending"] == 1

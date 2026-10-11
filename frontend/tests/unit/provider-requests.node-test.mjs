@@ -8,6 +8,7 @@ import {
   nextProviderRequestOffset,
   parseProviderRequestStatus,
   pendingBadgeLabel,
+  resolveInboxPanel,
 } from "../../src/lib/provider-requests.ts";
 
 function page(offset, count, total) {
@@ -80,4 +81,29 @@ test("formats the pending badge and caps large counts", () => {
   assert.equal(pendingBadgeLabel(3), "3");
   assert.equal(pendingBadgeLabel(99), "99");
   assert.equal(pendingBadgeLabel(120), "99+");
+});
+
+test("hides rows and load-more and marks the panel busy while a tab's first page loads", () => {
+  assert.deepEqual(
+    resolveInboxPanel({ pending: false, placeholder: true, hasItems: true, hasNextPage: true }),
+    { busy: true, showRows: false, showLoadMore: false },
+  );
+});
+
+test("keeps the skeleton for the initial load of a tab", () => {
+  assert.deepEqual(
+    resolveInboxPanel({ pending: true, placeholder: false, hasItems: false, hasNextPage: false }),
+    { busy: true, showRows: false, showLoadMore: false },
+  );
+});
+
+test("shows rows and load-more once the current tab's data is loaded", () => {
+  assert.deepEqual(
+    resolveInboxPanel({ pending: false, placeholder: false, hasItems: true, hasNextPage: true }),
+    { busy: false, showRows: true, showLoadMore: true },
+  );
+  assert.deepEqual(
+    resolveInboxPanel({ pending: false, placeholder: false, hasItems: false, hasNextPage: false }),
+    { busy: false, showRows: true, showLoadMore: false },
+  );
 });

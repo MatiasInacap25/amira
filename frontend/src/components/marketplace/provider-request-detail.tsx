@@ -9,6 +9,7 @@ import { PROVIDER_REQUEST_DETAIL_LAYOUT, MarketplaceSkeleton } from "@/component
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { decideProviderRequest, getProviderRequest, type ProviderRequest, type ProviderRequestDecision } from "@/lib/marketplace-api";
 import { currentAccessToken, isSignInRequired, requestErrorMessage } from "@/lib/provider-request-access";
+import { PROVIDER_NAV_ROOT_KEY } from "@/lib/provider-nav-cache";
 import { customerDisplayName, formatRouteEndpoint, type ProviderRequestStatus } from "@/lib/provider-requests";
 
 const STATUS_LABEL: Record<ProviderRequestStatus, string> = {
@@ -66,7 +67,7 @@ export function ProviderRequestDetail({ requestId }: { requestId: string }) {
       const decided = await response.json() as ProviderRequestDecision;
       await queryClient.invalidateQueries({ queryKey: ["provider-requests"] });
       await queryClient.invalidateQueries({ queryKey: ["provider-request", requestId] });
-      await queryClient.invalidateQueries({ queryKey: ["provider-nav-pending"] });
+      await queryClient.invalidateQueries({ queryKey: PROVIDER_NAV_ROOT_KEY });
       if (decision === "accept" && decided.chatId) {
         router.push(`/mensajes/${encodeURIComponent(decided.chatId)}`);
         return;
