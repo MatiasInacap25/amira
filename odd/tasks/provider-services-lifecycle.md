@@ -190,18 +190,18 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 Excluded (user decisions or operational): `Monto_Neto` = gross, the cron `APP_ENV`, `backend/.env.example`, the live `Servicio.Estado` check, a proxy body limit, and owner-vs-employed precedence (documented in API notes).
 
 Backend (one commit):
-- [ ] F1 Consent after release: reject consent with 409 when a `Desembolso` exists for the service; `canConsent` is false then.
-- [ ] F2 `viewerAssigned: bool` in `ServiceDetail` (true when the viewer has a `Servicio_Asignacion` row on the service).
-- [ ] F3 `currency` accepts any ISO currency string instead of `Literal["CLP"]`.
-- [ ] F4 New migration `20261011_0004`: `fk_service_started_by` becomes `ON DELETE SET NULL` (NOT VALID then VALIDATE); model updated.
-- [ ] F5 Same-day check serialized: lock the requested drivers' `Conductor` rows `FOR UPDATE` in id order before the conflict query.
-- [ ] F6 Completion: no upload while holding the service row lock; add `delete` to `EvidenceStorage` and remove the object when the status re-check or the commit fails; storage resolved after the visibility/assignment checks (403/404 before 503).
-- [ ] F7 Tests: 503 not-configured branch; CLI production refusal asserts the refusal message; migration ordering guards tied to their own statements (0003 status CHECK, started-by FK); customer detail assignments; provider list status filter with employed-driver visibility.
+- [x] F1 Consent after release: reject consent with 409 when a `Desembolso` exists for the service; `canConsent` is false then.
+- [x] F2 `viewerAssigned: bool` in `ServiceDetail` (true when the viewer has a `Servicio_Asignacion` row on the service).
+- [x] F3 `currency` accepts any ISO currency string instead of `Literal["CLP"]`.
+- [x] F4 New migration `20261011_0004`: `fk_service_started_by` becomes `ON DELETE SET NULL` (NOT VALID then VALIDATE); model updated.
+- [x] F5 Same-day check serialized: lock the requested drivers' `Conductor` rows `FOR UPDATE` in id order before the conflict query.
+- [x] F6 Completion: no upload while holding the service row lock; add `delete` to `EvidenceStorage` and remove the object when the status re-check or the commit fails; storage resolved after the visibility/assignment checks (403/404 before 503).
+- [x] F7 Tests: 503 not-configured branch; CLI production refusal asserts the refusal message; migration ordering guards tied to their own statements (0003 status CHECK, started-by FK); customer detail assignments; provider list status filter with employed-driver visibility.
 
 Frontend (one commit):
-- [ ] F8 Role lookup failure shows an error with retry instead of the customer view; the role query is cleared on sign-out.
-- [ ] F9 Use `viewerAssigned` to show Iniciar/Finalizar only to the right viewers; success notice after saving assignments.
-- [ ] F10 Claim window: no "Reclamar" before the client clock is known; a missing deadline is not shown as "Plazo vencido"; double-submit guard with a ref for consent/claim (and the provider actions).
+- [x] F8 Role lookup failure shows an error with retry instead of the customer view; the role query is cleared on sign-out.
+- [x] F9 Use `viewerAssigned` to show Iniciar/Finalizar only to the right viewers; success notice after saving assignments.
+- [x] F10 Claim window: no "Reclamar" before the client clock is known; a missing deadline is not shown as "Plazo vencido"; double-submit guard with a ref for consent/claim (and the provider actions).
 
 ## Checks
 
@@ -220,6 +220,7 @@ Frontend (one commit):
 - 2026-10-11: S4 (T8, T9) done by `worker-1`, commit `ee05151`. RED: claim/consent tests got 404 (routes missing, detail texts asserted); payout tests failed at import. GREEN: `uv run pytest` 522 passed; `uv lock --check` passed. Parent spot check: 522 passed. No new env variables.
 - 2026-10-11: a branch-wide review (5035 lines) stopped with `lens_context_budget_exceeded`; the reduced candidate T11 + S4 (base `66fbe7b`, 1777 lines) was granted, approved and acknowledged (lineage `review-e20c3dcf15c36461`). Next: T12.
 - 2026-10-11: T12 done by `worker-2`, commit `de94225`. RED exception: no frontend unit runner, Playwright not used. `npm run lint` and `npm run build` passed (worker); parent spot check `npm run lint` passed. Shared query keys in `service-query-keys.ts`; provider mutations now also invalidate the customer list (closes that T11 gap). Native review (assess: medium, `slice_budget_reached`; base `ee05151`) granted, approved and acknowledged (lineage `review-d0f3cd3ef53bbc61`). All tasks done. Next: user decisions on follow-ups, then delivery (push/PR) when the user asks.
+- 2026-10-11: F1-F10 done by `worker-1` (Haiku, Herdr pane; it delegated internally to its own subagent): commits `6735b03` (backend F1-F7) and `3e8359a` (frontend F8-F10). RED observed for F1-F5 and the Supabase `delete`; F6's behavioral RED was not observed (the module failed at import first); F7 was test-only strengthening. Worker: `uv run pytest` 544 passed, `uv lock --check`, `npm run lint`, `npm run build` passed. Parent spot checks: `uv run pytest` 544 passed, `npm run lint` passed. The whole-branch review again stopped with `lens_context_budget_exceeded`; the fixes (base `44fc7cc`, 697 lines) were granted, approved and acknowledged (lineage `review-019de5f1d21bf4b9`).
 
 ### Review follow-ups (non-blocking)
 
@@ -249,6 +250,8 @@ Frontend (one commit):
 - T12 `R3-002` (`claim-window-countdown.tsx:40`): a missing deadline is shown as "Plazo vencido. El pago se libera sin reclamo."
 - T12 `R3-003`/`R3-004`: the countdown transition and the 409 copy mapping (which matches the backend's English `detail` strings) are untested; there is no frontend unit runner.
 - T12 `R3-005` (`customer-service-actions.tsx:68`): the double-submit guard reads a render-time `busy`, so two fast clicks can send two POSTs.
+- F `R3-001` (migration `0004`, lines 4-5): the docstring claims VALIDATE runs under a weaker lock, but the earlier DROP CONSTRAINT holds ACCESS EXCLUSIVE until commit.
+- F open items: the two GET delivery-photo routes still return 503 before 404 when storage is not configured; provider list/detail caches are not cleared on sign-out (only the role key); `ck_quote_currency_clp` still restricts quotations to CLP in the DB; the Supabase `delete` call is untested against live Supabase.
 
 ### API notes (S1)
 
