@@ -102,6 +102,7 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - S1 `R3-provider-list-status-filter-untested-combo`: the status filter combined with employed-driver visibility is not tested.
 - T10 `R3-role-query-error-falls-back-to-customer` (`app/cuenta/servicios/page.tsx:20-29`): a failed role lookup shows the customer view to a provider.
 - T10: the role query (`["services-account-role"]`, staleTime 60 s) is not cleared on sign-out; there is also no retry on transient errors, and the 404 handling and list filter keys could be tightened.
+- Branch review (lineage `review-99ed10dbd12a7060`, approved): `R3-viewer-query-multiple-rows` (`provider_service_routes.py:41-47`): the viewer lookup may return several rows. `R3-started-by-fk-validate` (migration `0003`, lines 49-51): the `fk_service_started_by` FK is not validated. Fix both in S2.
 
 ### API notes (S1)
 
