@@ -36,6 +36,12 @@ The frontend also needs its own switch: set `NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true` 
 
 Both endpoints return `{items, total, limit, offset}`, cap page size at 50 and offset at 5000, and validate filter lengths. Responses intentionally omit account identity, company tax IDs, raw storage keys, full stop addresses, vehicles/drivers, customer requests, chats, payments, and payout references. Route results expose only published origin/destination cities; intermediate stops include sequence and time but no address because the current schema has no separate public-locality field. Service entries are based on `Servicios_Disponibles`; the current schema has no separate visibility status for that association. Logo URLs remain null until a safe public asset URL mechanism is implemented. Departure filters must be timezone-aware ISO-8601 datetimes.
 
+## Payments (simulated provider)
+
+Payments go through the `PaymentProvider` port (`src/amira_api/payment_provider.py`). The domain in `payment_service.py` depends only on the port; `simulated_payment_provider.py` is the only adapter and `payment_routes.py` is the composition root that chooses it.
+
+The simulated adapter runs only when `APP_ENV` is `development`, `local` or `test`. It needs `PAYMENT_SIMULATOR_SECRET` (signs checkout tokens and confirmations, never sent to the browser) and `FRONTEND_BASE_URL` (builds the `/pagos/simulado` checkout link). Without them, payment endpoints answer 503. The simulated checkout endpoint answers 404 outside development. Confirmations are applied in one transaction under row locks and are idempotent on the provider payment; a conflicting result for an already-decided payment is refused with 409.
+
 ## Checks
 
 ```powershell

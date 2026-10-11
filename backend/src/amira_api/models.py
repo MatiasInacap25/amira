@@ -390,6 +390,10 @@ class Cotizacion(Base):
     __table_args__ = (
         CheckConstraint('"Moneda" = \'CLP\'', name="ck_quote_currency_clp"),
         CheckConstraint('"Valor" >= 0', name="ck_quote_amount_nonnegative"),
+        CheckConstraint(
+            "\"Estado\" IN ('pending', 'paid', 'rejected', 'expired', 'superseded')",
+            name="ck_quote_status_allowed",
+        ),
         CheckConstraint('"Fecha_Vencimiento" IS NULL OR "Fecha_Vencimiento" > "Fecha_Creacion"', name="ck_quote_expiry_after_creation"),
     )
 

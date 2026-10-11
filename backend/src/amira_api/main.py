@@ -8,6 +8,8 @@ from amira_api.fallback_routes import router as fallback_router
 from amira_api.invitation_routes import router as invitation_router
 from amira_api.location_routes import router as location_router
 from amira_api.public_routes import router as public_router
+from amira_api.payment_routes import router as payment_router
+from amira_api.quotation_routes import router as quotation_router
 from amira_api.settings import get_settings, warn_if_dev_sms_mfa_bypass_active
 
 settings = get_settings()
@@ -20,6 +22,8 @@ app.include_router(fallback_router)
 app.include_router(invitation_router)
 app.include_router(location_router)
 app.include_router(public_router)
+app.include_router(quotation_router)
+app.include_router(payment_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     independent_driver_type_id: UUID | None = None
     company_driver_type_id: UUID | None = None
     email_fallback_secret: SecretStr | None = None
+    # Development-only: signs simulated payment checkouts and confirmations. Required for the simulated adapter.
+    payment_simulator_secret: SecretStr | None = None
 
     @property
     def allowed_origins(self) -> list[str]:
