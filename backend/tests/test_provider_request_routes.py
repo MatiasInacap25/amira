@@ -104,6 +104,9 @@ class FakeSession:
         if entity is Chat:
             return FakeResult(rows=self.store.chats)
         sql = str(statement.compile(dialect=postgresql.dialect()))
+        if "group by" in sql.lower():
+            statuses = [form.status for form in self.store.forms if form.profile_id == self.store.profile_id]
+            return FakeResult(rows=[(status, statuses.count(status)) for status in sorted(set(statuses))])
         if "count(" in sql.lower():
             return FakeResult(scalar=sum(form.profile_id == self.store.profile_id for form in self.store.forms))
         if "Formulario_servicio" in sql:
@@ -121,6 +124,15 @@ class FakeSession:
                         "estimated_volume": None,
                         "description": form.description,
                         "cargo_measurements": form.cargo_measurements,
+                        "is_exclusive": False,
+                        "origin_commune_code": None,
+                        "origin_commune_name": None,
+                        "origin_region_name": None,
+                        "destination_commune_code": None,
+                        "destination_commune_name": None,
+                        "destination_region_name": None,
+                        "customer_first_name": "Casey",
+                        "customer_last_name": "Customer",
                         "service_name": "Mudanzas",
                         "chat_id": None,
                     })

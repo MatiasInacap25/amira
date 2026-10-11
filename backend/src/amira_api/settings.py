@@ -35,7 +35,13 @@ class Settings(BaseSettings):
 
     @property
     def dev_sms_mfa_bypass_active(self) -> bool:
-        return self.dev_skip_sms_mfa and self.app_env.strip().lower() in DEV_SMS_MFA_BYPASS_APP_ENVS
+        # Enforced here as well as in the validator: model_construct skips validation, so the auth path must
+        # not rely on it. An unset APP_ENV (default 'development') never activates the bypass.
+        return (
+            self.dev_skip_sms_mfa
+            and "app_env" in self.model_fields_set
+            and self.app_env.strip().lower() in DEV_SMS_MFA_BYPASS_APP_ENVS
+        )
 
     @model_validator(mode="after")
     def fail_closed_dev_sms_mfa_bypass_outside_allowlist(self) -> "Settings":

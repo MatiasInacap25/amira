@@ -1,102 +1,182 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
-import { decideProviderRequest, getProviderRequests, type ProviderRequest } from "@/lib/marketplace-api";
-import { createClient } from "@/lib/supabase/client";
+import { useRef, useState, type KeyboardEvent } from "react";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { MarketplaceSkeleton, PROVIDER_REQUESTS_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
+import { getProviderRequests, type ProviderRequest } from "@/lib/marketplace-api";
+import { currentAccessToken, isSignInRequired, requestErrorMessage } from "@/lib/provider-request-access";
+import {
+  customerDisplayName,
+  formatRouteEndpoint,
+  nextProviderRequestOffset,
+  resolveInboxPanel,
+  type ProviderRequestStatus,
+} from "@/lib/provider-requests";
 
-async function currentAccessToken() {
-  const client = createClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user?.email_confirmed_at) throw new Error("sign-in");
-  const { data: assurance, error: assuranceError } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (assuranceError) throw assuranceError;
-  if (!acceptsAssuranceLevel(assurance.currentLevel)) throw new Error("aal2");
-  const { data, error } = await client.auth.getSession();
-  if (error || !data.session?.access_token) throw new Error("session");
-  return data.session.access_token;
+const PAGE_SIZE = 20;
+const TABS: { status: ProviderRequestStatus; label: string; empty: string }[] = [
+  { status: "pending", label: "Pendientes", empty: "No tienes solicitudes pendientes por responder." },
+  { status: "accepted", label: "Aceptadas", empty: "Todavía no has aceptado solicitudes." },
+  { status: "rejected", label: "Rechazadas", empty: "No tienes solicitudes rechazadas." },
+];
+const STATUS_LABEL: Record<ProviderRequestStatus, string> = {
+  pending: "Pendiente",
+  accepted: "Aceptada",
+  rejected: "Rechazada",
+};
+const dateFormatter = new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" });
+
+function statusLabel(status: string) {
+  return STATUS_LABEL[status as ProviderRequestStatus] ?? "Estado desconocido";
 }
 
-function requestError(cause: unknown) {
-  if (cause instanceof Error && cause.message === "sign-in") return "Inicia sesión con tu correo confirmado para ver las solicitudes.";
-  if (cause instanceof Error && cause.message === "aal2") return "Verifica tu teléfono por SMS para administrar solicitudes.";
-  if (cause instanceof Error && /API todavía no está configurada/i.test(cause.message)) return cause.message;
-  return "No pudimos cargar las solicitudes. Inténtalo nuevamente.";
+function routeLabel(item: ProviderRequest) {
+  const origin = formatRouteEndpoint(item.originCommuneName, item.originRegionName, item.origin);
+  const destination = formatRouteEndpoint(item.destinationCommuneName, item.destinationRegionName, item.destination);
+  return { origin, destination };
 }
 
 export function ProviderRequestInbox() {
-  const [actionError, setActionError] = useState("");
-  const requestQuery = useQuery({
-    queryKey: ["provider-requests"],
-    queryFn: async () => getProviderRequests(await currentAccessToken()),
+  const [status, setStatus] = useState<ProviderRequestStatus>("pending");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const requestsQuery = useInfiniteQuery({
+    queryKey: ["provider-requests", status],
+    queryFn: async ({ pageParam }) => getProviderRequests(await currentAccessToken(), { status, limit: PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: nextProviderRequestOffset,
+    // Keeps the previous tab's counts while the next tab loads. Its rows are hidden via resolveInboxPanel.
+    placeholderData: keepPreviousData,
     retry: false,
   });
-  const items = requestQuery.data?.items ?? [];
-  const error = requestQuery.error instanceof Error ? requestQuery.error : null;
-  const state = requestQuery.isPending ? "loading" : requestQuery.isError
-    ? error?.message && ["sign-in", "aal2", "session"].includes(error.message) ? "unauthenticated" : "error"
-    : "ready";
-  const [busyRequest, setBusyRequest] = useState<string | null>(null);
 
-  async function decide(item: ProviderRequest, decision: "accept" | "reject") {
-    if (busyRequest) return;
-    setBusyRequest(item.requestId);
-    setActionError("");
-    try {
-      const token = await currentAccessToken();
-      const response = await decideProviderRequest(item.requestId, decision, token);
-      if (!response.ok) {
-        if (response.status === 401) throw new Error("session");
-        if (response.status === 403) throw new Error("provider-role");
-        if (response.status === 404) throw new Error("not-found");
-        if (response.status === 409) throw new Error("already-decided");
-        throw new Error("request-failed");
-      }
-      await requestQuery.refetch();
-    } catch (cause) {
-      if (cause instanceof Error && cause.message === "aal2") setActionError("Verifica tu teléfono por SMS para administrar solicitudes.");
-      else if (cause instanceof Error && cause.message === "session") setActionError("Tu sesión expiró. Inicia sesión nuevamente.");
-      else if (cause instanceof Error && cause.message === "provider-role") setActionError("Esta cuenta no puede administrar solicitudes de prestadores.");
-      else if (cause instanceof Error && cause.message === "not-found") setActionError("La solicitud ya no está disponible para este perfil.");
-      else if (cause instanceof Error && cause.message === "already-decided") setActionError("La solicitud ya fue respondida. Actualiza la lista.");
-      else setActionError("No pudimos responder la solicitud. Inténtalo nuevamente.");
-    } finally {
-      setBusyRequest(null);
-    }
+  const pages = requestsQuery.data?.pages ?? [];
+  const items = pages.flatMap((page) => page.items);
+  const counts = pages[0]?.counts;
+  const panel = resolveInboxPanel({
+    pending: requestsQuery.isPending,
+    placeholder: requestsQuery.isPlaceholderData,
+    hasItems: items.length > 0,
+    hasNextPage: Boolean(requestsQuery.hasNextPage),
+  });
+  const rows = panel.showRows ? items : [];
+  const error = requestsQuery.isError ? requestsQuery.error : null;
+  const activeTab = TABS.find((tab) => tab.status === status) ?? TABS[0];
+
+  function focusTab(index: number) {
+    const next = (index + TABS.length) % TABS.length;
+    setStatus(TABS[next].status);
+    tabRefs.current[next]?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key === "ArrowRight") focusTab(index + 1);
+    else if (event.key === "ArrowLeft") focusTab(index - 1);
+    else if (event.key === "Home") focusTab(0);
+    else if (event.key === "End") focusTab(TABS.length - 1);
   }
 
   return (
     <section aria-labelledby="provider-inbox-title" className="provider-inbox">
       <div className="provider-inbox-heading">
         <div><p className="eyebrow">PANEL DEL PRESTADOR</p><h1 id="provider-inbox-title">Solicitudes recibidas</h1></div>
-        <button className="button button-secondary" disabled={requestQuery.isFetching} onClick={() => void requestQuery.refetch()} type="button">Actualizar</button>
+        <button className="button button-secondary" disabled={requestsQuery.isFetching} onClick={() => void requestsQuery.refetch()} type="button">Actualizar</button>
       </div>
-      {state === "loading" && <p className="marketplace-state" role="status">Cargando solicitudes…</p>}
-      {state === "unauthenticated" && <div className="marketplace-state"><p role="alert">{requestError(error)}</p><Link className="button button-primary" href={`/login?next=${encodeURIComponent("/solicitudes")}`}>Iniciar sesión</Link></div>}
-      {state === "error" && <div className="marketplace-state marketplace-error" role="alert"><p>{requestError(error)}</p><button className="button button-secondary" onClick={() => void requestQuery.refetch()} type="button">Reintentar</button></div>}
-      {state === "ready" && actionError && <p className="provider-inbox-error" role="alert">{actionError}</p>}
-      {state === "ready" && items.length === 0 && <div className="marketplace-state marketplace-empty" role="status"><h2>No tienes solicitudes todavía</h2><p>Cuando un cliente solicite una cotización para tu perfil, aparecerá aquí.</p></div>}
-      {state === "ready" && items.length > 0 && (
-        <div className="provider-request-list">
-          {items.map((item) => (
-            <article className="provider-request-card" key={item.requestId}>
-              <div className="provider-request-card-heading"><div><p className="eyebrow">{item.serviceName}</p><h2>{item.origin} <span aria-hidden="true">→</span> {item.destination}</h2></div><span className={`provider-request-status provider-request-status-${item.status}`}>{item.status === "pending" ? "Pendiente" : item.status === "accepted" ? "Aceptada" : "Rechazada"}</span></div>
-              <p className="provider-request-date">Recibida {new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(item.createdAt))}{item.requestedAt && ` · Fecha solicitada ${new Intl.DateTimeFormat("es-CL", { dateStyle: "medium" }).format(new Date(item.requestedAt))}`}</p>
-              {(item.description || item.cargoMeasurements || item.estimatedWeight || item.estimatedVolume) && <div className="provider-request-details">{item.description && <p>{item.description}</p>}{item.cargoMeasurements && <p><strong>Medidas:</strong> {item.cargoMeasurements}</p>}{item.estimatedWeight && <p><strong>Peso estimado:</strong> {item.estimatedWeight} kg</p>}{item.estimatedVolume && <p><strong>Volumen estimado:</strong> {item.estimatedVolume} m³</p>}</div>}
-              <div className="provider-request-actions">
-                {item.status === "pending" && <>
-                  <button className="button button-secondary" disabled={busyRequest !== null} onClick={() => void decide(item, "reject")} type="button">{busyRequest === item.requestId ? "Guardando…" : "Rechazar"}</button>
-                  <button className="button button-primary" disabled={busyRequest !== null} onClick={() => void decide(item, "accept")} type="button">{busyRequest === item.requestId ? "Guardando…" : "Aceptar y abrir chat"}</button>
-                </>}
-                {item.status === "accepted" && item.chatId && <Link className="button button-primary" href={`/mensajes/${encodeURIComponent(item.chatId)}`}>Abrir chat</Link>}
-                {item.status === "rejected" && <span className="provider-request-closed">Solicitud cerrada</span>}
+
+      <div aria-label="Filtrar solicitudes por estado" className="provider-inbox-tabs" role="tablist">
+        {TABS.map((tab, index) => {
+          const selected = tab.status === status;
+          const count = counts?.[tab.status];
+          return (
+            <button
+              aria-controls="provider-inbox-panel"
+              aria-selected={selected}
+              className="provider-inbox-tab"
+              id={`provider-tab-${tab.status}`}
+              key={tab.status}
+              onClick={() => setStatus(tab.status)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              ref={(node) => { tabRefs.current[index] = node; }}
+              role="tab"
+              tabIndex={selected ? 0 : -1}
+              type="button"
+            >
+              {tab.label}
+              {count !== undefined && <span className="provider-inbox-count">{count}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div aria-busy={panel.busy} aria-labelledby={`provider-tab-${status}`} className="provider-inbox-panel" id="provider-inbox-panel" role="tabpanel">
+        {isSignInRequired(error) && (
+          <div className="marketplace-state">
+            <p role="alert">{requestErrorMessage(error)}</p>
+            <Link className="button button-primary" href={`/login?next=${encodeURIComponent("/solicitudes")}`}>Iniciar sesión</Link>
+          </div>
+        )}
+        {error && !isSignInRequired(error) && (
+          <div className="marketplace-state marketplace-error" role="alert">
+            <p>{requestErrorMessage(error)}</p>
+            <button className="button button-secondary" onClick={() => void requestsQuery.refetch()} type="button">Reintentar</button>
+          </div>
+        )}
+
+        {!error && (
+          <MarketplaceSkeleton
+            label="Cargando solicitudes…"
+            layout={PROVIDER_REQUESTS_LAYOUT}
+            loading={panel.busy}
+            name="provider-requests"
+          >
+            {rows.length === 0 ? (
+              <div className="marketplace-state marketplace-empty" role="status">
+                <h2>{activeTab.empty}</h2>
+                <p>Cuando un cliente solicite una cotización para tu perfil, aparecerá aquí.</p>
               </div>
-            </article>
-          ))}
-        </div>
-      )}
+            ) : (
+              <>
+                <ul className="provider-request-list">
+                  {rows.map((item) => {
+                    const route = routeLabel(item);
+                    return (
+                      <li key={item.requestId}>
+                        <article className="provider-request-card">
+                          <div className="provider-request-card-heading">
+                            <div>
+                              <p className="eyebrow">{item.serviceName}</p>
+                              <h2>
+                                <Link className="provider-request-card-link" href={`/solicitudes/${encodeURIComponent(item.requestId)}`}>
+                                  {route.origin} <span aria-hidden="true">→</span> {route.destination}
+                                </Link>
+                              </h2>
+                            </div>
+                            <span className={`provider-request-status provider-request-status-${item.status}`}>{statusLabel(item.status)}</span>
+                          </div>
+                          <p className="provider-request-customer">Cliente: {customerDisplayName(item)}</p>
+                          <p className="provider-request-date">Recibida {dateFormatter.format(new Date(item.createdAt))}</p>
+                        </article>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {panel.showLoadMore && (
+                  <div className="provider-inbox-more">
+                    <button
+                      className="button button-secondary"
+                      disabled={requestsQuery.isFetchingNextPage}
+                      onClick={() => void requestsQuery.fetchNextPage()}
+                      type="button"
+                    >
+                      {requestsQuery.isFetchingNextPage ? "Cargando…" : "Cargar más"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </MarketplaceSkeleton>
+        )}
+      </div>
     </section>
   );
 }
