@@ -7,7 +7,9 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from amira_api.public_schemas import PublicResponse
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from amira_api.public_schemas import PublicResponse, _to_camel
 
 ServiceStatus = Literal["confirmed", "in_progress", "completed", "disputed"]
 
@@ -51,3 +53,38 @@ class ServiceDetail(ServiceListItem):
     viewer_role: Literal["customer", "provider"]
     can_manage: bool
     assignments: list[ServiceAssignment]
+
+
+class ServiceAssignmentPair(BaseModel):
+    model_config = ConfigDict(extra="forbid", alias_generator=_to_camel, populate_by_name=True)
+
+    driver_id: UUID
+    vehicle_id: UUID
+
+
+class ServiceAssignmentsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", alias_generator=_to_camel, populate_by_name=True)
+
+    assignments: list[ServiceAssignmentPair] = Field(min_length=1)
+    confirm_same_day_conflicts: bool = False
+
+    @model_validator(mode="after")
+    def drivers_and_vehicles_are_unique(self) -> "ServiceAssignmentsUpdate":
+        drivers = [pair.driver_id for pair in self.assignments]
+        vehicles = [pair.vehicle_id for pair in self.assignments]
+        if len(set(drivers)) != len(drivers):
+            raise ValueError("Each driver can be assigned only once per service.")
+        if len(set(vehicles)) != len(vehicles):
+            raise ValueError("Each vehicle can be assigned only once per service.")
+        return self
+
+
+class SameDayConflict(PublicResponse):
+    driver_id: UUID
+    service_id: UUID
+    service_at: datetime | None
+
+
+class SameDayConflictResponse(PublicResponse):
+    detail: str
+    conflicts: list[SameDayConflict]

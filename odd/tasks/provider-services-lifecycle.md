@@ -53,6 +53,27 @@ Public JSON is camelCase. All endpoints use `get_current_user`. A service that t
 4. List item: `{serviceId, status, serviceTypeName, serviceAt, amount, currency, originCommune, destinationCommune, isExclusive, counterpartName, assignmentCount}`. `counterpartName` is the provider's display name for the customer, and the customer's first name for the provider. No contact details.
 5. `ServiceDetail` = list item fields + `{chatId, description, createdAt, startedAt, completedAt, payoutDeadlineAt, viewerRole: "customer"|"provider", canManage: bool, assignments: [{driverId, driverFirstName, vehicleId, vehicleLabel ("Marca Modelo"), plate}]}`. `canManage` is true only for the profile owner.
 
+## API contract (S2)
+
+Both endpoints use `get_current_user` and the S1 viewer rules: a non-provider account gets 403, and a service the viewer cannot see gets 404. Both return `ServiceDetail` (camelCase) on success.
+
+1. `PUT /api/provider/services/{serviceId}/assignments`: replaces all (driver, vehicle) pairs of the service in one transaction. The service row is locked with `FOR UPDATE`.
+   - Body: `{assignments: [{driverId, vehicleId}], confirmSameDayConflicts: bool = false}`. `assignments` needs at least one pair. `driverId` and `vehicleId` must each be unique within the list.
+   - Only the profile owner may call it. Drivers must be `Conductor` rows employed by the owned profile, or the owner's own independent driver row. Vehicles must belong to the owned profile.
+   - Records the caller as `assignedByUserId` and the time as `assignedAt`. The caller is taken from the auth session, never from the body.
+   - Errors, in evaluation order:
+     - 404 `Service not found.` (not visible to the viewer)
+     - 403 `Only the profile owner can manage this service.` (visible, not the owner)
+     - 409 `Only confirmed services can be assigned.` (status is not `confirmed`)
+     - 422 for an empty list or a duplicate `driverId`/`vehicleId` (Pydantic validation), a driver outside the profile (`driver_not_in_profile`), or a vehicle outside the profile (`vehicle_not_in_profile`). The body is FastAPI's list format, with `loc: ["body", "assignments"]`.
+     - 409 same-day conflicts, body `{detail: "Some drivers already have a service on the same day.", conflicts: [{driverId, serviceId, serviceAt}]}`. A conflict is another service of the same driver with status `confirmed` or `in_progress` whose `serviceAt` falls on the same calendar day in `America/Santiago`. Nothing is written. Resend with `confirmSameDayConflicts: true` to save.
+2. `POST /api/provider/services/{serviceId}/start`: no body. Allowed for the profile owner and for assigned drivers. An employed driver who is not assigned cannot see the service, so gets 404. The service row is locked with `FOR UPDATE`, and the status is re-checked after the lock.
+   - Sets `status` to `in_progress`, `startedAt` to the current UTC time, and records the caller as the starter.
+   - Errors:
+     - 404 `Service not found.`
+     - 409 `Only confirmed services can be started.` (also returned on a second start)
+     - 409 `Assign at least one driver and vehicle before starting.`
+
 ## Tasks
 
 ### S1 — Backend: assignments table and query endpoints (route: delegated direct, writer trigger: 3+ non-trivial files)

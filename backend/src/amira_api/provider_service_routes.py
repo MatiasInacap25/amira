@@ -1,28 +1,43 @@
-"""Authenticated provider queries over contracted services.
+"""Authenticated provider queries and actions over contracted services.
 
 A provider viewer is either the owner of a provider ``Perfil`` (company owner or independent driver), who sees
 every service of that profile, or a company-employed driver (``Conductor.employer_profile_id`` set) who does not
 own a profile, who sees only services they are assigned to through ``Servicio_Asignacion``. Any other account
 gets 403. A service the viewer cannot see answers 404, never 403.
+
+Only the profile owner assigns drivers and vehicles. Assigned drivers and the owner can start a service.
 """
 
 from dataclasses import dataclass
+from datetime import datetime, time, timedelta, timezone
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import exists, select
+from fastapi.responses import JSONResponse
+from sqlalchemy import and_, delete, exists, or_, select, update
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
+from amira_api.clock import as_utc, utc_now
 from amira_api.db import get_db_session
-from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, Usuario
-from amira_api.provider_service_schemas import ServiceDetail, ServicePage, ServiceStatus
+from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, Usuario, Vehiculo
+from amira_api.provider_service_schemas import (
+    SameDayConflict,
+    SameDayConflictResponse,
+    ServiceAssignmentsUpdate,
+    ServiceDetail,
+    ServicePage,
+    ServiceStatus,
+)
 from amira_api.service_views import load_assignments, service_count, service_rows, shape_detail, shape_list_item
 
 router = APIRouter(prefix="/api/provider", tags=["provider-services"])
 MAX_PAGE_SIZE = 50
 MAX_OFFSET = 5000
+SANTIAGO = ZoneInfo("America/Santiago")
+OPEN_STATUSES = ("confirmed", "in_progress")
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
 
@@ -50,18 +65,106 @@ class ProviderViewer:
 
 
 def _provider_viewer(session: Session, current_user: AuthenticatedUser) -> ProviderViewer:
+    # The unique constraints on Usuario, Perfil.ID_user and Conductor.ID_user make this a single row. The ordering
+    # keeps the choice deterministic if that ever stops holding: the independent owner's own driver row wins.
     account = session.execute(
         select(Usuario.id, Perfil.id, Conductor.id, Conductor.employer_profile_id)
         .outerjoin(Perfil, Perfil.owner_user_id == Usuario.id)
         .outerjoin(Conductor, Conductor.user_id == Usuario.id)
         .where(Usuario.auth_user_id == current_user.id)
-    ).one_or_none()
+        .order_by(Conductor.employer_profile_id.is_(None).desc(), Conductor.id)
+        .limit(1)
+    ).first()
     if account is None:
         raise HTTPException(status_code=403, detail="A provisioned provider account is required.")
     viewer = ProviderViewer(*account)
     if not viewer.is_owner and viewer.employer_profile_id is None:
         raise HTTPException(status_code=403, detail="Only provider accounts can access provider services.")
     return viewer
+
+
+def _visible_detail(session: Session, viewer: ProviderViewer, service_id: UUID) -> ServiceDetail | None:
+    row = session.execute(service_rows(Servicio.id == service_id, *viewer.visibility())).mappings().one_or_none()
+    if row is None:
+        return None
+    return shape_detail(
+        row, "provider", can_manage=viewer.is_owner, assignments=load_assignments(session, service_id)
+    )
+
+
+def _lock_visible_service(session: Session, viewer: ProviderViewer, service_id: UUID):
+    """Lock the service row for the viewer; a service the viewer cannot see is a 404."""
+    service = session.execute(
+        select(Servicio.id, Servicio.status, Servicio.service_at)
+        .where(Servicio.id == service_id, *viewer.visibility())
+        .with_for_update()
+    ).one_or_none()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    return service
+
+
+def _unprocessable(message: str, error_type: str, location: str) -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail=[{"loc": ["body", location], "msg": message, "type": error_type}],
+    )
+
+
+def _ensure_drivers_belong(session: Session, viewer: ProviderViewer, driver_ids: list[UUID]) -> None:
+    """Drivers must be employed by the owned profile, or be the independent owner's own driver row."""
+    belonging = set(
+        session.execute(
+            select(Conductor.id).where(
+                Conductor.id.in_(driver_ids),
+                or_(
+                    Conductor.employer_profile_id == viewer.owned_profile_id,
+                    and_(Conductor.employer_profile_id.is_(None), Conductor.user_id == viewer.user_id),
+                ),
+            )
+        ).scalars()
+    )
+    if belonging != set(driver_ids):
+        raise _unprocessable("Every driver must belong to this provider profile.", "driver_not_in_profile", "assignments")
+
+
+def _ensure_vehicles_belong(session: Session, profile_id: UUID, vehicle_ids: list[UUID]) -> None:
+    belonging = set(
+        session.execute(
+            select(Vehiculo.id).where(Vehiculo.id.in_(vehicle_ids), Vehiculo.profile_id == profile_id)
+        ).scalars()
+    )
+    if belonging != set(vehicle_ids):
+        raise _unprocessable("Every vehicle must belong to this provider profile.", "vehicle_not_in_profile", "assignments")
+
+
+def _santiago_day_bounds(service_at: datetime) -> tuple[datetime, datetime]:
+    """UTC bounds of the America/Santiago calendar day that contains ``service_at``."""
+    day = as_utc(service_at).astimezone(SANTIAGO).date()
+    start = datetime.combine(day, time.min, tzinfo=SANTIAGO)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=SANTIAGO)
+    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+
+
+def _same_day_conflicts(
+    session: Session, service_id: UUID, service_at: datetime | None, driver_ids: list[UUID]
+) -> list[SameDayConflict]:
+    if service_at is None:
+        return []
+    start, end = _santiago_day_bounds(service_at)
+    rows = session.execute(
+        select(ServicioAsignacion.driver_id, Servicio.id, Servicio.service_at)
+        .join(Servicio, Servicio.id == ServicioAsignacion.service_id)
+        .where(
+            ServicioAsignacion.driver_id.in_(driver_ids),
+            Servicio.id != service_id,
+            Servicio.status.in_(OPEN_STATUSES),
+            Servicio.service_at >= start,
+            Servicio.service_at < end,
+        )
+        .order_by(Servicio.service_at, Servicio.id)
+    ).all()
+    return [SameDayConflict(driver_id=row[0], service_id=row[1], service_at=row[2]) for row in rows]
 
 
 @router.get("/services", response_model=ServicePage)
@@ -91,9 +194,70 @@ def list_provider_services(
 @router.get("/services/{service_id}", response_model=ServiceDetail)
 def get_provider_service(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceDetail:
     viewer = _provider_viewer(session, current_user)
-    row = session.execute(service_rows(Servicio.id == service_id, *viewer.visibility())).mappings().one_or_none()
-    if row is None:
+    detail = _visible_detail(session, viewer, service_id)
+    if detail is None:
         raise HTTPException(status_code=404, detail="Service not found.")
-    return shape_detail(
-        row, "provider", can_manage=viewer.is_owner, assignments=load_assignments(session, service_id)
+    return detail
+
+
+@router.put("/services/{service_id}/assignments", response_model=ServiceDetail)
+def replace_service_assignments(
+    service_id: UUID,
+    payload: ServiceAssignmentsUpdate,
+    current_user: CurrentUser,
+    session: Database,
+) -> ServiceDetail | JSONResponse:
+    viewer = _provider_viewer(session, current_user)
+    service = _lock_visible_service(session, viewer, service_id)
+    if not viewer.is_owner:
+        raise HTTPException(status_code=403, detail="Only the profile owner can manage this service.")
+    if service.status != "confirmed":
+        raise HTTPException(status_code=409, detail="Only confirmed services can be assigned.")
+
+    driver_ids = [pair.driver_id for pair in payload.assignments]
+    vehicle_ids = [pair.vehicle_id for pair in payload.assignments]
+    _ensure_drivers_belong(session, viewer, driver_ids)
+    _ensure_vehicles_belong(session, viewer.owned_profile_id, vehicle_ids)
+
+    if not payload.confirm_same_day_conflicts:
+        conflicts = _same_day_conflicts(session, service_id, service.service_at, driver_ids)
+        if conflicts:
+            body = SameDayConflictResponse(
+                detail="Some drivers already have a service on the same day.", conflicts=conflicts
+            )
+            return JSONResponse(status_code=409, content=body.model_dump(by_alias=True, mode="json"))
+
+    session.execute(delete(ServicioAsignacion).where(ServicioAsignacion.service_id == service_id))
+    session.add_all([
+        ServicioAsignacion(
+            id=uuid4(),
+            service_id=service_id,
+            driver_id=pair.driver_id,
+            vehicle_id=pair.vehicle_id,
+            assigned_by_user_id=viewer.user_id,
+        )
+        for pair in payload.assignments
+    ])
+    session.commit()
+    return _visible_detail(session, viewer, service_id)
+
+
+@router.post("/services/{service_id}/start", response_model=ServiceDetail)
+def start_provider_service(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceDetail:
+    viewer = _provider_viewer(session, current_user)
+    service = _lock_visible_service(session, viewer, service_id)
+    if service.status != "confirmed":
+        raise HTTPException(status_code=409, detail="Only confirmed services can be started.")
+    has_assignment = session.execute(
+        select(exists().where(ServicioAsignacion.service_id == service_id))
+    ).scalar_one()
+    if not has_assignment:
+        raise HTTPException(status_code=409, detail="Assign at least one driver and vehicle before starting.")
+
+    session.execute(
+        update(Servicio)
+        .where(Servicio.id == service_id)
+        .values(status="in_progress", starts_at=utc_now(), started_by_user_id=viewer.user_id)
     )
+    session.commit()
+    return _visible_detail(session, viewer, service_id)
