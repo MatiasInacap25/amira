@@ -1,13 +1,14 @@
 """Payment routes and the composition root for the PaymentProvider port.
 
-This module is the only place that chooses an adapter. The simulated adapter is used in development only; in any
-other environment the payment endpoints answer 503 until a real provider adapter is wired here.
+This module is the only place that chooses an adapter. The simulated adapter is enabled only when APP_ENV is set
+explicitly to a development value; otherwise the payment endpoints answer 503 and the simulated endpoints answer 404.
 """
 
+import hmac
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
@@ -15,7 +16,7 @@ from amira_api.chat_access import caller_account, caller_chats
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
 from amira_api.models import Chat, Cotizacion, Pago, Servicio
-from amira_api.payment_provider import PaymentProvider
+from amira_api.payment_provider import SIMULATED_PROVIDER_NAME, PaymentProvider
 from amira_api.payment_schemas import (
     PaymentCheckout,
     PaymentConfirmationRequest,
@@ -23,7 +24,14 @@ from amira_api.payment_schemas import (
     PaymentResult,
     SimulatedPaymentCompletion,
 )
-from amira_api.payment_service import ConfirmationRefused, PaymentConflict, PaymentNotFound, confirm_payment, start_payment
+from amira_api.payment_service import (
+    ConfirmationRefused,
+    PaymentConflict,
+    PaymentNotFound,
+    confirm_payment,
+    consume_checkout_token,
+    start_payment,
+)
 from amira_api.quotation_service import effective_status
 from amira_api.settings import Settings, get_settings
 from amira_api.simulated_payment_provider import SIMULATOR_APP_ENVS, SimulatedPaymentProvider
@@ -32,12 +40,18 @@ router = APIRouter(prefix="/api", tags=["payments"])
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
+WEBHOOK_SECRET_HEADER = "X-Amira-Payment-Webhook-Secret"
 PAYMENTS_NOT_CONFIGURED = "Payments are not configured."
 CONFIRMATION_REFUSED = "La firma de la confirmación no es válida."
 
 
+def _simulator_enabled(settings: Settings) -> bool:
+    # Fail closed, mirroring DEV_SKIP_SMS_MFA: APP_ENV must be set explicitly to an allowlisted value.
+    return "app_env" in settings.model_fields_set and settings.app_env.strip().lower() in SIMULATOR_APP_ENVS
+
+
 def _simulated_provider(settings: Settings, *, not_found_outside_dev: bool) -> SimulatedPaymentProvider:
-    if settings.app_env.strip().lower() not in SIMULATOR_APP_ENVS:
+    if not _simulator_enabled(settings):
         if not_found_outside_dev:
             raise HTTPException(status_code=404, detail="Not found.")
         raise HTTPException(status_code=503, detail=PAYMENTS_NOT_CONFIGURED)
@@ -59,6 +73,18 @@ def get_payment_provider(settings: AppSettings) -> PaymentProvider:
 def get_simulated_provider(settings: AppSettings) -> SimulatedPaymentProvider:
     """The simulated checkout endpoints do not exist outside development."""
     return _simulated_provider(settings, not_found_outside_dev=True)
+
+
+def require_webhook_secret(
+    settings: AppSettings,
+    supplied: Annotated[str | None, Header(alias=WEBHOOK_SECRET_HEADER)] = None,
+) -> None:
+    """Server-to-server authentication for confirmations. Fails closed when the secret is not configured."""
+    configured = settings.payment_webhook_secret.get_secret_value() if settings.payment_webhook_secret else ""
+    if not configured:
+        raise HTTPException(status_code=503, detail="Payment webhooks are not configured.")
+    if supplied is None or not hmac.compare_digest(supplied.encode("utf-8"), configured.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Secreto de webhook no válido.")
 
 
 def _caller_quotation(session: Session, current_user: AuthenticatedUser, quotation_id: UUID):
@@ -141,13 +167,19 @@ def start_quotation_payment(
     return PaymentCheckout(payment_id=payment.id, checkout_url=checkout_url)
 
 
-@router.post("/payments/confirm", response_model=PaymentResult)
+@router.post(
+    "/payments/confirm",
+    response_model=PaymentResult,
+    dependencies=[Depends(require_webhook_secret)],
+)
 def confirm_payment_route(
     payload: PaymentConfirmationRequest,
-    current_user: CurrentUser,
     session: Database,
     provider: Annotated[PaymentProvider, Depends(get_payment_provider)],
 ) -> PaymentResult:
+    """Server-to-server confirmation from a real provider. Browser sessions never reach this route."""
+    if provider.name == SIMULATED_PROVIDER_NAME:
+        raise HTTPException(status_code=403, detail="Las confirmaciones simuladas no pasan por el webhook.")
     return _apply_confirmation(
         session,
         provider,
@@ -167,20 +199,31 @@ def complete_simulated_payment(
     provider: Annotated[SimulatedPaymentProvider, Depends(get_simulated_provider)],
 ) -> PaymentResult:
     caller_id, payment, quotation, row = _caller_payment(session, current_user, payment_id)
-    if row["customer_id"] != caller_id:
+    customer_id = row["customer_id"]
+    if customer_id != caller_id or payment.provider != SIMULATED_PROVIDER_NAME:
         raise HTTPException(status_code=404, detail="Payment not found.")
-    if not provider.verify_checkout_token(payment.id, payment.provider_payment_id, payload.token):
-        raise HTTPException(status_code=400, detail="El enlace de pago no es válido.")
+    if not provider.verify_checkout_token(payment.id, payment.provider_payment_id, customer_id, payload.token):
+        raise HTTPException(status_code=400, detail="El enlace de pago no es válido o expiró.")
+
     status = "approved" if payload.approve else "rejected"
-    # The server signs the result the simulated provider reports, then runs the same path as a provider confirmation.
-    return _apply_confirmation(
-        session,
-        provider,
-        payment_id=payment.id,
-        provider_payment_id=payment.provider_payment_id,
-        status=status,
-        signature=provider.sign_confirmation(payment.id, payment.provider_payment_id, status),
-    )
+    try:
+        # The link is consumed in the same transaction as the confirmation, so a refused confirmation releases it.
+        if not consume_checkout_token(session, payment.id, utc_now()):
+            raise HTTPException(status_code=400, detail="El enlace de pago ya fue usado.")
+        # The server signs the simulated result and runs the same confirmation path as the webhook.
+        result = _apply_confirmation(
+            session,
+            provider,
+            payment_id=payment.id,
+            provider_payment_id=payment.provider_payment_id,
+            status=status,
+            signature=provider.sign_confirmation(payment.id, payment.provider_payment_id, status),
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return result
 
 
 @router.get("/payments/{payment_id}", response_model=PaymentDetail)

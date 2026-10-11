@@ -85,7 +85,7 @@ def api(db):
     app.dependency_overrides[get_db_session] = lambda: db
     client = TestClient(app)
 
-    def get(path: str, *, as_auth_id: UUID, method: str = "GET", json: dict | None = None):
+    def get(path: str, *, as_auth_id: UUID, method: str = "GET", json: dict | None = None, headers: dict | None = None):
         app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
             id=as_auth_id,
             email="caller@example.test",
@@ -93,7 +93,7 @@ def api(db):
             assurance="aal2",
             authentication_methods=frozenset({"password", "phone"}),
         )
-        return client.request(method, path, json=json)
+        return client.request(method, path, json=json, headers=headers)
 
     yield get
     app.dependency_overrides.pop(get_db_session, None)

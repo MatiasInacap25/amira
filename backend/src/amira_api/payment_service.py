@@ -49,8 +49,9 @@ def start_payment(session: Session, provider: PaymentProvider, quotation_id: UUI
         .order_by(Pago.created_at.desc())
         .limit(1)
     ).scalar_one_or_none()
+    customer_id = session.get(Chat, quotation.chat_id).form.customer_id
     if in_progress is not None:
-        return in_progress, provider.checkout_url(in_progress.id, in_progress.provider_payment_id)
+        return in_progress, provider.checkout_url(in_progress.id, in_progress.provider_payment_id, customer_id)
 
     # Attempts are numbered per quotation, so a new attempt after a rejection gets a new idempotency key.
     attempts = session.execute(
@@ -71,7 +72,18 @@ def start_payment(session: Session, provider: PaymentProvider, quotation_id: UUI
     session.add(payment)
     session.commit()
     session.refresh(payment)
-    return payment, provider.checkout_url(payment.id, payment.provider_payment_id)
+    return payment, provider.checkout_url(payment.id, payment.provider_payment_id, customer_id)
+
+
+def consume_checkout_token(session: Session, payment_id: UUID, now: datetime) -> bool:
+    """Mark the payment's checkout link as used in one conditional UPDATE. False when it was already used.
+
+    Does not commit: the caller commits together with the confirmation, so a refused confirmation releases the link.
+    """
+    result = session.execute(
+        update(Pago).where(Pago.id == payment_id, Pago.checkout_used_at.is_(None)).values(checkout_used_at=now)
+    )
+    return result.rowcount == 1
 
 
 def confirm_payment(

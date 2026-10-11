@@ -567,6 +567,8 @@ class Pago(Base):
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column("Fecha_Actualizacion", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     confirmed_at: Mapped[datetime | None] = mapped_column("Fecha_Confirmacion", DateTime(timezone=True))
+    # Set once by the atomic consumption of the checkout token; a non-null value means the link was already used.
+    checkout_used_at: Mapped[datetime | None] = mapped_column("Fecha_Token_Usado", DateTime(timezone=True))
 
     quotation: Mapped[Cotizacion] = relationship(back_populates="payments")
     refunds: Mapped[list[Reembolso]] = relationship(back_populates="payment")
