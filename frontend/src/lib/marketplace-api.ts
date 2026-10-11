@@ -94,6 +94,51 @@ export type CustomerService = {
 
 export type CustomerServicePage = PagedResponse<CustomerService>;
 
+// "Mis servicios": contracted services for customers and providers. Contact details are never part of these shapes.
+export type ServiceStatus = "confirmed" | "in_progress" | "completed" | "disputed";
+
+export type ServiceListItem = {
+  serviceId: string;
+  status: ServiceStatus;
+  serviceTypeName: string;
+  serviceAt: string | null;
+  amount: number | null;
+  currency: "CLP";
+  originCommune: string | null;
+  destinationCommune: string | null;
+  isExclusive: boolean;
+  counterpartName: string;
+  assignmentCount: number;
+};
+
+export type ServiceAssignment = {
+  driverId: string;
+  driverFirstName: string;
+  vehicleId: string;
+  vehicleLabel: string;
+  plate: string;
+};
+
+export type ServiceDetail = ServiceListItem & {
+  chatId: string | null;
+  description: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  payoutDeadlineAt: string | null;
+  viewerRole: "customer" | "provider";
+  canManage: boolean;
+  assignments: ServiceAssignment[];
+};
+
+export type ServiceListPage = PagedResponse<ServiceListItem>;
+
+export type ProviderServiceQuery = {
+  status?: ServiceStatus;
+  limit: number;
+  offset: number;
+};
+
 export type ServiceRequestInput = {
   profileId: string;
   serviceTypeId: string;
@@ -224,6 +269,48 @@ export async function createCustomerServiceRating(serviceId: string, input: { ra
     process.env.NEXT_PUBLIC_API_URL,
     { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(input) },
   );
+}
+
+export class ServiceRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`Service request failed (${status})`);
+    this.name = "ServiceRequestError";
+  }
+}
+
+// Responses are returned raw so callers can map 401 (token retry) and 404 (not visible) before parsing.
+export function requestProviderServices(accessToken: string, options: ProviderServiceQuery, signal?: AbortSignal) {
+  const params = new URLSearchParams({ limit: String(options.limit), offset: String(options.offset) });
+  if (options.status) params.set("status", options.status);
+  return authenticatedApiFetch(
+    `/api/provider/services?${params.toString()}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+export function requestProviderServiceDetail(accessToken: string, serviceId: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+export function requestCustomerServiceDetail(accessToken: string, serviceId: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    `/api/customer/services/${encodeURIComponent(serviceId)}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+export async function parseServiceResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) throw new ServiceRequestError(response.status);
+  return response.json() as Promise<T>;
 }
 
 export async function getProviderRequests(
