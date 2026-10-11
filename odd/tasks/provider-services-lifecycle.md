@@ -73,6 +73,11 @@ Both endpoints use `get_current_user` and the S1 viewer rules: a non-provider ac
      - 404 `Service not found.`
      - 409 `Only confirmed services can be started.` (also returned on a second start)
      - 409 `Assign at least one driver and vehicle before starting.`
+3. `GET /api/provider/services/{serviceId}/assignment-options`: the drivers and vehicles that `PUT .../assignments` accepts, for the assignment form. Owner only; no status requirement.
+   - 200: `{drivers: [{driverId, firstName, lastName, isOwner}], vehicles: [{vehicleId, vehicleLabel ("Marca Modelo"), plate}]}`. Drivers are the `Conductor` rows employed by the owned profile, plus the owner's own independent driver row (`isOwner: true`). Vehicles are the rows of the owned profile. Drivers are sorted by first name, last name, id; vehicles by label, plate, id. No contact details. The PUT and this endpoint share the same driver and vehicle predicates.
+   - 404 `Service not found.` (not visible to the viewer)
+   - 403 `Only the profile owner can manage this service.` (visible, not the owner)
+   - Non-provider accounts get the S1 403 (`Only provider accounts can access provider services.`).
 
 ## API contract (S3)
 

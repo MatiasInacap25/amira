@@ -31,6 +31,9 @@ from amira_api.evidence_storage import (
 )
 from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, Usuario, Vehiculo
 from amira_api.provider_service_schemas import (
+    AssignmentDriverOption,
+    AssignmentOptions,
+    AssignmentVehicleOption,
     DeliveryPhotoUrl,
     SameDayConflict,
     SameDayConflictResponse,
@@ -133,17 +136,26 @@ def _unprocessable(message: str, error_type: str, location: str) -> HTTPExceptio
     )
 
 
+def _assignable_driver_filter(viewer: ProviderViewer):
+    """Drivers the owner may assign: employed by the owned profile, or the owner's own independent driver row.
+
+    Shared by the assignment options and the assignment write, so the two cannot drift apart.
+    """
+    return or_(
+        Conductor.employer_profile_id == viewer.owned_profile_id,
+        and_(Conductor.employer_profile_id.is_(None), Conductor.user_id == viewer.user_id),
+    )
+
+
+def _assignable_vehicle_filter(profile_id: UUID):
+    """Vehicles the owner may assign: the ones that belong to the owned profile."""
+    return Vehiculo.profile_id == profile_id
+
+
 def _ensure_drivers_belong(session: Session, viewer: ProviderViewer, driver_ids: list[UUID]) -> None:
-    """Drivers must be employed by the owned profile, or be the independent owner's own driver row."""
     belonging = set(
         session.execute(
-            select(Conductor.id).where(
-                Conductor.id.in_(driver_ids),
-                or_(
-                    Conductor.employer_profile_id == viewer.owned_profile_id,
-                    and_(Conductor.employer_profile_id.is_(None), Conductor.user_id == viewer.user_id),
-                ),
-            )
+            select(Conductor.id).where(Conductor.id.in_(driver_ids), _assignable_driver_filter(viewer))
         ).scalars()
     )
     if belonging != set(driver_ids):
@@ -153,7 +165,7 @@ def _ensure_drivers_belong(session: Session, viewer: ProviderViewer, driver_ids:
 def _ensure_vehicles_belong(session: Session, profile_id: UUID, vehicle_ids: list[UUID]) -> None:
     belonging = set(
         session.execute(
-            select(Vehiculo.id).where(Vehiculo.id.in_(vehicle_ids), Vehiculo.profile_id == profile_id)
+            select(Vehiculo.id).where(Vehiculo.id.in_(vehicle_ids), _assignable_vehicle_filter(profile_id))
         ).scalars()
     )
     if belonging != set(vehicle_ids):
@@ -220,6 +232,45 @@ def get_provider_service(service_id: UUID, current_user: CurrentUser, session: D
     if detail is None:
         raise HTTPException(status_code=404, detail="Service not found.")
     return detail
+
+
+@router.get("/services/{service_id}/assignment-options", response_model=AssignmentOptions)
+def get_service_assignment_options(service_id: UUID, current_user: CurrentUser, session: Database) -> AssignmentOptions:
+    viewer = _provider_viewer(session, current_user)
+    visible = session.execute(
+        select(Servicio.id).where(Servicio.id == service_id, *viewer.visibility())
+    ).one_or_none()
+    if visible is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    if not viewer.is_owner:
+        raise HTTPException(status_code=403, detail="Only the profile owner can manage this service.")
+
+    driver_rows = session.execute(
+        select(Conductor.id, Usuario.first_name, Usuario.last_name, Conductor.employer_profile_id)
+        .join(Usuario, Usuario.id == Conductor.user_id)
+        .where(_assignable_driver_filter(viewer))
+    ).all()
+    # A NULL employer can only match the owner's own independent row (see _assignable_driver_filter).
+    drivers = [
+        AssignmentDriverOption(
+            driver_id=row[0], first_name=row[1], last_name=row[2], is_owner=row[3] is None
+        )
+        for row in driver_rows
+    ]
+
+    vehicle_rows = session.execute(
+        select(Vehiculo.id, Vehiculo.brand, Vehiculo.model, Vehiculo.plate)
+        .where(_assignable_vehicle_filter(viewer.owned_profile_id))
+    ).all()
+    vehicles = [
+        AssignmentVehicleOption(vehicle_id=row[0], vehicle_label=f"{row[1]} {row[2]}".strip(), plate=row[3])
+        for row in vehicle_rows
+    ]
+
+    return AssignmentOptions(
+        drivers=sorted(drivers, key=lambda driver: (driver.first_name, driver.last_name, str(driver.driver_id))),
+        vehicles=sorted(vehicles, key=lambda vehicle: (vehicle.vehicle_label, vehicle.plate, str(vehicle.vehicle_id))),
+    )
 
 
 @router.put("/services/{service_id}/assignments", response_model=ServiceDetail)

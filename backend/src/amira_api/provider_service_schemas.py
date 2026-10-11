@@ -62,6 +62,25 @@ class DeliveryPhotoUrl(PublicResponse):
     expires_at: datetime
 
 
+class AssignmentDriverOption(PublicResponse):
+    driver_id: UUID
+    first_name: str
+    last_name: str
+    # True only for the owner's own independent driver row.
+    is_owner: bool
+
+
+class AssignmentVehicleOption(PublicResponse):
+    vehicle_id: UUID
+    vehicle_label: str
+    plate: str
+
+
+class AssignmentOptions(PublicResponse):
+    drivers: list[AssignmentDriverOption]
+    vehicles: list[AssignmentVehicleOption]
+
+
 class ServiceAssignmentPair(BaseModel):
     model_config = ConfigDict(extra="forbid", alias_generator=_to_camel, populate_by_name=True)
 
