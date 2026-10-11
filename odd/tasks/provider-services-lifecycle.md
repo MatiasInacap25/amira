@@ -205,8 +205,8 @@ Frontend (one commit):
 
 ### G — User decisions on payouts (2026-10-11; route: delegated direct, one Haiku worker in a Herdr pane)
 
-- [ ] G1 Fixed 10% commission: `commission = round_half_up(gross * percent / 100)` in integer CLP, `Desembolso.Monto_Neto = gross - commission`; percent is a setting (default 10). Store the commission only if `Desembolso` already has a column for it (no new migration).
-- [ ] G2 Remove the payout cron job from `render.yaml` until a real payout adapter exists; document the block and the manual CLI in `backend/README.md`.
+- [x] G1 Fixed 10% commission: `commission = round_half_up(gross * percent / 100)` in integer CLP, `Desembolso.Monto_Neto = gross - commission`; percent is a setting (default 10). Store the commission only if `Desembolso` already has a column for it (no new migration).
+- [x] G2 Remove the payout cron job from `render.yaml` until a real payout adapter exists; document the block and the manual CLI in `backend/README.md`.
 
 ## Checks
 
@@ -226,6 +226,7 @@ Frontend (one commit):
 - 2026-10-11: a branch-wide review (5035 lines) stopped with `lens_context_budget_exceeded`; the reduced candidate T11 + S4 (base `66fbe7b`, 1777 lines) was granted, approved and acknowledged (lineage `review-e20c3dcf15c36461`). Next: T12.
 - 2026-10-11: T12 done by `worker-2`, commit `de94225`. RED exception: no frontend unit runner, Playwright not used. `npm run lint` and `npm run build` passed (worker); parent spot check `npm run lint` passed. Shared query keys in `service-query-keys.ts`; provider mutations now also invalidate the customer list (closes that T11 gap). Native review (assess: medium, `slice_budget_reached`; base `ee05151`) granted, approved and acknowledged (lineage `review-d0f3cd3ef53bbc61`). All tasks done. Next: user decisions on follow-ups, then delivery (push/PR) when the user asks.
 - 2026-10-11: F1-F10 done by `worker-1` (Haiku, Herdr pane; it delegated internally to its own subagent): commits `6735b03` (backend F1-F7) and `3e8359a` (frontend F8-F10). RED observed for F1-F5 and the Supabase `delete`; F6's behavioral RED was not observed (the module failed at import first); F7 was test-only strengthening. Worker: `uv run pytest` 544 passed, `uv lock --check`, `npm run lint`, `npm run build` passed. Parent spot checks: `uv run pytest` 544 passed, `npm run lint` passed. The whole-branch review again stopped with `lens_context_budget_exceeded`; the fixes (base `44fc7cc`, 697 lines) were granted, approved and acknowledged (lineage `review-019de5f1d21bf4b9`).
+- 2026-10-11: user decisions: 10% fixed commission and remove the payout cron; do not update `backend/.env.example`. G1 + G2 done by `worker-1`, commit `87a2688`. RED: 9 failed (missing `commission_percent`, settings field, cron still present). Worker: `uv run pytest` 551 passed, `uv lock --check` passed. Parent spot check: 551 passed. Native review (base `d3c3e55`, 195 lines) granted, approved and acknowledged (lineage `review-f47bf0f13d84ead9`). The whole-branch candidate the stop hook keeps offering stops with `lens_context_budget_exceeded` (6146 lines).
 
 ### Review follow-ups (non-blocking)
 
@@ -246,8 +247,8 @@ Frontend (one commit):
 - S3 worker notes: Starlette spools the multipart part to disk before the size cap runs (add a proxy body limit); 503 precedes 403/404 when storage is not configured; add the new variables to `backend/.env.example`.
 - Branch review `R3-003` (`models.py:474-475`): `fk_service_started_by` is `ON DELETE RESTRICT`, so deleting a user who started a service fails.
 - T11 gaps: `ServiceDetail` does not say whether the viewer is assigned, so Iniciar/Finalizar show for every provider viewer and the backend decides (suggest `viewerAssigned`); no success notice after saving assignments; provider mutations do not invalidate the customer list query; `ui-ux-pro-max` and `boneyard` were not read; not exercised in a browser.
-- S4 decisions to confirm: `Monto_Neto` equals the gross payment (no commission model); release requires an approved `Pago` (else `missing_payment`); `claimOpen` is `status == 'disputed'` (a `Reclamo` join broke SQLite fixtures; the release job still checks `Reclamo`).
-- S4 `R3-001` (`render.yaml:41-42`): the cron sets `APP_ENV=production`, so the simulated adapter refuses and every run exits 1 until a real payout adapter exists.
+- S4 decisions to confirm: (resolved by G1: a fixed 10% commission; `Monto_Neto` is gross minus commission) ~~`Monto_Neto` equals the gross payment~~; release requires an approved `Pago` (else `missing_payment`); `claimOpen` is `status == 'disputed'` (a `Reclamo` join broke SQLite fixtures; the release job still checks `Reclamo`).
+- (Resolved by G2: the cron was removed from `render.yaml`.) S4 `R3-001` (`render.yaml:41-42`): the cron sets `APP_ENV=production`, so the simulated adapter refuses and every run exits 1 until a real payout adapter exists.
 - S4 `R3-002` (`test_payout_release.py:202-205`): the production-refusal CLI test only asserts exit 1, which other failures also produce.
 - S4 `R3-003` (`customer_routes.py:318-323`): consent is accepted after the payout was already released.
 - S4 environment note: with `DEV_SKIP_SMS_MFA` set, settings reject `APP_ENV=production`; check the real deploy config.
@@ -257,6 +258,8 @@ Frontend (one commit):
 - T12 `R3-005` (`customer-service-actions.tsx:68`): the double-submit guard reads a render-time `busy`, so two fast clicks can send two POSTs.
 - F `R3-001` (migration `0004`, lines 4-5): the docstring claims VALIDATE runs under a weaker lock, but the earlier DROP CONSTRAINT holds ACCESS EXCLUSIVE until commit.
 - F open items: the two GET delivery-photo routes still return 503 before 404 when storage is not configured; provider list/detail caches are not cleared on sign-out (only the role key); `ck_quote_currency_clp` still restricts quotations to CLP in the DB; the Supabase `delete` call is untested against live Supabase.
+- G `R3-001`/`R3-002` (`payout_service.py:68-74,134-140`): `commission_percent` passed directly to `release_due_payouts`/`commission_for` is not range-checked (only Settings enforces 0..99), and no test covers an out-of-range override.
+- G `R3-003`/`R3-004`/`R3-005` (suggestions/brittleness): no test pins provider amount == `Monto_Neto` in the rounding case; the settings cache is not restored after the commission default test; the no-cron blueprint test matches exact web-block text.
 
 ### API notes (S1)
 
