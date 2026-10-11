@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "dataflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.json",
+    "sha256": "679c65c6e1237552d0dc35850a8724af2cfa1906237dc586e680071ae684d200",
+    "bytes": 3566
+  },
+  "artifact": {
+    "path": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+    "sha256": "d80947b76847a92cf997541bf92f8cf32f12c548a632a95361eae574c5a3511a",
+    "bytes": 755474
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[128484:128526:1010/211418.592055:ERROR:google_apis/gcm/engine/mcs_client.cc:702]   Error code: 401  Error message: Authentication Failed: wrong_secret\n[128484:128526:1010/211418.592070:ERROR:google_apis/gcm/engine/mcs_client.cc:704] Failed to log in to GCM, resetting connection.\n[128484:128526:1010/211418.602707:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.617666:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.620719:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=128484, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.finalize.json",
+    "summaryReceipt": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.finalize-summary.json",
+    "browserCheckReceipt": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-11T00:12:36.590Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 15703
+}

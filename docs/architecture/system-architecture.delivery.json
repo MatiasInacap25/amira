@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b8621346-3cc2-4e70-8e35-93c1b43d7001",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/matias/Projects/amira/docs/architecture/system-architecture.json",
+  "output": "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+  "specification": {
+    "sha256": "3f60ff9b64291d10b4410e9dfd118815e7848793aa2a12128436fc01a978a7c4",
+    "bytes": 4514
+  },
+  "artifact": {
+    "sha256": "32ea61bc40859f195ede1c37b0017eb8a2dcead80c0c9d930f75a94d266a7bd4",
+    "bytes": 762600
+  }
+}

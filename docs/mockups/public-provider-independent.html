@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Perfil público de demostración para un conductor independiente en Amira.">
+  <title>[DEMO] Fletes Cordillera — Amira</title>
+  <style>
+    :root { color-scheme: light; --ink: #132239; --muted: #5b6878; --line: #dce3ea; --paper: #f5f7f9; --white: #fff; --gold: #e8a83e; --navy: #10243d; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: inherit; }
+    .topbar { background: var(--navy); color: white; }
+    .topbar-inner, main, footer { width: min(1100px, calc(100% - 32px)); margin-inline: auto; }
+    .topbar-inner { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { font-size: 1.2rem; font-weight: 800; letter-spacing: .02em; text-decoration: none; }
+    nav { display: flex; flex-wrap: wrap; gap: 18px; }
+    nav a { color: #e6edf4; font-size: .92rem; text-decoration: none; }
+    nav a:hover, nav a:focus-visible { color: #ffd386; }
+    main { padding-block: 32px 56px; }
+    .demo-note { margin: 0 0 18px; padding: 10px 14px; border: 1px solid #efd29e; border-radius: 10px; background: #fff7e8; color: #624516; font-size: .9rem; }
+    .hero { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; padding: clamp(22px, 5vw, 42px); border: 1px solid var(--line); border-radius: 18px; background: var(--white); box-shadow: 0 12px 32px #172a3b0d; }
+    .eyebrow { color: var(--muted); font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 8px; font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.08; letter-spacing: -.035em; }
+    .lead { max-width: 60ch; margin-bottom: 18px; color: var(--muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; color: #34465a; font-size: .85rem; }
+    .rating { display: grid; place-items: center; min-width: 150px; padding: 18px; border-radius: 14px; background: #fff7e8; text-align: center; }
+    .rating strong { font-size: 2rem; line-height: 1.1; }
+    .rating span { color: #73531f; font-size: .82rem; }
+    .cta { display: inline-block; margin-top: 22px; padding: 12px 18px; border-radius: 8px; background: var(--navy); color: #fff; font-weight: 750; text-decoration: none; }
+    .cta:hover, .cta:focus-visible { background: #244568; }
+    section { margin-top: 42px; scroll-margin-top: 18px; }
+    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+    h2 { margin-bottom: 10px; font-size: 1.55rem; }
+    .section-heading p { margin: 0 0 10px; color: var(--muted); font-size: .9rem; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .card { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
+    .card h3 { margin-bottom: 6px; font-size: 1.05rem; }
+    .card p { margin-bottom: 0; color: var(--muted); }
+    .driver { display: flex; align-items: center; gap: 14px; }
+    .avatar { display: grid; flex: 0 0 54px; width: 54px; height: 54px; place-items: center; border-radius: 50%; background: #dce8f0; color: #26425d; font-weight: 800; }
+    .vehicle-mark { display: grid; height: 100px; place-items: center; margin: -20px -20px 16px; border-radius: 13px 13px 0 0; background: linear-gradient(135deg, #dfe9ef, #b8c9d4); color: #25425d; font-size: 2rem; }
+    .vehicle-meta { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+    footer { padding-block: 26px; border-top: 1px solid var(--line); color: var(--muted); font-size: .88rem; }
+    @media (max-width: 720px) { .topbar-inner { align-items: flex-start; flex-direction: column; padding-block: 16px; gap: 12px; } nav { gap: 12px; } .hero { grid-template-columns: 1fr; } .rating { width: fit-content; } .grid { grid-template-columns: 1fr; } .section-heading { align-items: flex-start; flex-direction: column; gap: 0; } }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#inicio">Amira <span aria-label="demostración">/ demo</span></a>
+      <nav aria-label="Navegación del perfil">
+        <a href="#servicios">Servicios</a><a href="#conductores">Conductor</a><a href="#vehiculos">Vehículos</a>
+      </nav>
+    </div>
+  </header>
+  <main id="inicio">
+    <p class="demo-note"><strong>Mockup de demostración:</strong> nombres, valoración y datos de muestra son sintéticos; no representan reseñas verificadas.</p>
+    <section class="hero" aria-labelledby="profile-title">
+      <div>
+        <span class="eyebrow">Perfil público · Chile</span>
+        <h1 id="profile-title">[DEMO] Fletes Cordillera</h1>
+        <p class="lead">Traslados de carga y mudanzas pequeñas con atención directa de su conductor independiente.</p>
+        <div class="chips"><span class="chip">Tipo: Conductor independiente</span><span class="chip">Santiago, Región Metropolitana</span></div>
+        <a class="cta" href="#servicios">Solicitar cotización</a>
+      </div>
+      <div class="rating" aria-label="Valoración de muestra, no verificada"><strong>4,9 <span aria-hidden="true">★</span></strong><span>Valoración de muestra</span><span>Mockup, no verificada</span></div>
+    </section>
+    <section id="servicios" aria-labelledby="services-title">
+      <div class="section-heading"><h2 id="services-title">Servicios</h2><p>Oferta de ejemplo para este perfil.</p></div>
+      <div class="grid">
+        <article class="card"><h3>Fletes urbanos</h3><p>Traslado de carga y enseres dentro de Santiago y comunas cercanas.</p></article>
+        <article class="card"><h3>Pequeñas mudanzas</h3><p>Apoyo para mudanzas de departamentos y espacios de trabajo pequeños.</p></article>
+        <article class="card"><h3>Rutas regionales</h3><p>Transporte coordinado entre la Región Metropolitana y la zona central.</p></article>
+      </div>
+    </section>
+    <section id="conductores" aria-labelledby="drivers-title">
+      <div class="section-heading"><h2 id="drivers-title">Conductor</h2><p>El titular es también el único conductor de este perfil.</p></div>
+      <div class="grid"><article class="card driver"><div class="avatar" aria-hidden="true">DP</div><div><h3>[DEMO] Diego Pérez</h3><p>Propietario y único conductor del perfil</p></div></article></div>
+    </section>
+    <section id="vehiculos" aria-labelledby="vehicles-title">
+      <div class="section-heading"><h2 id="vehicles-title">Vehículos</h2><p>Datos ilustrativos, solo para este mockup.</p></div>
+      <div class="grid">
+        <article class="card"><div class="vehicle-mark" aria-hidden="true">▰</div><h3>Camión liviano de muestra</h3><p>Vehículo ilustrativo para carga urbana.</p><div class="vehicle-meta">Capacidad de ejemplo: 2.500 kg</div></article>
+        <article class="card"><div class="vehicle-mark" aria-hidden="true">▱</div><h3>Furgón de muestra</h3><p>Vehículo ilustrativo para mudanzas pequeñas.</p><div class="vehicle-meta">Capacidad de ejemplo: 1.200 kg</div></article>
+      </div>
+    </section>
+  </main>
+  <footer>Amira · Perfil público de demostración. Este contenido no está conectado a datos en vivo.</footer>
+</body>
+</html>

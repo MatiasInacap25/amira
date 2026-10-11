@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/matias/Projects/amira/docs/architecture/system-architecture.json",
+    "sha256": "3f60ff9b64291d10b4410e9dfd118815e7848793aa2a12128436fc01a978a7c4",
+    "bytes": 4514
+  },
+  "artifact": {
+    "path": "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+    "sha256": "32ea61bc40859f195ede1c37b0017eb8a2dcead80c0c9d930f75a94d266a7bd4",
+    "bytes": 762600
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/matias/Projects/amira/docs/architecture/system-architecture.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[126512:126563:1010/211253.177088:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.178027:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.180228:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=126512, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/matias/Projects/amira/docs/architecture/system-architecture.finalize.json",
+    "summaryReceipt": "/home/matias/Projects/amira/docs/architecture/system-architecture.finalize-summary.json",
+    "browserCheckReceipt": "/home/matias/Projects/amira/docs/architecture/system-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-11T00:12:36.590Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 15664
+}

@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "dataflow",
+  "quality": "showcase",
+  "startedAt": "2026-10-11T00:14:15.879Z",
+  "specification": {
+    "path": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.json",
+    "sha256": "679c65c6e1237552d0dc35850a8724af2cfa1906237dc586e680071ae684d200",
+    "bytes": 3566
+  },
+  "artifact": {
+    "path": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+    "sha256": "d80947b76847a92cf997541bf92f8cf32f12c548a632a95361eae574c5a3511a",
+    "bytes": 755474
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "dataflow",
+        "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.json",
+        "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "679c65c6e1237552d0dc35850a8724af2cfa1906237dc586e680071ae684d200",
+          "bytes": 3566
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 321,
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "dataflow",
+        "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.json",
+        "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "5dbf9cbb-6df1-436a-aef2-1e3f21fc135d",
+        "ok": true,
+        "command": "deliver",
+        "type": "dataflow",
+        "input": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.json",
+        "output": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+        "specification": {
+          "sha256": "679c65c6e1237552d0dc35850a8724af2cfa1906237dc586e680071ae684d200",
+          "bytes": 3566
+        },
+        "artifact": {
+          "sha256": "d80947b76847a92cf997541bf92f8cf32f12c548a632a95361eae574c5a3511a",
+          "bytes": 755474
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 136,
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "check",
+        "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+        "artifact": {
+          "sha256": "d80947b76847a92cf997541bf92f8cf32f12c548a632a95361eae574c5a3511a",
+          "bytes": 755474
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 0,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 22,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 6.027777777777779,
+            "maxBends": 2,
+            "routesOverSuggestedBends": 0,
+            "maxStretch": 1,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 51.5,
+            "minInteriorSegmentPx": 107,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [],
+            "detours": []
+          },
+          "leadingSpace": {
+            "measured": false,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "legacy-930",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 930,
+            "actualBudgetPx": 930,
+            "limit": "legacy",
+            "requestedTargetPx": null,
+            "requestedTargetMet": null,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "node",
+              "id": "select"
+            },
+            "minimumSourceTextPx": 7,
+            "minimumProjectedTextPx": 6.027777777777779,
+            "semanticTextCount": 18
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "5dbf9cbb-6df1-436a-aef2-1e3f21fc135d"
+      }
+    },
+    "browser-check": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": 15156,
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "browser-check",
+        "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "fail",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "5dbf9cbb-6df1-436a-aef2-1e3f21fc135d",
+        "artifact": {
+          "path": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+          "sha256": "d80947b76847a92cf997541bf92f8cf32f12c548a632a95361eae574c5a3511a",
+          "bytes": 755474
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "available",
+          "executable": "/usr/bin/chromium"
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/browser-check-runtime",
+            "severity": "error",
+            "message": "browser-check could not complete its Chrome inspection.",
+            "subject": {
+              "artifact": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html"
+            },
+            "evidence": {
+              "reason": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[128484:128526:1010/211418.592055:ERROR:google_apis/gcm/engine/mcs_client.cc:702]   Error code: 401  Error message: Authentication Failed: wrong_secret\n[128484:128526:1010/211418.592070:ERROR:google_apis/gcm/engine/mcs_client.cc:704] Failed to log in to GCM, resetting connection.\n[128484:128526:1010/211418.602707:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.617666:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.620719:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=128484, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+            },
+            "supportedFixes": [
+              "resolve the reported Chrome inspection error, then rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "fail",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "fail",
+          "viewports": []
+        },
+        "readability": {
+          "status": "fail",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "fail",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "provider-registration-dataflow.browser-check.json",
+          "files": []
+        },
+        "error": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[128484:128526:1010/211418.592055:ERROR:google_apis/gcm/engine/mcs_client.cc:702]   Error code: 401  Error message: Authentication Failed: wrong_secret\n[128484:128526:1010/211418.592070:ERROR:google_apis/gcm/engine/mcs_client.cc:704] Failed to log in to GCM, resetting connection.\n[128484:128526:1010/211418.602707:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.617666:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.620719:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=128484, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[128484:128526:1010/211418.592055:ERROR:google_apis/gcm/engine/mcs_client.cc:702]   Error code: 401  Error message: Authentication Failed: wrong_secret\n[128484:128526:1010/211418.592070:ERROR:google_apis/gcm/engine/mcs_client.cc:704] Failed to log in to GCM, resetting connection.\n[128484:128526:1010/211418.602707:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.617666:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128484:128526:1010/211418.620719:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=128484, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.finalize.json",
+    "summaryReceipt": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.finalize-summary.json",
+    "browserCheckReceipt": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-10-11T00:14:31.583Z",
+  "durationMs": 15703,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-11T00:12:36.590Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

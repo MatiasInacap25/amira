@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Amira System Architecture",
+    "output": "docs/architecture/system-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "browser", "type": "external", "label": "Browser", "sublabel": "Next.js pages", "pos": [40, 260], "size": [130, 64] },
+    { "id": "proxy", "type": "frontend", "label": "Session proxy", "sublabel": "src/proxy.ts → updateSession", "pos": [280, 40], "size": [170, 64] },
+    { "id": "api_client", "type": "frontend", "label": "API clients", "sublabel": "marketplace · account", "pos": [280, 260], "size": [170, 64] },
+    { "id": "supabase_auth", "type": "security", "label": "Supabase Auth", "sublabel": "passwords · SMS MFA · JWKS", "pos": [600, 40], "size": [170, 64] },
+    { "id": "fastapi_routes", "type": "backend", "label": "FastAPI routers", "sublabel": "account · locations · public", "pos": [600, 260], "size": [150, 64] },
+    { "id": "auth_dep", "type": "security", "label": "get_verified_user", "sublabel": "JWT · iss / aud", "pos": [830, 200], "size": [150, 64] },
+    { "id": "db_engine", "type": "backend", "label": "SQLAlchemy engine", "sublabel": "TLS · pool of 5", "pos": [830, 340], "size": [150, 64] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "RLS on catalog tables", "pos": [830, 480], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Render service · backend/", "wraps": ["fastapi_routes", "auth_dep", "db_engine"] }
+  ],
+  "connections": [
+    { "id": "page-request", "from": "browser", "to": "proxy", "label": "every request", "fromSide": "right", "toSide": "left" },
+    { "id": "ui-calls", "from": "browser", "to": "api_client", "label": "UI requests", "fromSide": "right", "toSide": "left" },
+    { "id": "mfa-signin", "from": "browser", "to": "supabase_auth", "label": "sign-in · SMS MFA", "variant": "security", "fromSide": "top", "toSide": "top", "via": [[105, 20], [685, 20]] },
+    { "id": "refresh-session", "from": "proxy", "to": "supabase_auth", "label": "refresh session", "variant": "security", "fromSide": "right", "toSide": "left" },
+    { "id": "bearer-api", "from": "api_client", "to": "fastapi_routes", "label": "HTTPS · Bearer JWT", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "verify-jwt", "from": "fastapi_routes", "to": "auth_dep", "label": "guarded routes", "fromSide": "right", "toSide": "left" },
+    { "id": "fetch-jwks", "from": "auth_dep", "to": "supabase_auth", "label": "fetch JWKS", "variant": "security", "fromSide": "top", "toSide": "right" },
+    { "id": "orm-queries", "from": "fastapi_routes", "to": "db_engine", "label": "ORM queries", "fromSide": "bottom", "toSide": "left" },
+    { "id": "sql-tls", "from": "db_engine", "to": "postgres", "label": "SQL over TLS", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Frontend session",
+      "items": [
+        "src/proxy.ts runs updateSession on each matched request (frontend/src/proxy.ts:4-6)",
+        "Supabase client refreshes the session via getClaims (frontend/src/lib/supabase/proxy.ts:27)",
+        "The browser never queries the database directly"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Auth split",
+      "items": [
+        "Supabase Auth owns passwords and SMS MFA; the frontend requires aal2 before provisioning (auth-panel.tsx:328-330)",
+        "The backend verifies bearer JWTs against the issuer JWKS with issuer and audience checks (backend/src/amira_api/auth.py:119-127)",
+        "The backend never issues login tokens"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Data layer",
+      "items": [
+        "SQLAlchemy connects with TLS, a 10s connect timeout, and a 5s statement timeout (backend/src/amira_api/db.py:23-32)",
+        "Catalog tables enable RLS and revoke anon/authenticated privileges (20261010_0001_location_catalog.py:438-459)",
+        "A privileged connection bypasses RLS, so endpoints enforce authorization themselves"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Deployment",
+      "items": [
+        "render.yaml deploys only the backend as a Docker service rooted at backend/ (render.yaml:1-9)",
+        "Health check is /health; the frontend is not containerized (PROJECT_OVERVIEW.md)",
+        "Frontend hosting is not defined in this repository and is not shown"
+      ]
+    }
+  ]
+}

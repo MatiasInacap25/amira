@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "5dbf9cbb-6df1-436a-aef2-1e3f21fc135d",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.json",
+  "output": "/home/matias/Projects/amira/docs/architecture/provider-registration-dataflow.html",
+  "specification": {
+    "sha256": "679c65c6e1237552d0dc35850a8724af2cfa1906237dc586e680071ae684d200",
+    "bytes": 3566
+  },
+  "artifact": {
+    "sha256": "d80947b76847a92cf997541bf92f8cf32f12c548a632a95361eae574c5a3511a",
+    "bytes": 755474
+  }
+}
