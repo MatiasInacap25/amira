@@ -1,0 +1,395 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-11T00:12:50.398Z",
+  "specification": {
+    "path": "/home/matias/Projects/amira/docs/architecture/system-architecture.json",
+    "sha256": "3f60ff9b64291d10b4410e9dfd118815e7848793aa2a12128436fc01a978a7c4",
+    "bytes": 4514
+  },
+  "artifact": {
+    "path": "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+    "sha256": "32ea61bc40859f195ede1c37b0017eb8a2dcead80c0c9d930f75a94d266a7bd4",
+    "bytes": 762600
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/matias/Projects/amira/docs/architecture/system-architecture.json",
+        "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "3f60ff9b64291d10b4410e9dfd118815e7848793aa2a12128436fc01a978a7c4",
+          "bytes": 4514
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 320,
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/matias/Projects/amira/docs/architecture/system-architecture.json",
+        "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "b8621346-3cc2-4e70-8e35-93c1b43d7001",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "/home/matias/Projects/amira/docs/architecture/system-architecture.json",
+        "output": "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+        "specification": {
+          "sha256": "3f60ff9b64291d10b4410e9dfd118815e7848793aa2a12128436fc01a978a7c4",
+          "bytes": 4514
+        },
+        "artifact": {
+          "sha256": "32ea61bc40859f195ede1c37b0017eb8a2dcead80c0c9d930f75a94d266a7bd4",
+          "bytes": 762600
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 104,
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "check",
+        "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+        "artifact": {
+          "sha256": "32ea61bc40859f195ede1c37b0017eb8a2dcead80c0c9d930f75a94d266a7bd4",
+          "bytes": 762600
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 0,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 24,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 7.5,
+            "maxBends": 3,
+            "routesOverSuggestedBends": 2,
+            "maxStretch": 1.05,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 20,
+            "minInteriorSegmentPx": 24,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [],
+            "detours": [
+              {
+                "relationship": {
+                  "id": "fetch-jwks",
+                  "from": "auth_dep",
+                  "to": "supabase_auth",
+                  "label": "fetch JWKS",
+                  "collectionIndex": 6,
+                  "artifactIndex": 7
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "orm-queries",
+                  "from": "fastapi_routes",
+                  "to": "db_engine",
+                  "label": "ORM queries",
+                  "collectionIndex": 7,
+                  "artifactIndex": 8
+                },
+                "bends": 3,
+                "stretch": 1
+              }
+            ]
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 0,
+            "emptyTopRatio": 0,
+            "occupiedTop": 0,
+            "viewBoxTop": 0,
+            "canvasHeight": 612,
+            "typicalNodeHeight": 64,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "recognized-declared-wide",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 984.375,
+            "actualBudgetPx": 984.375,
+            "actualReaderWidth": 1014.375,
+            "desiredReaderWidth": 1014.375,
+            "viewportCap": 1376,
+            "limit": "source-size",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": true,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": "page-request",
+              "from": "browser",
+              "to": "proxy"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 7.5,
+            "semanticTextCount": 26
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "b8621346-3cc2-4e70-8e35-93c1b43d7001"
+      }
+    },
+    "browser-check": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": 15169,
+      "command": [
+        "/home/matias/.local/share/mise/installs/node/26.8.2/bin/node",
+        "/home/matias/.agents/skills/archify/bin/archify.mjs",
+        "browser-check",
+        "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "fail",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "b8621346-3cc2-4e70-8e35-93c1b43d7001",
+        "artifact": {
+          "path": "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+          "sha256": "32ea61bc40859f195ede1c37b0017eb8a2dcead80c0c9d930f75a94d266a7bd4",
+          "bytes": 762600
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "available",
+          "executable": "/usr/bin/chromium"
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/browser-check-runtime",
+            "severity": "error",
+            "message": "browser-check could not complete its Chrome inspection.",
+            "subject": {
+              "artifact": "/home/matias/Projects/amira/docs/architecture/system-architecture.html"
+            },
+            "evidence": {
+              "reason": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[126512:126563:1010/211253.177088:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.178027:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.180228:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=126512, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+            },
+            "supportedFixes": [
+              "resolve the reported Chrome inspection error, then rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "fail",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "fail",
+          "viewports": []
+        },
+        "readability": {
+          "status": "fail",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "fail",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "system-architecture.browser-check.json",
+          "files": []
+        },
+        "error": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[126512:126563:1010/211253.177088:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.178027:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.180228:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=126512, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/matias/Projects/amira/docs/architecture/system-architecture.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[126512:126563:1010/211253.177088:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.178027:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[126512:126563:1010/211253.180228:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=126512, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=4119, messages=19, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/home/matias/Projects/amira/docs/architecture/system-architecture.finalize.json",
+    "summaryReceipt": "/home/matias/Projects/amira/docs/architecture/system-architecture.finalize-summary.json",
+    "browserCheckReceipt": "/home/matias/Projects/amira/docs/architecture/system-architecture.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-10-11T00:13:06.062Z",
+  "durationMs": 15664,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-11T00:12:36.590Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

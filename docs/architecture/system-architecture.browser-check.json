@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "browser-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "not-requested",
+  "provenance": "current",
+  "deliveryReceiptId": "b8621346-3cc2-4e70-8e35-93c1b43d7001",
+  "artifact": {
+    "path": "/home/matias/Projects/amira/docs/architecture/system-architecture.html",
+    "sha256": "32ea61bc40859f195ede1c37b0017eb8a2dcead80c0c9d930f75a94d266a7bd4",
+    "bytes": 762600
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "/usr/bin/chromium"
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/matias/Projects/amira/docs/architecture/system-architecture.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[128784:128806:1010/211437.697080:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128784:128806:1010/211437.699918:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128784:128806:1010/211437.707045:ERROR:google_apis/gcm/engine/mcs_client.cc:702]   Error code: 401  Error message: Authentication Failed: wrong_secret\n[128784:128806:1010/211437.707056:ERROR:google_apis/gcm/engine/mcs_client.cc:704] Failed to log in to GCM, resetting connection.\n[128784:128806:1010/211437.711220:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=128784, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=3989, messages=18, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
+    "viewports": []
+  },
+  "themeStates": {
+    "status": "fail",
+    "viewports": []
+  },
+  "readability": {
+    "status": "fail",
+    "minimumProjectedNodeTextPx": 6,
+    "viewports": []
+  },
+  "viewerChrome": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "not-requested",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "receipt": "system-architecture.browser-check.json",
+    "files": []
+  },
+  "error": "Chrome DevTools protocol timeout failed: Runtime.evaluate: timed out after 15000ms [ERR_CHROME_CDP_TIMEOUT]\nChrome process: still running.\nChrome stderr:\n[128784:128806:1010/211437.697080:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128784:128806:1010/211437.699918:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\n[128784:128806:1010/211437.707045:ERROR:google_apis/gcm/engine/mcs_client.cc:702]   Error code: 401  Error message: Authentication Failed: wrong_secret\n[128784:128806:1010/211437.707056:ERROR:google_apis/gcm/engine/mcs_client.cc:704] Failed to log in to GCM, resetting connection.\n[128784:128806:1010/211437.711220:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR\nChrome transport: Node v26.8.2, libuv 1.52.1, linux; pid=128784, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=3989, messages=18, bufferedBytes=0.\nChrome write pipe: writable=true, ended=false, destroyed=false, completedWrites=7, writtenBytes=2470, bufferedBytes=0."
+}

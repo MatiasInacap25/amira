@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Provider Registration: Region and Commune",
+    "output": "docs/architecture/provider-registration-dataflow.html",
+    "viewBox": [1080, 520],
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    { "label": "Browser" },
+    { "label": "API" },
+    { "label": "Store" }
+  ],
+  "nodes": [
+    { "id": "select", "type": "frontend", "label": "RegionCommuneSelect", "sublabel": "Región → Comuna", "stage": 0, "row": 0, "tag": "catalog" },
+    { "id": "form", "type": "frontend", "label": "Auth panel", "sublabel": "account step", "stage": 0, "row": 1, "tag": "commune_code" },
+    { "id": "locations", "type": "backend", "label": "Locations API", "sublabel": "GET /api/locations", "stage": 1, "row": 0, "tag": "cacheable" },
+    { "id": "provision", "type": "backend", "label": "Account provision", "sublabel": "POST · checks commune", "stage": 1, "row": 1, "tag": "Bearer JWT" },
+    { "id": "catalog", "type": "database", "label": "Regiones · Comunas", "sublabel": "CUT codes", "stage": 2, "row": 0, "tag": "RLS" },
+    { "id": "perfil", "type": "database", "label": "Perfil", "sublabel": "provider profile", "stage": 2, "row": 2, "tag": "Codigo_Comuna" }
+  ],
+  "flows": [
+    { "id": "load-catalog", "from": "select", "to": "locations", "label": "GET catalog", "classification": "public read", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "read-catalog", "from": "locations", "to": "catalog", "label": "read", "classification": "read", "variant": "default", "route": "straight", "labelDy": -28 },
+    { "id": "submit-account", "from": "form", "to": "provision", "label": "POST commune_code", "classification": "provider data", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "validate-commune", "from": "provision", "to": "catalog", "label": "SELECT Comunas.Codigo", "classification": "catalog key", "variant": "security" },
+    { "id": "write-profile", "from": "provision", "to": "perfil", "label": "Codigo_Comuna", "classification": "write", "variant": "emphasis" },
+    { "id": "fk-commune", "from": "perfil", "to": "catalog", "label": "FK → Comunas.Codigo", "classification": "constraint", "variant": "dashed", "labelDy": -10 }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Catalog source",
+      "items": [
+        "Region and commune choices come from GET /api/locations, not hardcoded lists (location_routes.py:25)",
+        "Keys are official CUT codes; communes live in Comunas with a region FK (models.py:43-70)",
+        "The catalog endpoint is public and sets Cache-Control max-age=3600 (location_routes.py:15)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Server-side validation",
+      "items": [
+        "commune_code is required for non-client roles in the UI (auth-panel.tsx:393) and in the schema (account_schemas.py:80-81)",
+        "The backend checks the code against Comunas and returns a Spanish 422 on loc commune_code (account_routes.py:54-66)",
+        "The browser never writes profiles directly; provisioning goes through FastAPI"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Stored reference",
+      "items": [
+        "Perfil.Codigo_Comuna is a nullable FK to Comunas with ondelete RESTRICT (models.py:152)",
+        "Legacy free-text Ubicacion stays for display and backward compatibility (migration 20261010_0002)",
+        "Conductor carries the same Codigo_Comuna reference for independent drivers (models.py:236)"
+      ]
+    }
+  ]
+}
