@@ -182,6 +182,24 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - [x] T11 Assignment form with the same-day warning dialog; Iniciar / Finalizar (with photo) actions.
 - [x] T12 Customer: delivery photo, deadline countdown, "Todo conforme", "Reclamar".
 
+### F — Review follow-up fixes (added 2026-10-11 at the user's request; route: delegated direct, one Haiku worker in a Herdr pane; writer trigger: 2+ non-trivial files)
+
+Excluded (user decisions or operational): `Monto_Neto` = gross, the cron `APP_ENV`, `backend/.env.example`, the live `Servicio.Estado` check, a proxy body limit, and owner-vs-employed precedence (documented in API notes).
+
+Backend (one commit):
+- [ ] F1 Consent after release: reject consent with 409 when a `Desembolso` exists for the service; `canConsent` is false then.
+- [ ] F2 `viewerAssigned: bool` in `ServiceDetail` (true when the viewer has a `Servicio_Asignacion` row on the service).
+- [ ] F3 `currency` accepts any ISO currency string instead of `Literal["CLP"]`.
+- [ ] F4 New migration `20261011_0004`: `fk_service_started_by` becomes `ON DELETE SET NULL` (NOT VALID then VALIDATE); model updated.
+- [ ] F5 Same-day check serialized: lock the requested drivers' `Conductor` rows `FOR UPDATE` in id order before the conflict query.
+- [ ] F6 Completion: no upload while holding the service row lock; add `delete` to `EvidenceStorage` and remove the object when the status re-check or the commit fails; storage resolved after the visibility/assignment checks (403/404 before 503).
+- [ ] F7 Tests: 503 not-configured branch; CLI production refusal asserts the refusal message; migration ordering guards tied to their own statements (0003 status CHECK, started-by FK); customer detail assignments; provider list status filter with employed-driver visibility.
+
+Frontend (one commit):
+- [ ] F8 Role lookup failure shows an error with retry instead of the customer view; the role query is cleared on sign-out.
+- [ ] F9 Use `viewerAssigned` to show Iniciar/Finalizar only to the right viewers; success notice after saving assignments.
+- [ ] F10 Claim window: no "Reclamar" before the client clock is known; a missing deadline is not shown as "Plazo vencido"; double-submit guard with a ref for consent/claim (and the provider actions).
+
 ## Checks
 
 - Backend: `uv run pytest`, `uv lock --check`. Frontend: `npm run lint`, `npm run build`. Playwright is not used for verification.
