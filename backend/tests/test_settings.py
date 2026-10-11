@@ -21,6 +21,22 @@ def test_service_evidence_settings_have_safe_defaults() -> None:
     assert settings.service_claim_window_hours == 24
 
 
+def test_payout_commission_defaults_to_ten_percent() -> None:
+    assert Settings(_env_file=None).payout_commission_percent == 10
+
+
+def test_payout_commission_accepts_zero_and_values_below_one_hundred() -> None:
+    assert Settings(_env_file=None, payout_commission_percent=0).payout_commission_percent == 0
+    assert Settings(_env_file=None, payout_commission_percent=99).payout_commission_percent == 99
+
+
+def test_payout_commission_rejects_one_hundred_and_negative_values() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, payout_commission_percent=100)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, payout_commission_percent=-1)
+
+
 def test_service_evidence_settings_reject_non_positive_values() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, service_evidence_max_bytes=0)

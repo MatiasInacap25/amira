@@ -1,12 +1,14 @@
-"""Automatic payout release for completed services, the simulated payout adapter, the CLI and the Render cron.
+"""Automatic payout release for completed services, the simulated payout adapter, the CLI and the Render blueprint.
 
 A completed service is released when the customer consented or the claim window closed, and it has no open claim
 and no payout yet. Releasing needs an approved payment and an enabled payout account on the provider profile.
 Running the release twice creates no second payout, and one failing provider call does not block other services.
+The platform keeps a commission of ``payout_commission_percent`` of the gross payment; the provider receives the net.
 """
 
 import logging
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -47,9 +49,9 @@ def _desembolsos(db: Session, service: Servicio) -> list[Desembolso]:
     return db.execute(select(Desembolso).where(Desembolso.service_id == service.id)).scalars().all()
 
 
-def _funded(db: Session, fleet: Fleet, service: Servicio) -> None:
+def _funded(db: Session, fleet: Fleet, service: Servicio, amount: Decimal = Decimal("150000")) -> None:
     """Give a seeded service what a release needs: an approved payment and an enabled account on its profile."""
-    add_approved_payment(db, service)
+    add_approved_payment(db, service, amount)
     has_account = db.execute(
         select(CuentaDesembolso.id).where(CuentaDesembolso.profile_id == service.profile_id)
     ).first()
@@ -67,12 +69,56 @@ def test_consented_service_is_released_before_the_deadline(db, fleet: Fleet):
     assert summary.released == 1
     released = _desembolsos(db, fleet.service_a)
     assert len(released) == 1
-    assert released[0].net_amount == 150000
+    assert released[0].net_amount == 135000
     assert released[0].currency == "CLP"
     assert released[0].beneficiary_profile_id == fleet.company.id
     assert released[0].provider_payout_id == f"po_service:{fleet.service_a.id}:payout"
-    assert provider.requests[0].amount == 150000
+    assert provider.requests[0].amount == 135000
     assert provider.requests[0].destination_account_id.startswith("acct_")
+
+
+def test_ten_percent_commission_is_withheld_and_the_provider_receives_the_net(db, fleet: Fleet):
+    complete(db, fleet.service_a, consent=True)
+    _funded(db, fleet, fleet.service_a, Decimal("25000"))
+    provider = RecordingPayoutProvider()
+
+    summary = release_due_payouts(db, utc_now(), provider, commission_percent=10)
+
+    assert summary.released == 1
+    assert _desembolsos(db, fleet.service_a)[0].net_amount == 22500
+    assert provider.requests[0].amount == 22500
+
+
+def test_commission_rounds_half_up_to_whole_pesos(db, fleet: Fleet):
+    # 10% of 12345 is 1234.5, which rounds up to 1235 (not banker's rounding, not a float artifact).
+    complete(db, fleet.service_a, consent=True)
+    _funded(db, fleet, fleet.service_a, Decimal("12345"))
+
+    release_due_payouts(db, utc_now(), RecordingPayoutProvider(), commission_percent=10)
+
+    assert _desembolsos(db, fleet.service_a)[0].net_amount == 11110
+
+
+def test_zero_percent_commission_releases_the_gross_amount(db, fleet: Fleet):
+    complete(db, fleet.service_a, consent=True)
+    _funded(db, fleet, fleet.service_a)
+    provider = RecordingPayoutProvider()
+
+    release_due_payouts(db, utc_now(), provider, commission_percent=0)
+
+    assert _desembolsos(db, fleet.service_a)[0].net_amount == 150000
+    assert provider.requests[0].amount == 150000
+
+
+def test_commission_defaults_to_the_payout_commission_setting(db, fleet: Fleet, monkeypatch):
+    monkeypatch.setenv("PAYOUT_COMMISSION_PERCENT", "20")
+    get_settings.cache_clear()
+    complete(db, fleet.service_a, consent=True)
+    _funded(db, fleet, fleet.service_a, Decimal("25000"))
+
+    release_due_payouts(db, utc_now(), RecordingPayoutProvider())
+
+    assert _desembolsos(db, fleet.service_a)[0].net_amount == 20000
 
 
 def test_service_past_its_deadline_is_released_without_consent(db, fleet: Fleet):
@@ -215,13 +261,13 @@ def test_release_command_refuses_production_and_exits_non_zero(monkeypatch, capl
     assert "Payout release cannot run: The simulated payout provider requires APP_ENV to be one of:" in caplog.text
 
 
-def test_release_command_is_wired_to_a_fifteen_minute_render_cron_with_the_web_env():
+def test_render_blueprint_has_no_payout_cron_until_a_real_adapter_exists():
     text = RENDER_YAML.read_text(encoding="utf-8")
     web_block, _, cron_block = text.partition("  - type: cron")
 
-    assert cron_block, "render.yaml has no cron job"
-    assert 'schedule: "*/15 * * * *"' in cron_block
-    assert "dockerCommand: python -m amira_api.release_payouts" in cron_block
-    assert "name: amira-api-dev" in web_block
-    for key in ("APP_ENV", "DATABASE_URL", "SUPABASE_JWT_ISSUER", "COMPANY_DRIVER_TYPE_ID"):
-        assert key in cron_block
+    assert cron_block == "", "render.yaml must not deploy the payout cron without a real payout adapter"
+    assert "amira-release-payouts" not in text
+    assert "release_payouts" not in text
+    assert web_block.startswith("services:\n  - type: web\n    name: amira-api-dev\n")
+    assert web_block.endswith("      - key: COMPANY_DRIVER_TYPE_ID\n        sync: false\n")
+    assert "dockerCommand" not in text

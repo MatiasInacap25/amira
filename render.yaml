@@ -27,28 +27,3 @@ services:
         sync: false
       - key: COMPANY_DRIVER_TYPE_ID
         sync: false
-  - type: cron
-    name: amira-release-payouts-dev
-    runtime: docker
-    rootDir: backend
-    dockerfilePath: Dockerfile
-    dockerContext: .
-    schedule: "*/15 * * * *"
-    dockerCommand: python -m amira_api.release_payouts
-    envVars:
-      - key: APP_NAME
-        value: Amira API
-      - key: APP_ENV
-        value: production
-      - key: CORS_ORIGINS
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: SUPABASE_JWT_ISSUER
-        sync: false
-      - key: SUPABASE_JWT_AUDIENCE
-        value: authenticated
-      - key: INDEPENDENT_DRIVER_TYPE_ID
-        sync: false
-      - key: COMPANY_DRIVER_TYPE_ID
-        sync: false

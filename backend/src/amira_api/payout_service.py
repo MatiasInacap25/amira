@@ -5,6 +5,9 @@ claim window closed. Each due service is released in its own transaction: the ro
 concurrent run skips it, and the due conditions are checked again under that lock. A release needs an approved payment
 for the service and an enabled payout account on the provider profile.
 
+The platform keeps a commission of ``payout_commission_percent`` of the gross payment, rounded half up to whole CLP.
+The provider receives the net amount, and ``Desembolso.Monto_Neto`` stores that same net amount.
+
 Releasing is idempotent: one payout row per service, and the provider receives a stable idempotency key per service,
 so a retry after a lost commit returns the same provider payout instead of paying twice.
 """
@@ -12,6 +15,7 @@ so a retry after a lost commit returns the same provider payout instead of payin
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import exists, or_, select
@@ -21,6 +25,7 @@ from amira_api.models import CuentaDesembolso, Desembolso, Pago, Servicio
 from amira_api.payment_service import APPROVED
 from amira_api.payout_provider import PayoutProvider, PayoutRequest
 from amira_api.service_views import open_claim_exists
+from amira_api.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +65,14 @@ def _due_service_ids(session: Session, now: datetime) -> list[UUID]:
     )
 
 
-def _release_one(session: Session, provider: PayoutProvider, service_id: UUID, now: datetime) -> str:
+def commission_for(gross: Decimal, percent: int) -> Decimal:
+    """Commission in whole CLP: ``gross * percent / 100`` rounded half up (10% of 12345 is 1235)."""
+    return (gross * percent / Decimal(100)).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+
+
+def _release_one(
+    session: Session, provider: PayoutProvider, service_id: UUID, now: datetime, commission_percent: int
+) -> str:
     """Release one service inside the caller's transaction. Returns the outcome name for the summary."""
     service = session.execute(
         select(Servicio)
@@ -88,11 +100,13 @@ def _release_one(session: Session, provider: PayoutProvider, service_id: UUID, n
     if payment is None:
         return "missing_payment"
 
+    commission = commission_for(payment.amount, commission_percent)
+    net_amount = payment.amount - commission
     idempotency_key = f"service:{service.id}:payout"
     result = provider.create_payout(
         PayoutRequest(
             idempotency_key=idempotency_key,
-            amount=payment.amount,
+            amount=net_amount,
             currency=CURRENCY,
             destination_account_id=account.provider_account_id,
         )
@@ -107,7 +121,7 @@ def _release_one(session: Session, provider: PayoutProvider, service_id: UUID, n
             provider=provider.name,
             provider_payout_id=result.provider_payout_id,
             idempotency_key=idempotency_key,
-            net_amount=payment.amount,
+            net_amount=net_amount,
             currency=CURRENCY,
             status=RELEASED,
             requested_at=now,
@@ -117,14 +131,20 @@ def _release_one(session: Session, provider: PayoutProvider, service_id: UUID, n
     return RELEASED
 
 
-def release_due_payouts(session: Session, now: datetime, provider: PayoutProvider) -> PayoutSummary:
-    """Release every due service. A failing service is rolled back and counted; the others still run."""
+def release_due_payouts(
+    session: Session, now: datetime, provider: PayoutProvider, *, commission_percent: int | None = None
+) -> PayoutSummary:
+    """Release every due service. A failing service is rolled back and counted; the others still run.
+
+    ``commission_percent`` defaults to the ``PAYOUT_COMMISSION_PERCENT`` setting when omitted.
+    """
+    percent = get_settings().payout_commission_percent if commission_percent is None else commission_percent
     summary = PayoutSummary()
     service_ids = _due_service_ids(session, now)
     summary.due = len(service_ids)
     for service_id in service_ids:
         try:
-            outcome = _release_one(session, provider, service_id, now)
+            outcome = _release_one(session, provider, service_id, now, percent)
             session.commit()
         except Exception:
             session.rollback()

@@ -68,9 +68,49 @@ Optional settings and defaults: `SERVICE_EVIDENCE_MAX_BYTES` (8 MiB), `SERVICE_E
 
 A customer can act on a completed service once: `POST /api/customer/services/{serviceId}/claims` with `{reason}` (trimmed, 1 to 1000 characters) opens a claim and moves the service to `disputed`; `POST /api/customer/services/{serviceId}/consent` (no body) records that the customer is satisfied. Both lock the service row. A claim is refused after the claim window (`SERVICE_CLAIM_WINDOW_HOURS` from completion) and after consent; consent is refused while a claim is open. Claim resolution and refunds are out of scope.
 
-Payouts are released by `python -m amira_api.release_payouts`, which runs every 15 minutes as the Render cron job `amira-release-payouts-dev` in `render.yaml`. A completed service is released when the customer consented or its claim window has closed, it has no open claim, and it has no payout yet. The release needs an approved payment and an enabled `Cuenta_Desembolso` on the provider profile; services without one are counted as `missing_account` or `missing_payment` and stay due. Each service is released in its own transaction, the job is idempotent, and a provider failure is logged without stopping the other services. The command exits 1 only when the job cannot run (for example the adapter is refused for this `APP_ENV`, or the database is not configured).
+Payouts are released by `python -m amira_api.release_payouts`. No scheduled job is deployed: `render.yaml` defines only the web service. The only payout adapter is the simulated one (`simulated_payout_provider.py`), which never moves money and runs only when `APP_ENV` is set explicitly to `development`, `local` or `test`. Scheduling the job in production is therefore deferred until a real adapter exists behind the `PayoutProvider` port.
 
-The only payout adapter is the simulated one (`simulated_payout_provider.py`). It runs only when `APP_ENV` is set explicitly to `development`, `local` or `test`, so the cron job fails closed in production until a real adapter is added behind the `PayoutProvider` port. No new environment variables are required.
+Until then, run the release by hand from `backend/` against a development database:
+
+```bash
+APP_ENV=development DATABASE_URL=<development database URL> uv run python -m amira_api.release_payouts
+```
+
+A completed service is released when the customer consented or its claim window has closed, it has no open claim, and it has no payout yet. The release needs an approved payment and an enabled `Cuenta_Desembolso` on the provider profile; services without one are counted as `missing_account` or `missing_payment` and stay due. Each service is released in its own transaction, the job is idempotent, and a provider failure is logged without stopping the other services. The command exits 1 only when the job cannot run (for example the adapter is refused for this `APP_ENV`, or the database is not configured).
+
+The platform keeps a commission on each payout. `PAYOUT_COMMISSION_PERCENT` (default `10`, an integer from `0` to `99`) sets it as a percent of the gross approved payment. The commission is `gross * percent / 100`, rounded half up to whole CLP, and the provider receives `gross - commission`. `Desembolso.Monto_Neto` stores that net amount; the gross stays in `Pago`, and no commission column exists.
+
+When a real payout adapter is added, re-add the Render cron job to `render.yaml` under `services:`, after the web service. This is the block removed from the blueprint:
+
+```yaml
+  - type: cron
+    name: amira-release-payouts-dev
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    schedule: "*/15 * * * *"
+    dockerCommand: python -m amira_api.release_payouts
+    envVars:
+      - key: APP_NAME
+        value: Amira API
+      - key: APP_ENV
+        value: production
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: INDEPENDENT_DRIVER_TYPE_ID
+        sync: false
+      - key: COMPANY_DRIVER_TYPE_ID
+        sync: false
+```
+
+The block still sets `APP_ENV=production`, which the simulated adapter refuses. Replace the cron with the real adapter's configuration before deploying it. Add `PAYOUT_COMMISSION_PERCENT` to its `envVars` only if the commission differs from the default.
 
 ## Checks
 
