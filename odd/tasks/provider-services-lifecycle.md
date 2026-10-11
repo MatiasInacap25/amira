@@ -127,9 +127,9 @@ New settings (read from the backend environment; setup in `backend/README.md`, "
 - [x] T5 `PUT /api/provider/services/{id}/assignments` (owner only, status `confirmed`) replaces all pairs. It validates that drivers belong to the profile (or are the independent owner) and vehicles belong to the profile, and applies the same-day 409 with `confirmSameDayConflicts`.
 - [x] T6 `POST /api/provider/services/{id}/start` (assigned driver or owner; needs ≥ 1 assignment; `FOR UPDATE` and re-check the status).
 
-### S3 — Backend: completion with delivery photo
+### S3 — Backend: completion with delivery photo (route: delegated direct, Haiku worker in a Herdr pane; writer trigger: 2+ non-trivial files)
 
-- [ ] T7 `POST /api/provider/services/{id}/complete` multipart (assigned driver; `in_progress`; JPEG/PNG/WebP, size cap). It uploads to a private Supabase Storage bucket and sets `delivery_evidence_key`, `completed_at`, `completion_notified_at` and `payout_deadline_at`. It also adds a signed-URL endpoint for the customer and the provider.
+- [x] T7 `POST /api/provider/services/{id}/complete` multipart (assigned driver; `in_progress`; JPEG/PNG/WebP, size cap). It uploads to a private Supabase Storage bucket and sets `delivery_evidence_key`, `completed_at`, `completion_notified_at` and `payout_deadline_at`. It also adds a signed-URL endpoint for the customer and the provider.
 
 ### S4 — Backend: claims, consent and payout release
 
@@ -154,6 +154,8 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - 2026-10-11: S1 done (route: delegated direct, writer trigger: 3+ non-trivial files). Migration `20261011_0003_service_assignments` adds `Servicio_Asignacion` (RLS, revoked from `anon`/`authenticated`, indexes on driver and vehicle), `Servicio.ID_Usuario_Inicio` (nullable FK, for S2) and `ck_service_status_allowed` (NOT VALID then VALIDATE). Shared query/shaping in `service_views.py`; provider routes in `provider_service_routes.py`; customer detail in `customer_routes.py`, and the customer list now also returns `status`. RED: new route tests failed at import (`ServicioAsignacion` missing), migration tests failed (file missing), customer list test failed (no `status`). GREEN: `uv run pytest` 428 passed; `uv lock --check` passed. Commit `441a4ca`. Native review (reliability lens): approved and acknowledged (lineage `review-7b7dfe5d20a480d3`). Parent spot check: `uv run pytest` 428 passed.
 - 2026-10-11: T10 done in parallel (route: delegated direct in an isolated worktree, Haiku worker), cherry-picked as `ab5a431`. Role comes from `GET /api/account/me` (`isProviderRole`); the menu entry is now "Mis servicios". RED exception: no frontend unit runner, Playwright not used. Parent check: `npm run lint` and `npm run build` passed. Native review (reliability lens): approved and acknowledged (lineage `review-c06172a440bbfa43`). Next: S2 (launch the worker in a Herdr pane, with Haiku).
 - 2026-10-11: S2 (T5, T6) done by `worker-1` (Haiku, Herdr pane), commit `f4c15fb`. RED: 19 of 22 new tests failed before implementation (routes missing). GREEN: `uv run pytest` 450 passed; `uv lock --check` passed. Parent spot check: `uv run pytest` 450 passed. The API contract (S2) section was added. Follow-ups: `R3-viewer-query-multiple-rows` cannot occur (`uq_conductor_user` and the unique `Perfil.ID_user` / `Usuario.ID_Auth_Supabase` limit the join to one row), but the lookup is now ordered and limited to one row anyway. `R3-started-by-fk-validate` was not reproducible (migration 0003 line 62 already validates `fk_service_started_by`), so no 0004 migration was added; a guard test was added instead. Native review (assess: medium, `slice_budget_reached`; reliability lens) granted, approved and acknowledged (lineage `review-ed85fcd06adaf678`). Next: S3 (T7).
+- 2026-10-11: branch review (base `1e72235`..`1f273a8`, requested by the stop hook, granted): approved and acknowledged (lineage `review-f906f2bf9346b57c`).
+- 2026-10-11: S3 (T7) done by `worker-1` (Haiku, Herdr pane), commit `1ab9984`. RED: collection failed with `ModuleNotFoundError: amira_api.evidence_storage`; settings tests failed on missing `supabase_url`. GREEN: `uv run pytest` 483 passed; `uv lock --check` passed. Parent spot check: `uv run pytest` 483 passed. The API contract (S3) section was added. Gap: `backend/.env.example` was not updated (the worker's permissions denied access); the six new variables are documented in `backend/README.md` and the S3 contract. Native review (assess: medium, `slice_budget_reached`; reliability lens) granted, approved and acknowledged (lineage `review-08a95a100032fcbd`). Next: S4 (T8, T9) and T11 in parallel.
 
 ### Review follow-ups (non-blocking)
 
@@ -166,6 +168,12 @@ Skills: `ui-ux-pro-max`, `impeccable`, `vercel-react-best-practices`, `boneyard`
 - Branch review (lineage `review-99ed10dbd12a7060`, approved): `R3-viewer-query-multiple-rows` (`provider_service_routes.py:41-47`): the viewer lookup may return several rows. `R3-started-by-fk-validate` (migration `0003`, lines 49-51): the `fk_service_started_by` FK is not validated. Fix both in S2. (Resolved in S2, see Progress.)
 - S2 `R3-001` (`provider_service_routes.py:149-167`, WARNING): the same-day conflict check is not serialized across services; two concurrent assignments of one driver to different services on the same day can both pass. Double booking is allowed by design, so only the warning is skipped.
 - S2 `R3-002` (`test_service_started_by_fk_migration.py:22-23`, SUGGESTION): the guard does not tie `NOT VALID` to the `fk_service_started_by` statement.
+- Branch review `R3-002` (`provider_service_schemas.py:23`): `currency` is `Literal["CLP"]`; a non-CLP row makes the whole provider list or detail fail.
+- Branch review `R3-005` (`test_service_assignment_migration.py:68`): the ordering guard matches the started-by FK's `NOT VALID`, not the status CHECK's.
+- S3 `R3-001` (`provider_service_routes.py:344`): a commit failure after a successful upload leaves an orphaned photo; the storage port has no delete.
+- S3 `R3-002` (`provider_service_routes.py:327`): the upload runs while the service row lock is held (up to the 10 s httpx timeout).
+- S3 `R3-003` (`evidence_storage.py:61-62`): the 503 "not configured" branch is untested.
+- S3 worker notes: Starlette spools the multipart part to disk before the size cap runs (add a proxy body limit); 503 precedes 403/404 when storage is not configured; add the new variables to `backend/.env.example`.
 
 ### API notes (S1)
 
