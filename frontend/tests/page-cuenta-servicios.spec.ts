@@ -256,7 +256,7 @@ test("a 409 on rating refreshes the list to the stored rating", async ({ page })
 });
 
 // The 409 refetch returns the rated service, which unmounts RatingForm and its submit error with it.
-test.fixme("a 409 on rating shows the already-rated message", async ({ page }) => {
+test("a 409 on rating shows the already-rated message", async ({ page }) => {
   let listRequests = 0;
   await mockCustomerServices(page, async (_url, route) => {
     listRequests += 1;
