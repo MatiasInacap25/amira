@@ -212,10 +212,10 @@ test("each invitation shows its email, status and expiry, and only pending ones 
   const expires = new Date(invitations[0].expires_at).toLocaleDateString("es-CL");
 
   await expect(pendingRow.locator("strong")).toHaveText("pendiente@example.test");
-  await expect(pendingRow).toContainText(`· pending · vence ${expires}`);
+  await expect(pendingRow).toContainText(`· Pendiente · vence ${expires}`);
   await expect(pendingRow.getByRole("button", { name: "Reenviar" })).toBeVisible();
   await expect(pendingRow.getByRole("button", { name: "Revocar" })).toBeVisible();
-  await expect(revokedRow).toContainText("· revoked ·");
+  await expect(revokedRow).toContainText("· Revocada ·");
   await expect(revokedRow.getByRole("button", { name: "Reenviar" })).toHaveCount(0);
   await expect(revokedRow.getByRole("button", { name: "Revocar" })).toHaveCount(0);
 });
@@ -355,7 +355,7 @@ test("revoking a pending invitation sends a DELETE, shows the notice and refresh
   await row.getByRole("button", { name: "Revocar" }).click();
 
   await expect(panel.getByRole("status")).toHaveText("Invitación revocada.");
-  await expect(row).toContainText("· revoked ·");
+  await expect(row).toContainText("· Revocada ·");
   await expect(row.getByRole("button", { name: "Revocar" })).toHaveCount(0);
   expect(requests.filter((request) => request.method === "DELETE").map((request) => request.path)).toEqual(["/api/company/profiles/me/driver-invitations/pending-1"]);
 });
@@ -398,7 +398,7 @@ test("a failed revoke shows a safe error and leaves the invitation pending", asy
   await row.getByRole("button", { name: "Revocar" }).click();
 
   await expect(panel.getByRole("alert")).toHaveText("No pudimos actualizar esta invitación.");
-  await expect(row).toContainText("· pending ·");
+  await expect(row).toContainText("· Pendiente ·");
   await expect(row.getByRole("button", { name: "Revocar" })).toBeEnabled();
 });
 
@@ -413,8 +413,27 @@ test("account without company access sees the invitation list error", async ({ p
   await expect(panel.getByRole("alert")).toHaveText("No pudimos cargar las invitaciones.");
 });
 
+test("invitation statuses are shown in Spanish, and unknown values fall back to the raw value", async ({ page }) => {
+  await signInToInvitations(page);
+  await mockInvitationsApi(page, serveInvitations([
+    invitation({ id: "s-pending", email: "p@example.test", status: "pending" }),
+    invitation({ id: "s-revoked", email: "r@example.test", status: "revoked" }),
+    invitation({ id: "s-expired", email: "e@example.test", status: "expired" }),
+    invitation({ id: "s-accepted", email: "a@example.test", status: "accepted" }),
+    invitation({ id: "s-unknown", email: "u@example.test", status: "paused" as Invitation["status"] }),
+  ]));
+  await page.goto("/cuenta/invitaciones");
+
+  const panel = page.getByRole("region", { name: "Invitar conductores" });
+  await expect(panel.getByRole("listitem").filter({ hasText: "p@example.test" })).toContainText("· Pendiente ·");
+  await expect(panel.getByRole("listitem").filter({ hasText: "r@example.test" })).toContainText("· Revocada ·");
+  await expect(panel.getByRole("listitem").filter({ hasText: "e@example.test" })).toContainText("· Expirada ·");
+  await expect(panel.getByRole("listitem").filter({ hasText: "a@example.test" })).toContainText("· Aceptada ·");
+  await expect(panel.getByRole("listitem").filter({ hasText: "u@example.test" })).toContainText("· paused ·");
+});
+
 // The list stays empty after a failed load, so the "no invitations" copy is shown next to the error.
-test.fixme("a failed invitation load does not claim there are no invitations", async ({ page }) => {
+test("a failed invitation load does not claim there are no invitations", async ({ page }) => {
   await signInToInvitations(page);
   await mockInvitationsApi(page, async (_request, route) => {
     await route.fulfill({ status: 403, json: { detail: "Forbidden" }, headers: corsHeaders });
@@ -438,7 +457,7 @@ test("company invitations page fits a phone-width viewport without horizontal pa
 });
 
 // An unbroken email wider than the phone viewport pushes the whole page sideways.
-test.fixme("a long invitation email does not force horizontal page scroll on a phone", async ({ page }) => {
+test("a long invitation email does not force horizontal page scroll on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await signInToInvitations(page);
   await mockInvitationsApi(page, serveInvitations([

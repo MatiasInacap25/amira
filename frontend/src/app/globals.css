@@ -812,6 +812,7 @@ h1, h2, h3, p { margin-top: 0; }
 .auth-step-actions > p { color: #5c7078; font-size: 13px; line-height: 1.65; }
 .auth-secondary-action { display: inline-flex; min-height: 43px; align-items: center; justify-content: center; padding: 0 14px; border: 1px solid #cbd8da; border-radius: 7px; background: #fff; color: #234c5e; font-size: 12px; font-weight: 700; cursor: pointer; }
 .auth-secondary-action:hover:not(:disabled) { background: #edf3f3; }
+.invitation-email { overflow-wrap: anywhere; }
 .auth-signout { width: 100%; margin-top: 11px; }
 .auth-switch { margin: 23px 0 0; color: #596f78; font-size: 12px; text-align: center; }
 .auth-switch a { color: #214f65; font-weight: 750; text-underline-offset: 3px; }
