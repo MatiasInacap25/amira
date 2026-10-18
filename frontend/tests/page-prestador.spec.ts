@@ -124,17 +124,16 @@ test("single rating shows singular review count and a summary without recent com
   await expect(ratings.getByText("No hay comentarios recientes.")).toBeVisible();
 });
 
-test("profile without ratings says so in the hero and in the ratings section", async ({ page }) => {
+test("profile without rating data does not claim there are no ratings", async ({ page }) => {
   await mockProfile(page, "profile-no-rating-data", { ratings: null });
   await page.goto("/prestadores/profile-no-rating-data");
 
-  await expect(page.locator(".provider-profile-rating-empty")).toHaveText("Aún no hay valoraciones");
-  await expect(page.locator("#valoraciones").getByText("Aún no hay valoraciones")).toBeVisible();
+  await expect(page.locator(".provider-profile-rating-empty")).toHaveCount(0);
+  await expect(page.locator("#valoraciones").getByText("Las valoraciones no están disponibles en este momento.")).toBeVisible();
+  await expect(page.locator("#valoraciones").getByText("Aún no hay valoraciones")).toHaveCount(0);
 });
 
-// FIXME(app): RatingLine (provider-profile-view.tsx) returns "Aún no hay valoraciones" whenever averageRating is null,
-// even though ratingCount is 3; the ratings section below the hero says "Promedio no disponible" for the same data.
-test.fixme("ratings without a computed average show a fallback label instead of a number", async ({ page }) => {
+test("ratings without a computed average show a fallback label instead of a number", async ({ page }) => {
   await mockProfile(page, "profile-no-average", {
     ratings: { averageRating: null, ratingCount: 3, recent: [] },
   });

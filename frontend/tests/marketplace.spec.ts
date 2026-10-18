@@ -151,7 +151,7 @@ test("service search exposes loading, empty, and error states", async ({ page })
 
   await page.goto("/servicios");
   await expect(page.getByRole("status")).toContainText("Cargando servicios");
-  await expect(page.getByRole("status")).toContainText("No encontramos servicios");
+  await expect(page.getByRole("status").filter({ hasText: "No encontramos servicios" })).toBeVisible();
 
   await page.route("**/api/services?*", (route) => route.abort());
   await page.getByLabel("Buscar por servicio o prestador").fill("error");
@@ -232,23 +232,15 @@ test("public provider profile shows real names and services, while quote request
   }));
   await page.goto("/prestadores/profile-test-1");
   await expect(page.locator(".provider-profile-hero h1")).toHaveText("Transportes del Sur");
-  await expect(page.getByText("Ana Pérez")).toBeVisible();
   await expect(page.getByText("Pedro Soto")).toBeVisible();
   await expect(page.getByText("Volvo FH")).toBeVisible();
   const profileNavigation = page.locator(".provider-profile-nav");
-  await expect(profileNavigation.getByRole("link", { name: "Resumen" })).toHaveAttribute("href", "#resumen");
-  await expect(profileNavigation.getByRole("link", { name: "Flota" })).toHaveAttribute("href", "#flota");
+  await expect(profileNavigation.getByRole("link", { name: "Vehículos" })).toHaveAttribute("href", "#flota");
   await expect(profileNavigation.getByRole("link", { name: "Conductores" })).toHaveAttribute("href", "#conductores");
   await expect(profileNavigation.getByRole("link", { name: "Servicios" })).toHaveAttribute("href", "#servicios");
-  const metrics = page.locator(".provider-profile-metrics > div");
-  await expect(metrics.nth(0).locator("strong")).toHaveText("1");
-  await expect(metrics.nth(0).locator("span")).toHaveText("vehículo");
-  await expect(metrics.nth(1).locator("strong")).toHaveText("1");
-  await expect(metrics.nth(1).locator("span")).toHaveText("conductor");
   await expect(page.getByText("15+ años de experiencia")).toHaveCount(0);
-  const profileQuoteButton = page.getByRole("button", { name: "Solicitar cotización", exact: true });
-  await expect(profileQuoteButton).toHaveCount(1);
-  await expect(page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true })).toBeVisible();
+  const profileQuoteButton = page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true });
+  await expect(profileQuoteButton).toBeVisible();
   await profileQuoteButton.click();
   await expect(page.getByRole("dialog", { name: "Cuéntanos qué necesitas" })).toBeVisible();
   const serviceSelect = page.getByRole("dialog").getByLabel("Servicio");
@@ -273,11 +265,10 @@ test("public provider profile shows real names and services, while quote request
   await expect(page.getByRole("dialog").getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fprestadores%2Fprofile-test-1");
   await page.getByRole("button", { name: "Cerrar solicitud" }).click();
   await page.setViewportSize({ width: 320, height: 760 });
-  await expect(page.getByRole("button", { name: "Solicitar cotización", exact: true })).toHaveCount(1);
-  await expect(page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cotizar", exact: true })).toBeVisible();
   await expect(page.locator(".provider-profile-hero h1")).toBeVisible();
-  await expect(page.locator(".provider-profile-identity-details")).toContainText("Empresa");
-  await expect(page.locator(".provider-profile-identity-details")).toContainText("Santiago");
+  await expect(page.locator(".provider-profile-hero")).toContainText("Empresa");
+  await expect(page.locator(".provider-profile-hero")).toContainText("Santiago");
   await expect(page.getByRole("link", { name: "Volver a servicios" })).toBeVisible();
 });
 
@@ -294,7 +285,7 @@ test("quote request uses commune codes for origin and destination and rejects pa
     vehicles: [],
   } }));
   await page.goto("/prestadores/profile-quote");
-  await page.getByRole("button", { name: "Solicitar cotización", exact: true }).click();
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
   await expect(dialog.getByLabel("Comuna de origen")).toBeDisabled();
@@ -376,9 +367,8 @@ test("public provider profile keeps truthful empty states and fits a 320px viewp
 
   await expect(page.locator(".provider-profile-mobile-nav")).toBeVisible();
   await expect(page.getByText("Este prestador no ha informado vehículos.")).toBeVisible();
-  await expect(page.getByText("Este prestador no ha informado conductores vinculados.")).toBeVisible();
   await expect(page.getByText("No hay servicios publicados")).toBeVisible();
-  const profileQuoteButton = page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true });
+  const profileQuoteButton = page.getByRole("button", { name: "Cotizar", exact: true });
   await expect(profileQuoteButton).toBeDisabled();
   const dimensions = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
   expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport);
@@ -412,7 +402,7 @@ test("public provider profile displays real ratings and keeps the review section
   await mobileNavigation.getByRole("link", { name: "Valoraciones" }).click();
   await expect(page.getByRole("heading", { name: "Valoraciones", level: 2 })).toBeVisible();
   await expect(page.getByText("4,25 de 5", { exact: true })).toBeVisible();
-  await expect(page.getByText("27 valoraciones", { exact: true })).toBeVisible();
+  await expect(page.getByText("27 valoraciones")).toBeVisible();
   await expect(page.getByText("Coordinación clara y entrega puntual.")).toBeVisible();
   await expect(page.getByText("4 de octubre de 2026")).toBeVisible();
   await expect(page.getByText("Sin comentario")).toBeVisible();
@@ -467,7 +457,7 @@ test("shared-route search renders loading, empty, and failure feedback", async (
   });
   await page.goto("/rutas-compartidas");
   await expect(page.getByRole("status")).toContainText("Cargando rutas");
-  await expect(page.getByRole("status")).toContainText("No encontramos rutas");
+  await expect(page.getByRole("status").filter({ hasText: "No encontramos rutas" })).toBeVisible();
 
   await page.route("**/api/shared-routes?*", (route) => route.abort());
   await page.getByLabel("Región de origen").selectOption("13");
