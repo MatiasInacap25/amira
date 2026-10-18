@@ -173,7 +173,7 @@ test("a failed status read offers a retry that shows the result once the read su
   await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "Pago recibido" })).toBeVisible();
 });
 
-test("a visitor without a session never requests the payment and stays on the loading state", async ({ page }) => {
+test("a visitor without a session never requests the payment and is asked to sign in", async ({ page }) => {
   let reads = 0;
   await page.route(statusPath, async (route) => {
     reads += 1;
@@ -183,9 +183,14 @@ test("a visitor without a session never requests the payment and stays on the lo
   await page.goto(resultPath);
 
   const main = page.getByRole("main");
-  await expect(main.getByRole("status").getByRole("heading", { level: 1, name: "Consultando tu pago…" })).toBeVisible();
+  const alert = main.getByRole("alert");
+  await expect(alert).toHaveText("Inicia sesión con tu correo confirmado para ver tu pago.");
+  await expect(main.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute(
+    "href",
+    `/login?next=${encodeURIComponent(resultPath)}`,
+  );
+  await expect(main.getByRole("heading", { level: 1, name: "Consultando tu pago…" })).toHaveCount(0);
   await page.waitForTimeout(1000);
-  await expect(main.getByRole("heading", { level: 1, name: "Consultando tu pago…" })).toBeVisible();
   expect(reads).toBe(0);
 });
 

@@ -27,6 +27,12 @@ export function isSignInRequired(cause: unknown): boolean {
   return cause instanceof ProviderRequestAccessError;
 }
 
+export function paymentAccessMessage(reason: ProviderAccessReason): string {
+  if (reason === "sign-in") return "Inicia sesión con tu correo confirmado para ver tu pago.";
+  if (reason === "aal2") return "Verifica tu teléfono por SMS para ver tu pago.";
+  return "Tu sesión expiró. Inicia sesión nuevamente para continuar.";
+}
+
 export function requestErrorMessage(cause: unknown): string {
   if (cause instanceof ProviderRequestAccessError) {
     if (cause.reason === "sign-in") return "Inicia sesión con tu correo confirmado para ver las solicitudes.";

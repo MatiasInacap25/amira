@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { SignInPrompt } from "@/components/marketplace/chat-error-state";
 import { useNavUserId } from "@/components/marketplace/site-navigation";
 import { ChatRequestError, chatHref } from "@/lib/chats";
 import { paymentResultState } from "@/lib/chat-quotations";
 import { getPaymentStatus } from "@/lib/marketplace-api";
-import { currentAccessToken } from "@/lib/provider-request-access";
+import { currentAccessToken, paymentAccessMessage } from "@/lib/provider-request-access";
 
 // While the provider confirms, the page re-reads the payment every few seconds, up to a fixed number of times.
 const PENDING_POLL_INTERVAL_MS = 3_000;
@@ -40,6 +41,11 @@ export function PaymentResultView({ paymentId, status }: Props) {
         <Link className="button button-secondary" href="/mensajes">Ver mis mensajes</Link>
       </article>
     );
+  }
+
+  const resultPath = `/pagos/resultado?${new URLSearchParams({ paymentId, ...(status ? { status } : {}) })}`;
+  if (!sessionPending && !userId) {
+    return <SignInPrompt message={paymentAccessMessage("sign-in")} nextPath={resultPath} />;
   }
 
   if (paymentQuery.isError) {

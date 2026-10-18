@@ -199,7 +199,7 @@ test("a failed decision shows the retry message and re-enables both buttons", as
   expect(new URL(page.url()).pathname).toBe("/pagos/simulado");
 });
 
-test("a visitor without a confirmed session sends no decision", async ({ page }) => {
+test("a visitor without a confirmed session sends no decision and is asked to sign in", async ({ page }) => {
   let completions = 0;
   await page.route(completionPath, async (route) => {
     completions += 1;
@@ -210,7 +210,12 @@ test("a visitor without a confirmed session sends no decision", async ({ page })
   const main = page.getByRole("main");
   await main.getByRole("button", { name: "Aprobar pago" }).click();
 
-  await expect(main.getByRole("alert")).toHaveText("No pudimos registrar tu decisión. Inténtalo nuevamente.");
+  const alert = main.getByRole("alert");
+  await expect(alert).toHaveText("Inicia sesión con tu correo confirmado para ver tu pago.");
+  await expect(main.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute(
+    "href",
+    `/login?next=${encodeURIComponent(checkoutPath)}`,
+  );
   expect(completions).toBe(0);
   expect(new URL(page.url()).pathname).toBe("/pagos/simulado");
 });
