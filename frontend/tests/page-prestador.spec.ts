@@ -156,8 +156,7 @@ test("unknown provider shows the error state with retry and renders no profile c
   await expect(page.locator(".provider-quote-bar")).toHaveCount(0);
 });
 
-// FIXME(app): for an id with a space and slash, the page sends "/api/providers/perfil%2520con%252F1" to the API instead of "/api/providers/perfil%20con%2F1" (observed; cause not isolated).
-test.fixme("profile id with reserved characters is sent to the API encoded as one path segment", async ({ page }) => {
+test("profile id with reserved characters is sent to the API encoded as one path segment", async ({ page }) => {
   let requestedPath = "";
   await page.route(/\/api\/providers\//, async (route) => {
     requestedPath = new URL(route.request().url()).pathname;
