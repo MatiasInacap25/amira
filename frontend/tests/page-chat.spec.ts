@@ -160,8 +160,7 @@ test("signed-in customer opens the thread with counterpart, route and messages o
   await expect(messages.nth(0).getByRole("time")).toHaveAttribute("datetime", "2026-10-10T12:00:00Z");
 });
 
-// App bug (confirmed): signed out, ChatThreadView renders an empty shell with no sign-in prompt; /mensajes shows one.
-test.fixme("signed-out visitor is asked to sign in instead of seeing an empty conversation", async ({ page }) => {
+test("signed-out visitor is asked to sign in instead of seeing an empty conversation", async ({ page }) => {
   const requests: string[] = [];
   await mockThread(page, async (route) => {
     requests.push(route.request().url());
