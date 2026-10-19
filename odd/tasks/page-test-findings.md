@@ -13,6 +13,8 @@ Delivery: ask-on-risk. Runner: Playwright (`npx playwright test <spec>` from `fr
 - S6: `/cuenta/invitaciones`: a failed load does not also show "No hay invitaciones todavía."; a long unbroken email does not force horizontal scroll at 390px; statuses show in Spanish. Assumption: Pendiente, Revocada, Expirada, Aceptada.
 - S7: On a 409 when rating a service, "Este servicio ya fue valorado." stays visible after the list refetch.
 - S8: Investigate the duplicate first-load request on `/servicios` and `/rutas-compartidas`. Report only; a fix becomes a new task.
+- S9: "crea tambien una pagina generica de 404". Any unknown route renders a generic 404 page with the site header and footer, in Spanish. Assumption: heading "Página no encontrada", a short explanation, and links to `/` and `/servicios`.
+- S10: The 4 failing tests in `tests/auth.spec.ts` (lines 403, 495, 524, 549), which also fail on main, are each classified as app regression (fix the app) or stale test (update the test), and the spec passes.
 
 ## Tasks
 
@@ -25,6 +27,8 @@ Delivery: ask-on-risk. Runner: Playwright (`npx playwright test <spec>` from `fr
 | T5 | S6 | delegated (herdr worker, Haiku) | done | `f1afcd5` |
 | T6 | S7 | delegated (herdr worker, Haiku) | done | `c22c16a` |
 | T7 | S8 | delegated (herdr worker, Haiku) | done (no fix) | |
+| T8 | S9 | delegated (herdr worker, Haiku) | done | `b53b7c0` |
+| T9 | S10 | delegated (herdr worker, Haiku) | done | see L13 |
 
 Route evidence: `HERDR_ENV=1`, the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
 
@@ -40,3 +44,6 @@ Route evidence: `HERDR_ENV=1`, the project CLAUDE.md makes the parent an orchest
 - L8 (2026-10-18): T6 done (`c22c16a`). The already-rated notice moved from RatingForm to the service row state. RED/GREEN observed. Parent re-ran page-cuenta-servicios + account-query-cache: 17 passed; lint 0.
 - L9 (2026-10-18): T7 done, no app change. Cause (a): React Strict Mode double mount in dev (default on in the App Router; next.config.ts does not set it). Dev fires every first-load request twice with identical timestamps; a production build (next start) fires each once. One query key per page, no state change on mount. Tree unchanged after the probe.
 - L10 (2026-10-18): Seam check on the branch: full Playwright 277 passed, 4 failed; unit 67 passed; lint 0. The 4 failures are in tests/auth.spec.ts (lines 403, 495, 524, 549) and fail identically on main (checked in a temporary worktree), so they are pre-existing and out of scope. First one waits for "Solicitar cotización", renamed "Cotizar" in b575860. Open follow-ups: those 4 tests; possible double-encoded ids in other dynamic routes; empty role=status region in marketplace-skeleton.tsx.
+- L11 (2026-10-18): "comitea los cambios al github, crea tambien una pagina generica de 404 y sigue con esos 4 test". Push failed: no GitHub credentials (gh not logged in); user must authenticate. Added S9/T8 and S10/T9.
+- L12 (2026-10-18): T8 done (`b53b7c0`). src/app/not-found.tsx with header/footer, "Página no encontrada", links to / and /servicios; HTTP 404 asserted. RED/GREEN observed. Parent re-ran page-not-found: 4 passed; lint 0; worker ran npm run build: 0.
+- L13 (2026-10-18): T9 done (`b4b6afe`). All 4 auth.spec failures were stale tests (b575860 renamed the quote button; 0af748d moved accept/reject to the detail page and made the nav link provider-only). Full suite on the branch: 285 passed, 0 failed; lint 0.
