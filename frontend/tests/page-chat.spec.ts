@@ -111,8 +111,14 @@ async function mockSmsVerifiedAuth(page: Page) {
 }
 
 // Signs in through the real login form and lands on the given conversation.
-async function signInToChat(page: Page, role: "customer" | "provider", chatId = "chat-1") {
+async function signInToChat(
+  page: Page,
+  role: "customer" | "provider",
+  chatId = "chat-1",
+  events: (route: Route) => Promise<void> = idleEventStream,
+) {
   await mockSmsVerifiedAuth(page);
+  await mockChatEvents(page, events);
   await page.route("**/api/account/me", async (route) =>
     route.fulfill({
       json: { user_id: "account-test-1", role, profile_id: role === "provider" ? "provider-1" : null },
@@ -131,6 +137,48 @@ async function signInToChat(page: Page, role: "customer" | "provider", chatId = 
 async function mockThread(page: Page, handler: (route: Route) => Promise<void>) {
   await page.route("**/api/chats/chat-1/messages*", handler);
 }
+
+// The real-time stream (GET /api/chats/events) answers with the handler.
+async function mockChatEvents(page: Page, handler: (route: Route) => Promise<void>) {
+  await page.route("**/api/chats/events", handler);
+}
+
+// A stream with no events: one keepalive comment, then the server closes it.
+async function idleEventStream(route: Route) {
+  await route.fulfill({ status: 200, contentType: "text/event-stream", body: ": keepalive\n\n" });
+}
+
+test("a message.created event refetches the open thread and shows the new message", async ({ page }) => {
+  let threadRequests = 0;
+  let eventSent = false;
+  const streamUrls: string[] = [];
+  const streamAuthorization: string[] = [];
+  const first = messageEntry("message-1", "Hola, ¿mudanza confirmada?", false, "Ana Pérez");
+  const second = messageEntry("message-2", "¿Llegas a las 10?", false, "Ana Pérez");
+
+  await mockThread(page, async (route) => {
+    threadRequests += 1;
+    await route.fulfill({ json: threadPage({ timeline: eventSent ? [first, second] : [first] }) });
+  });
+  await signInToChat(page, "customer", "chat-1", async (route) => {
+    streamUrls.push(route.request().url());
+    streamAuthorization.push(route.request().headers().authorization ?? "");
+    await expect.poll(() => threadRequests).toBeGreaterThanOrEqual(1);
+    eventSent = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: 'event: message.created\ndata: {"kind":"message.created","chatId":"chat-1","messageId":"message-2"}\n\n',
+    });
+  });
+
+  await expect(page.getByText("¿Llegas a las 10?")).toBeVisible();
+  await expect.poll(() => threadRequests).toBeGreaterThanOrEqual(2);
+  expect(new URL(streamUrls[0]).pathname).toMatch(/\/api\/chats\/events$/);
+  expect(new URL(streamUrls[0]).search).toBe("");
+  expect(streamUrls[0]).not.toContain("verified-aal2-token");
+  expect(streamAuthorization[0]).toBe(`Bearer ${accessToken("aal2", "verified-aal2-token")}`);
+});
 
 test("signed-in customer opens the thread with counterpart, route and messages oldest first", async ({ page }) => {
   await mockThread(page, async (route) =>
