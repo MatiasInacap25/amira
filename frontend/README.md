@@ -20,6 +20,17 @@ Registration collects name, email, phone, personal RUT, date of birth, password,
 
 Personal RUT, date of birth, and phone are private account data. They are persisted only by the authenticated backend after email confirmation and SMS AAL2; they are excluded from Supabase user metadata and public account responses. Didit identity verification is planned as a separate future registration step and is not part of this flow.
 
+### Development SMS MFA bypass
+
+For local or preview testing without an SMS provider, the frontend needs its own switch alongside the backend's `DEV_SKIP_SMS_MFA`:
+
+```text
+NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true
+NEXT_PUBLIC_APP_ENV=development
+```
+
+The bypass is active only when the flag is exactly `true` and `NEXT_PUBLIC_APP_ENV` (trimmed, case-insensitive) is `development`, `local`, or `test`. Unset, empty, `production`, `staging`, `preview`, or any typo leaves it off. `NODE_ENV` does not decide it, so a Vercel build (which always uses `NODE_ENV=production`) can enable it when both variables are set. Both are inlined at build time: change them in the Vercel project settings and redeploy. The backend guard is what actually rejects sessions without SMS, so the frontend switch alone does not weaken authentication. Never enable it in a real production deployment.
+
 ## Development
 
 From this directory, run `npm run dev` and open [http://localhost:3000](http://localhost:3000). Verification commands are `npm run lint`, `npm run build`, and `npm run test:e2e`. E2E starts an isolated temporary app copy with `.env*` files excluded, explicit test-only loopback Supabase/API values, and a local fake Supabase endpoint; it never reuses an existing dev server or contacts a hosted project.

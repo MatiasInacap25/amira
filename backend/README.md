@@ -27,7 +27,7 @@ Set `CORS_ORIGINS` to a comma-separated list of exact browser origins, including
 
 The bypass is fail-closed: it is active only when `DEV_SKIP_SMS_MFA=true` and `APP_ENV` (trimmed, case-insensitive) is one of `development`, `local`, or `test`. If `DEV_SKIP_SMS_MFA=true` and `APP_ENV` is unset or has any other value (`production`, `prod`, `staging`, `preview`, a typo, or empty), the API refuses to start with an error naming the allowed values. The error never echoes other settings. The API logs a warning at startup whenever the bypass is active. Never enable it in a deployed environment.
 
-The frontend also needs its own switch: set `NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true` in `frontend/.env.local` alongside `DEV_SKIP_SMS_MFA=true` here. The backend flag alone does not change what the browser asks for.
+The frontend also needs its own switch: set `NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true` and `NEXT_PUBLIC_APP_ENV=development` (or `local` or `test`) in the frontend environment alongside `DEV_SKIP_SMS_MFA=true` and `APP_ENV` here. The frontend variables are inlined at build time, so a Vercel redeploy is needed after changing them. The frontend does not depend on `NODE_ENV` for this switch. The backend flag alone does not change what the browser asks for, and the backend guard above is what actually rejects sessions without SMS.
 
 ## Public browse API
 
