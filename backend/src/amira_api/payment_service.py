@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from amira_api.models import Chat, Cotizacion, Pago, Servicio
 from amira_api.payment_provider import PaymentProvider
 from amira_api.quotation_service import PENDING, chat_is_settled, effective_status
+from amira_api.realtime import ChatEventKind, publish_chat_event
 
 APPROVED = "approved"
 REJECTED = "rejected"
@@ -142,11 +143,18 @@ def confirm_payment(
     payment.status = APPROVED
     quotation.status = "paid"
     quotation.accepted_at = now
+    superseded_ids = session.execute(
+        select(Cotizacion.id).where(
+            Cotizacion.chat_id == quotation.chat_id, Cotizacion.status == PENDING, Cotizacion.id != quotation.id
+        )
+    ).scalars().all()
     session.execute(
         update(Cotizacion)
         .where(Cotizacion.chat_id == quotation.chat_id, Cotizacion.status == PENDING, Cotizacion.id != quotation.id)
         .values(status="superseded")
     )
+    for superseded_id in superseded_ids:
+        publish_chat_event(session, chat_id=quotation.chat_id, kind=ChatEventKind.QUOTATION_CHANGED, ref_id=superseded_id)
     session.add(
         Servicio(
             id=uuid4(),
@@ -163,6 +171,7 @@ def confirm_payment(
             accepted_quotation_id=quotation.id,
         )
     )
+    publish_chat_event(session, chat_id=quotation.chat_id, kind=ChatEventKind.QUOTATION_CHANGED, ref_id=quotation.id)
     try:
         session.commit()
     except IntegrityError:

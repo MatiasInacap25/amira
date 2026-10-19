@@ -9,6 +9,7 @@ import { ChatErrorState } from "@/components/marketplace/chat-error-state";
 import { ChatQuotationCard } from "@/components/marketplace/chat-quotation-card";
 import { QuotationDialog } from "@/components/marketplace/quotation-dialog";
 import { CHAT_THREAD_LAYOUT, MarketplaceSkeleton } from "@/components/marketplace/marketplace-skeleton";
+import { useChatEvents } from "@/components/marketplace/use-chat-events";
 import { useNavUserId } from "@/components/marketplace/site-navigation";
 import {
   CHAT_MESSAGE_PAGE_SIZE,
@@ -20,15 +21,16 @@ import {
   nextMessagesBefore,
   orderTimelineOldestFirst,
 } from "@/lib/chats";
-import { CHAT_POLL_INTERVAL_MS } from "@/lib/chat-quotations";
+import { chatRefetchInterval } from "@/lib/chat-quotations";
 import { getChatMessages } from "@/lib/marketplace-api";
 import { currentAccessToken, ProviderRequestAccessError } from "@/lib/provider-request-access";
 
 const timeFormatter = new Intl.DateTimeFormat("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: "America/Santiago" });
 
-// Same view for customers and providers. Polls so both sides see new messages without a reload.
+// Same view for customers and providers. The chat stream pushes new messages; polling only runs while it is disconnected.
 export function ChatThreadView({ chatId }: { chatId: string }) {
   const { userId, pending: sessionPending } = useNavUserId();
+  const streamConnected = useChatEvents(userId);
   const queryClient = useQueryClient();
   const threadQuery = useInfiniteQuery({
     queryKey: chatThreadKey(userId ?? "", chatId),
@@ -37,7 +39,7 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
     getNextPageParam: (_lastPage, pages) => nextMessagesBefore(pages),
     enabled: Boolean(userId),
     retry: false,
-    refetchInterval: CHAT_POLL_INTERVAL_MS,
+    refetchInterval: chatRefetchInterval(streamConnected),
   });
 
   const pages = threadQuery.data?.pages ?? [];

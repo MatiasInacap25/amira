@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ChatErrorState } from "@/components/marketplace/chat-error-state";
 import { CHAT_LIST_LAYOUT, MarketplaceSkeleton } from "@/components/marketplace/marketplace-skeleton";
+import { useChatEvents } from "@/components/marketplace/use-chat-events";
 import { useNavUserId } from "@/components/marketplace/site-navigation";
+import { chatRefetchInterval } from "@/lib/chat-quotations";
 import {
   CHAT_LIST_PAGE_SIZE,
   chatHref,
@@ -22,6 +24,7 @@ import { currentAccessToken } from "@/lib/provider-request-access";
 // Same view for customers and providers: the counterpart is labelled by its kind.
 export function ChatListView() {
   const { userId, pending: sessionPending } = useNavUserId();
+  const streamConnected = useChatEvents(userId);
   const chatsQuery = useInfiniteQuery({
     queryKey: chatListKey(userId ?? ""),
     queryFn: async ({ pageParam }) => getChats(await currentAccessToken(), { limit: CHAT_LIST_PAGE_SIZE, offset: pageParam }),
@@ -29,6 +32,7 @@ export function ChatListView() {
     getNextPageParam: nextChatListOffset,
     enabled: Boolean(userId),
     retry: false,
+    refetchInterval: chatRefetchInterval(streamConnected),
   });
 
   const chats = chatsQuery.data?.pages.flatMap((page) => page.items) ?? [];

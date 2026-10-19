@@ -83,9 +83,10 @@ async function mockSmsVerifiedAuth(page: Page) {
   await page.route("**/api/locations", async (route) => route.fulfill({ json: locationsResponse }));
 }
 
-// Signs in through the real login form and lands on /mensajes.
-async function signInToMessages(page: Page) {
+// Signs in through the real login form and lands on /mensajes. The real-time stream answers with `events`.
+async function signInToMessages(page: Page, events: (route: Route) => Promise<void> = idleEventStream) {
   await mockSmsVerifiedAuth(page);
+  await page.route("**/api/chats/events", events);
   await page.route("**/api/account/me", async (route) =>
     route.fulfill({ json: { user_id: "account-test-1", role: "customer", profile_id: null } }),
   );
@@ -108,6 +109,42 @@ async function mockChats(page: Page, respond: (url: URL, route: Route) => Promis
   });
   return queries;
 }
+
+// A stream with no events: one keepalive comment, then the server closes it.
+async function idleEventStream(route: Route) {
+  await route.fulfill({ status: 200, contentType: "text/event-stream", body: ": keepalive\n\n" });
+}
+
+test("a message.created event refetches the chat list and shows the new last message", async ({ page }) => {
+  let listRequests = 0;
+  let eventSent = false;
+  const streamUrls: string[] = [];
+  const streamAuthorization: string[] = [];
+  await mockChats(page, async (_url, route) => {
+    listRequests += 1;
+    const preview = eventSent ? "Nuevo mensaje en vivo" : "Primer mensaje";
+    await route.fulfill({
+      json: chatPage([chat({ lastMessage: { content: preview, sentAt: new Date().toISOString(), fromMe: false } })]),
+    });
+  });
+  await signInToMessages(page, async (route) => {
+    streamUrls.push(route.request().url());
+    streamAuthorization.push(route.request().headers().authorization ?? "");
+    await expect.poll(() => listRequests).toBeGreaterThanOrEqual(1);
+    eventSent = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: 'event: message.created\ndata: {"kind":"message.created","chatId":"chat-1","messageId":"message-2"}\n\n',
+    });
+  });
+
+  await expect(page.getByText("Nuevo mensaje en vivo")).toBeVisible();
+  await expect.poll(() => listRequests).toBeGreaterThanOrEqual(2);
+  expect(new URL(streamUrls[0]).pathname).toMatch(/\/api\/chats\/events$/);
+  expect(new URL(streamUrls[0]).search).toBe("");
+  expect(streamAuthorization[0]).toMatch(/^Bearer eyJ/);
+});
 
 test("signed-out visitor sees a sign-in prompt and no chat list is requested", async ({ page }) => {
   const queries = await mockChats(page, async (_url, route) => route.fulfill({ json: chatPage([]) }));

@@ -112,6 +112,20 @@ When a real payout adapter is added, re-add the Render cron job to `render.yaml`
 
 The block still sets `APP_ENV=production`, which the simulated adapter refuses. Replace the cron with the real adapter's configuration before deploying it. Add `PAYOUT_COMMISSION_PERCENT` to its `envVars` only if the commission differs from the default.
 
+## Chat real-time events
+
+`GET /api/chats/events` is a per-user Server-Sent Events stream (`text/event-stream`). It needs the same Supabase JWT in the `Authorization` header as every other endpoint; the token is never read from the URL. Each event carries ids only: `message.created` with `{chatId, messageId}` and `quotation.changed` with `{chatId, quotationId}`. The frontend re-reads the affected data after an event. The stream sends `: keepalive` every 20 seconds, closes when the token's `exp` passes (the client reconnects with a fresh token), and each user may hold at most 5 open streams (the sixth gets 429).
+
+Writers announce changes with `pg_notify` inside their own transaction, so a rolled-back write sends nothing. A listener task started in the FastAPI lifespan runs `LISTEN` on its own connection and forwards each notification to the open streams of its recipients. It reconnects with capped exponential backoff and logs only the exception type.
+
+LISTEN needs a session connection: the Supabase transaction pooler does not deliver notifications. Set `REALTIME_DATABASE_URL` to a direct or session-mode connection string. When it is unset, the listener uses `DATABASE_URL`. When neither is set, the listener does not start, the API still boots, and the stream stays silent. Like `DATABASE_URL`, the URL is forced to TLS (`sslmode=require`).
+
+The listener proves delivery with a heartbeat. Every ~15 s it sends `pg_notify` on the `amira_chat_health` channel with a fresh random nonce, through the app engine (`DATABASE_URL`). It reports ready only when its own `LISTEN` connection receives a nonce it sent, and degraded when no matching heartbeat arrives within ~35 s or the connection drops. Without `DATABASE_URL` no heartbeat runs, so the listener stays degraded. Heartbeats are never forwarded to the event streams.
+
+The stream sends `event: ready` when the listener is live, and `event: ready` or `event: degraded` to open streams when that changes. A stream whose queue cannot take that state change is closed, so the client reconnects and receives the current state. The client polls every 10 s until it sees `ready`.
+
+A transaction pooler accepts `LISTEN` but never delivers notifications, so its heartbeat never returns and the listener shows as degraded. Clients then poll every 10 s instead of freezing. For live updates, `REALTIME_DATABASE_URL` should still be a session or direct connection.
+
 ## Checks
 
 ```powershell

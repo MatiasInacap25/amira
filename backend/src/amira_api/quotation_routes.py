@@ -14,6 +14,7 @@ from amira_api.clock import utc_now
 from amira_api.db import get_db_session
 from amira_api.models import Chat, Cotizacion, Pago
 from amira_api.quotation_schemas import Quotation, QuotationCreate
+from amira_api.realtime import ChatEventKind, publish_chat_event
 from amira_api.quotation_service import PENDING, chat_is_settled, effective_status, quotation_view
 
 router = APIRouter(prefix="/api", tags=["quotations"])
@@ -45,11 +46,16 @@ def create_quotation(
         raise HTTPException(status_code=409, detail=CHAT_SETTLED_DETAIL)
 
     now = utc_now()
+    superseded_ids = session.execute(
+        select(Cotizacion.id).where(Cotizacion.chat_id == chat_id, Cotizacion.status == PENDING)
+    ).scalars().all()
     session.execute(
         update(Cotizacion)
         .where(Cotizacion.chat_id == chat_id, Cotizacion.status == PENDING)
         .values(status="superseded")
     )
+    for superseded_id in superseded_ids:
+        publish_chat_event(session, chat_id=chat_id, kind=ChatEventKind.QUOTATION_CHANGED, ref_id=superseded_id)
     quotation = Cotizacion(
         id=uuid4(),
         chat_id=chat_id,
@@ -66,6 +72,7 @@ def create_quotation(
         is_exclusive=False,
     )
     session.add(quotation)
+    publish_chat_event(session, chat_id=chat_id, kind=ChatEventKind.QUOTATION_CHANGED, ref_id=quotation.id)
     session.commit()
     session.refresh(quotation)
     return quotation_view(quotation, now)
@@ -101,6 +108,7 @@ def reject_quotation(
     if payment_in_progress is not None:
         raise HTTPException(status_code=409, detail="Hay un pago en curso para esta cotización.")
     quotation.status = "rejected"
+    publish_chat_event(session, chat_id=quotation.chat_id, kind=ChatEventKind.QUOTATION_CHANGED, ref_id=quotation.id)
     session.commit()
     session.refresh(quotation)
     return quotation_view(quotation, now)
