@@ -47,7 +47,7 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
 | T8 | S4.1-S4.4 (backend) | delegated (herdr worker, Haiku) | done | `d6f565c` |
 | T9 | S4.5 (frontend) | delegated (herdr worker, Haiku) | done | `603dd03` |
 | V3 | S4 | independent verifier (migration, authorization) | done | see L20 |
-| T10 | S5.1 (backend) | delegated (herdr worker, Haiku) | pending | |
+| T10 | S5.1 (backend) | delegated (herdr worker, Haiku) | done | `ca1e784` |
 | T11 | S5.2 (frontend) | delegated (herdr worker, Haiku) | pending | |
 
 Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
@@ -76,3 +76,4 @@ Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchest
 - L20 (2026-10-19): V3 independent verifier: S4.1-S4.4 pass, including on a throwaway real Postgres (migration backfills existing participants with the migration time; greatest() never moves backwards; chat.read NOTIFY reaches only the reader after commit and nothing after rollback; list uses one GROUP BY). No blockers. Verifier marked "thread POSTs /read on open" unverified, but the parent found the test at frontend/tests/page-chat.spec.ts:835 (exactly one POST with Bearer, badge drops), so S4.5 passes. Advisories: unread aggregate scans Mensajes (27 ms on 500k rows; measure before adding an (ID_Chat, Fecha_Creacion) index); shared stream reopens on client navigation (one resync each); now() is transaction start, so a long message transaction committing after a read could count as read (ms window).
 - L21 (2026-10-19): Full-range review refused again (lens_context_budget_exceeded, 47 files). Reduced to the unread slice (base `b1e5e07`, lenses risk/reliability, consent granted, lineage `review-de556cf0b8f2cf25`): approved and acknowledged. User chose "Toast en la app (Recomendado)" for notifications; S5 plan awaiting approval.
 - L22 (2026-10-19): "si" (approval of the S5 plan). Branch `feat/chat-notifications` on top of `feat/chat-unread`. No independent verifier (no high-risk item).
+- L23 (2026-10-19): T10 done (`ca1e784`): actorId recorded at every publish site (payment: the paying customer), stream emits fromMe and strips actorId/recipients. Backend 677 passed. Full-range review refused again (budget); reduced to S5 spec + T10 (lenses risk/reliability, consent granted, lineage `review-ae56f6ace17c82f9`): approved and acknowledged. Advisories R3-001 (realtime.py:233-234), R3-002, R3-003 for later.
