@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import { resolveApiBaseUrl } from "@/lib/auth/account-api";
 import {
@@ -10,7 +10,7 @@ import {
   parseChatStreamState,
   type ChatEvent,
 } from "@/lib/chat-events";
-import { CHAT_ROOT_KEY, chatListKey, chatThreadKey } from "@/lib/chats";
+import { CHAT_ROOT_KEY, chatListKey, chatThreadKey, chatUnreadTotalKey } from "@/lib/chats";
 import { currentAccessToken, isSignInRequired } from "@/lib/provider-request-access";
 
 type ChatEventListener = (event: ChatEvent) => void;
@@ -125,6 +125,23 @@ function subscribeChatEvents(listener: ChatEventListener) {
   };
 }
 
+// Every subscriber hears the same event in the same tick. Their invalidations are merged so each query refetches once.
+const pendingInvalidations = new Map<QueryClient, Map<string, QueryKey>>();
+
+function invalidateOnce(queryClient: QueryClient, queryKey: QueryKey) {
+  let keys = pendingInvalidations.get(queryClient);
+  if (!keys) {
+    const batch = new Map<string, QueryKey>();
+    keys = batch;
+    pendingInvalidations.set(queryClient, batch);
+    queueMicrotask(() => {
+      pendingInvalidations.delete(queryClient);
+      for (const key of batch.values()) void queryClient.invalidateQueries({ queryKey: key });
+    });
+  }
+  keys.set(JSON.stringify(queryKey), queryKey);
+}
+
 // Subscribes the view to chat events for the signed-in user and returns whether the stream is connected.
 // Each event refetches the chat list and the thread of the chat it names.
 export function useChatEvents(userId: string | null | undefined): boolean {
@@ -134,11 +151,13 @@ export function useChatEvents(userId: string | null | undefined): boolean {
     if (!userId) return;
     // Events published while the stream was down are not replayed, so each transition to ready resyncs every chat query.
     const unsubscribeStatus = subscribeStatus(() => {
-      if (connected) void queryClient.invalidateQueries({ queryKey: CHAT_ROOT_KEY });
+      if (connected) invalidateOnce(queryClient, CHAT_ROOT_KEY);
     });
     const unsubscribeEvents = subscribeChatEvents((event) => {
-      void queryClient.invalidateQueries({ queryKey: chatListKey(userId) });
-      void queryClient.invalidateQueries({ queryKey: chatThreadKey(userId, event.chatId) });
+      // chat.read only changes unread state, so the open thread keeps its data.
+      invalidateOnce(queryClient, chatListKey(userId));
+      invalidateOnce(queryClient, chatUnreadTotalKey(userId));
+      if (event.kind !== "chat.read") invalidateOnce(queryClient, chatThreadKey(userId, event.chatId));
     });
     return () => {
       unsubscribeStatus();

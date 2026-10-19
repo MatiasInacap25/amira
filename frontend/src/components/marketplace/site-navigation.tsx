@@ -4,10 +4,13 @@ import { ArrowRight, Menu, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { CHAT_ROOT_KEY } from "@/lib/chats";
+import { useChatEvents } from "@/components/marketplace/use-chat-events";
+import { CHAT_ROOT_KEY, chatUnreadTotalKey } from "@/lib/chats";
+import { chatRefetchInterval } from "@/lib/chat-quotations";
+import { formatUnreadBadge, unreadAccessibleLabel } from "@/lib/chat-unread";
 import { shouldClearCustomerCache } from "@/lib/customer-cache-policy";
 import { accountApiFetch } from "@/lib/auth/account-api";
-import { getProviderRequests } from "@/lib/marketplace-api";
+import { getChatUnreadTotal, getProviderRequests } from "@/lib/marketplace-api";
 import {
   PROVIDER_NAV_USER_KEY,
   providerNavPendingKey,
@@ -53,13 +56,26 @@ export function useNavUserId(): { userId: string | null; pending: boolean } {
   return { userId: userQuery.data?.userId ?? null, pending: userQuery.isPending };
 }
 
-// Shown to every signed-in account, customers and providers alike.
+// Shown to every signed-in account, customers and providers alike. The badge carries the caller's total unread chats.
 function ChatsLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
   const { userId } = useNavUserId();
+  const streamConnected = useChatEvents(userId);
+
+  const unreadQuery = useQuery({
+    queryKey: chatUnreadTotalKey(userId ?? ""),
+    queryFn: async () => (await getChatUnreadTotal(await currentAccessToken())).total,
+    enabled: Boolean(userId),
+    retry: false,
+    refetchInterval: chatRefetchInterval(streamConnected),
+  });
+
   if (!userId) return null;
+  const total = unreadQuery.data ?? 0;
+  const badge = formatUnreadBadge(total);
   return (
     <Link className={className} href="/mensajes" onClick={onNavigate}>
       Mensajes
+      {badge && <span aria-label={unreadAccessibleLabel(total)} className="nav-badge">{badge}</span>}
     </Link>
   );
 }

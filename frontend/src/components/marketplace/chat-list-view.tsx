@@ -7,6 +7,7 @@ import { CHAT_LIST_LAYOUT, MarketplaceSkeleton } from "@/components/marketplace/
 import { useChatEvents } from "@/components/marketplace/use-chat-events";
 import { useNavUserId } from "@/components/marketplace/site-navigation";
 import { chatRefetchInterval } from "@/lib/chat-quotations";
+import { formatUnreadBadge, unreadAccessibleLabel } from "@/lib/chat-unread";
 import {
   CHAT_LIST_PAGE_SIZE,
   chatHref,
@@ -93,8 +94,9 @@ export function ChatListView() {
 function ChatCard({ chat, now }: { chat: ChatSummary; now: Date }) {
   const titleId = `chat-${chat.chatId}-title`;
   const lastMessage = chat.lastMessage;
+  const unreadBadge = formatUnreadBadge(chat.unreadCount);
   return (
-    <article aria-labelledby={titleId} className="chat-card">
+    <article aria-labelledby={titleId} className={chat.unreadCount > 0 ? "chat-card chat-card-unread" : "chat-card"}>
       <Link className="chat-card-link" href={chatHref(chat.chatId)}>
         <div className="chat-card-top">
           <h2 id={titleId}>{chat.counterpart.name}</h2>
@@ -105,6 +107,7 @@ function ChatCard({ chat, now }: { chat: ChatSummary; now: Date }) {
         </p>
         <p className="chat-card-meta">{chatRouteLabel(chat)}</p>
         <p className={lastMessage ? "chat-card-preview" : "chat-card-preview chat-card-preview-empty"}>{lastMessageLabel(lastMessage)}</p>
+        {unreadBadge && <span aria-label={unreadAccessibleLabel(chat.unreadCount)} className="chat-card-badge">{unreadBadge}</span>}
       </Link>
     </article>
   );

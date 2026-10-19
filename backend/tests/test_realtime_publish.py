@@ -11,7 +11,14 @@ from amira_api import chat_routes, payment_service, quotation_routes
 from amira_api.clock import utc_now
 from amira_api.models import Cotizacion, Pago
 from amira_api.payment_service import PaymentConflict, confirm_payment
-from amira_api.realtime import CHAT_EVENTS_CHANNEL, MAX_PAYLOAD_BYTES, ChatEvent, ChatEventKind, publish_chat_event
+from amira_api.realtime import (
+    CHAT_EVENTS_CHANNEL,
+    MAX_PAYLOAD_BYTES,
+    ChatEvent,
+    ChatEventKind,
+    parse_chat_event,
+    publish_chat_event,
+)
 from chat_support import (
     CUSTOMER_AUTH,
     DRIVER_AUTH,
@@ -306,3 +313,47 @@ def test_payment_on_a_closed_quotation_is_a_conflict_and_publishes_nothing(db: S
         _confirm(db, payment, "approved")
 
     assert announcements == []
+
+
+# Read announcements
+
+
+def test_marking_a_chat_read_publishes_chat_read_to_the_reader_only(api, scenario, db: Session):
+    response = api(f"/api/chats/{scenario.chat_a.id}/read", as_auth_id=CUSTOMER_AUTH, method="POST")
+
+    assert response.status_code == 204
+    [(channel, raw_payload)] = db.info["notifications"]
+    assert channel == CHAT_EVENTS_CHANNEL
+    assert json.loads(raw_payload) == {
+        "kind": "chat.read",
+        "chatId": str(scenario.chat_a.id),
+        "recipients": [str(scenario.customer.id)],
+    }
+
+
+def test_non_participant_read_publishes_nothing(api, scenario, db: Session):
+    response = api(f"/api/chats/{scenario.chat_a.id}/read", as_auth_id=DRIVER_AUTH, method="POST")
+
+    assert response.status_code == 404
+    assert db.info["notifications"] == []
+
+
+def test_chat_read_payload_carries_no_message_or_quotation_reference():
+    chat_id, reader = uuid4(), uuid4()
+
+    payload = json.loads(ChatEvent(ChatEventKind.CHAT_READ, chat_id, None, (reader,)).to_payload())
+
+    assert payload == {"kind": "chat.read", "chatId": str(chat_id), "recipients": [str(reader)]}
+
+
+def test_listener_relays_a_chat_read_event_to_its_reader():
+    chat_id, reader = uuid4(), uuid4()
+    raw = ChatEvent(ChatEventKind.CHAT_READ, chat_id, None, (reader,)).to_payload()
+
+    assert parse_chat_event(raw) == {"kind": "chat.read", "chatId": str(chat_id), "recipients": [str(reader)]}
+
+
+def test_chat_read_without_a_chat_id_is_rejected_by_the_listener():
+    raw = json.dumps({"kind": "chat.read", "recipients": [str(uuid4())]})
+
+    assert parse_chat_event(raw) is None

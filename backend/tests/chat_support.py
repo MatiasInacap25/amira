@@ -165,9 +165,11 @@ def _chat(db: Session, *, customer: Usuario, profile: Perfil, service: TipoServi
     chat = Chat(id=uuid4(), form_id=form.id, created_at=created_at)
     db.add_all([form, chat])
     db.flush()
+    # A fixed read time before every seeded message, so unread counts do not depend on the database clock.
+    last_read_at = datetime(2026, 9, 30, tzinfo=timezone.utc)
     db.add_all([
-        ChatParticipante(id=uuid4(), user_id=customer.id, chat_id=chat.id),
-        ChatParticipante(id=uuid4(), user_id=provider_owner.id, chat_id=chat.id),
+        ChatParticipante(id=uuid4(), user_id=customer.id, chat_id=chat.id, last_read_at=last_read_at),
+        ChatParticipante(id=uuid4(), user_id=provider_owner.id, chat_id=chat.id, last_read_at=last_read_at),
     ])
     return chat
 

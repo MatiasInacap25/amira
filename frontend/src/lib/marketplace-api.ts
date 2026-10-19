@@ -7,6 +7,7 @@ import {
   type ChatListPage,
   type ChatMessage,
   type ChatQuotation,
+  type ChatUnreadTotal,
 } from "@/lib/chats";
 import { buildProviderRequestsQuery, type ProviderRequestStatus } from "@/lib/provider-requests";
 
@@ -509,6 +510,26 @@ export async function getChatMessages(
   );
   if (!response.ok) throw new ChatRequestError(response.status);
   return adaptChatMessagesPage((await response.json()) as BackendChatMessagesPage);
+}
+
+export async function getChatUnreadTotal(accessToken: string, signal?: AbortSignal) {
+  const response = await authenticatedApiFetch("/api/chats/unread", accessToken, process.env.NEXT_PUBLIC_API_URL, {
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) throw new ChatRequestError(response.status);
+  return response.json() as Promise<ChatUnreadTotal>;
+}
+
+// The backend answers 204 and returns no body.
+export async function markChatRead(accessToken: string, chatId: string) {
+  const response = await authenticatedApiFetch(
+    `/api/chats/${encodeURIComponent(chatId)}/read`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST" },
+  );
+  if (!response.ok) throw new ChatRequestError(response.status);
 }
 
 // FastAPI validation errors arrive as { detail: [{ type, msg }] }; other errors carry no usable detail.

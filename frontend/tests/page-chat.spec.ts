@@ -120,9 +120,13 @@ async function signInToChat(
   role: "customer" | "provider",
   chatId = "chat-1",
   events: (route: Route) => Promise<void> = idleEventStream,
+  unread: (route: Route) => Promise<void> = unreadTotal(0),
+  read: (route: Route) => Promise<void> = async (route) => route.fulfill({ status: 204 }),
 ) {
   await mockSmsVerifiedAuth(page);
   await mockChatEvents(page, events);
+  await page.route("**/api/chats/unread", unread);
+  await page.route("**/api/chats/*/read", read);
   await page.route("**/api/account/me", async (route) =>
     route.fulfill({
       json: { user_id: "account-test-1", role, profile_id: role === "provider" ? "provider-1" : null },
@@ -150,6 +154,11 @@ async function mockChatEvents(page: Page, handler: (route: Route) => Promise<voi
 // A stream with no events: one keepalive comment, then the server closes it.
 async function idleEventStream(route: Route) {
   await route.fulfill({ status: 200, contentType: "text/event-stream", body: ": keepalive\n\n" });
+}
+
+// Answers GET /api/chats/unread with the given total.
+function unreadTotal(total: number) {
+  return async (route: Route) => route.fulfill({ json: { total } });
 }
 
 test("a message.created event refetches the open thread and shows the new message", async ({ page }) => {
@@ -821,4 +830,26 @@ test("conversation fits a phone-width viewport without horizontal scrolling", as
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("opening a thread marks it read with the bearer token and the navigation badge drops after the refetch", async ({ page }) => {
+  let unread = 2;
+  const readAuthorization: string[] = [];
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ timeline: [messageEntry("message-1", "Hola", false, "Ana Pérez")] }) }));
+  await signInToChat(
+    page,
+    "customer",
+    "chat-1",
+    idleEventStream,
+    async (route) => route.fulfill({ json: { total: unread } }),
+    async (route) => {
+      readAuthorization.push(route.request().headers().authorization ?? "");
+      unread = 0;
+      await route.fulfill({ status: 204 });
+    },
+  );
+
+  await expect.poll(() => readAuthorization.length).toBe(1);
+  expect(readAuthorization[0]).toMatch(/^Bearer eyJ/);
+  await expect(page.locator(".desktop-nav .nav-badge")).toHaveCount(0);
 });
