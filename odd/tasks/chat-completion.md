@@ -21,7 +21,12 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
   - S3.4 Timeline message entries include `attachment: {contentType, sizeBytes} | null`; the shared contract fixture covers it. The chat list preview shows "Foto" for an image-only last message.
   - S3.5 Frontend: an attach button in the composer with a preview, client-side type and size checks, upload through the new endpoint; images render inline in the thread (fetching their signed URL when shown) and open full size.
   - Manual step: create the private bucket `chat-attachments` in Supabase.
-- S4: Unread counts. Pending design decision.
+- S4: Unread counts (user choice: "Contador + badge (Recomendado)"). Approved design:
+  - S4.1 Migration: `Chat_participantes.Ultima_Lectura` timestamptz NOT NULL with server default `now()`, so existing rows get the migration time and old chats do not show as unread. Additive.
+  - S4.2 Unread = messages in the chat from the other participant with a send time after the caller's `Ultima_Lectura`. Quotations do not count.
+  - S4.3 `POST /api/chats/{id}/read` sets `Ultima_Lectura` to now, never moving it backwards; participants only (404 otherwise). It publishes `chat.read` `{chatId}` to the reader only, so the reader's other tabs update.
+  - S4.4 `GET /api/chats` items gain `unreadCount`; `GET /api/chats/unread` returns `{total}` for the caller.
+  - S4.5 Frontend: the thread marks the chat read when it opens and when new messages arrive while the tab is visible; the chat list shows each chat's count; the "Mensajes" navigation link shows the total for signed-in users; all of them refresh from the existing event stream.
 - S5: Notifications. Pending design decision.
 
 ## Tasks
@@ -37,6 +42,9 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
 | T6 | S3.1-S3.4 (backend) | delegated (herdr worker, Haiku) | done | `1437a49` |
 | T7 | S3.4-S3.5 (frontend) | delegated (herdr worker, Haiku) | done | `0e0a29d` |
 | V2 | S3 | independent verifier (high risk: migration, file authorization) | done | see L16 |
+| T8 | S4.1-S4.4 (backend) | delegated (herdr worker, Haiku) | pending | |
+| T9 | S4.5 (frontend) | delegated (herdr worker, Haiku) | pending | |
+| V3 | S4 | independent verifier (migration, authorization) | pending | |
 
 Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
 
@@ -59,3 +67,4 @@ Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchest
 - L15 (2026-10-19): T6 done (`1437a49`): migration 20261019_0001 (down 20261011_0004; single head), upload and signed-URL endpoints, GET checks Mensaje.chat_id == chat_id. Backend 648 passed. T7 done (`0e0a29d`): composer attach + preview, inline image via signed URL. Full Playwright 294 passed; unit 86 passed; lint 0; worker build 0.
 - L16 (2026-10-19): V2 independent verifier (scratch worktree): S3.1-S3.5 pass, no blockers. Migration probed on a throwaway local Postgres (upgrade, constraint rejections, downgrade, upgrade, alembic check). Cross-chat attachment read gets 404. Advisories: multipart body not capped before parsing (same as delivery photos; add a proxy body limit); a polyglot with JPEG magic bytes is stored as image/jpeg; downgrade orphans bucket objects; whitespace-only legacy rows would fail VALIDATE (app cannot create them); no upload rate limit; migration not covered by a Postgres-backed CI test.
 - L17 (2026-10-19): Full-range review refused with lens_context_budget_exceeded (41 files, 3295 lines; nothing created). Reduced scope to the attachments slice (base `d956ec4`, lenses risk/reliability, consent granted, lineage `review-be7fa9d942a8cdff`): approved and acknowledged. Advisories for later: R1-multipart-body-not-capped-before-parse (chat_routes.py:337), R1-no-upload-rate-limit, R3-check-constraints-unexercised (migration test), R3-expired-signed-link-in-open-thread (chat-attachment-image.tsx:21-26: a thread left open past 300 s shows a dead link). User chose "Contador + badge (Recomendado)" for unread; S4 plan awaiting approval.
+- L18 (2026-10-19): "si" (approval of the S4 plan). Branch `feat/chat-unread` on top of `feat/chat-attachments`.
