@@ -44,7 +44,7 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
 | V2 | S3 | independent verifier (high risk: migration, file authorization) | done | see L16 |
 | T8 | S4.1-S4.4 (backend) | delegated (herdr worker, Haiku) | done | `d6f565c` |
 | T9 | S4.5 (frontend) | delegated (herdr worker, Haiku) | done | `603dd03` |
-| V3 | S4 | independent verifier (migration, authorization) | pending | |
+| V3 | S4 | independent verifier (migration, authorization) | done | see L20 |
 
 Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
 
@@ -69,3 +69,4 @@ Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchest
 - L17 (2026-10-19): Full-range review refused with lens_context_budget_exceeded (41 files, 3295 lines; nothing created). Reduced scope to the attachments slice (base `d956ec4`, lenses risk/reliability, consent granted, lineage `review-be7fa9d942a8cdff`): approved and acknowledged. Advisories for later: R1-multipart-body-not-capped-before-parse (chat_routes.py:337), R1-no-upload-rate-limit, R3-check-constraints-unexercised (migration test), R3-expired-signed-link-in-open-thread (chat-attachment-image.tsx:21-26: a thread left open past 300 s shows a dead link). User chose "Contador + badge (Recomendado)" for unread; S4 plan awaiting approval.
 - L18 (2026-10-19): "si" (approval of the S4 plan). Branch `feat/chat-unread` on top of `feat/chat-attachments`.
 - L19 (2026-10-19): T8 done (`d6f565c`): migration 20261019_0002 (single head), unreadCount, /unread, /read with greatest semantics, reader-only chat.read. Backend 671 passed. T9 done (`603dd03`): thread marks read, list counts, nav badge on every page for signed-in users (one shared stream per tab); same-tick invalidations merged so each query refetches once. Full Playwright 299 passed; unit 96; lint 0; worker build 0.
+- L20 (2026-10-19): V3 independent verifier: S4.1-S4.4 pass, including on a throwaway real Postgres (migration backfills existing participants with the migration time; greatest() never moves backwards; chat.read NOTIFY reaches only the reader after commit and nothing after rollback; list uses one GROUP BY). No blockers. Verifier marked "thread POSTs /read on open" unverified, but the parent found the test at frontend/tests/page-chat.spec.ts:835 (exactly one POST with Bearer, badge drops), so S4.5 passes. Advisories: unread aggregate scans Mensajes (27 ms on 500k rows; measure before adding an (ID_Chat, Fecha_Creacion) index); shared stream reopens on client navigation (one resync each); now() is transaction start, so a long message transaction committing after a read could count as read (ms window).
