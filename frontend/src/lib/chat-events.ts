@@ -3,11 +3,12 @@
 
 export type ChatStreamFrame = { event: string; data: string };
 
+// fromMe is true when the caller caused the event, so the caller's own actions never notify them.
 export type ChatEvent =
-  | { kind: "message.created"; chatId: string; messageId: string }
-  | { kind: "quotation.changed"; chatId: string; quotationId: string }
+  | { kind: "message.created"; chatId: string; messageId: string; fromMe: boolean }
+  | { kind: "quotation.changed"; chatId: string; quotationId: string; fromMe: boolean }
   // Sent to the reader only: their other tabs drop the unread state of this chat.
-  | { kind: "chat.read"; chatId: string };
+  | { kind: "chat.read"; chatId: string; fromMe: boolean };
 
 export const CHAT_EVENTS_INITIAL_BACKOFF_MS = 1_000;
 export const CHAT_EVENTS_MAX_BACKOFF_MS = 30_000;
@@ -59,17 +60,19 @@ export function parseChatEvent(frame: ChatStreamFrame): ChatEvent | null {
     return null;
   }
   if (typeof payload !== "object" || payload === null) return null;
-  const { kind, chatId } = payload as Record<string, unknown>;
+  const { kind, chatId, fromMe: rawFromMe } = payload as Record<string, unknown>;
   if (kind !== frame.event || typeof chatId !== "string") return null;
+  // Only an explicit false marks another participant's event; a missing or non-boolean value counts as the caller's own.
+  const fromMe = rawFromMe !== false;
   if (kind === "message.created") {
     const { messageId } = payload as Record<string, unknown>;
-    return typeof messageId === "string" ? { kind, chatId, messageId } : null;
+    return typeof messageId === "string" ? { kind, chatId, messageId, fromMe } : null;
   }
   if (kind === "quotation.changed") {
     const { quotationId } = payload as Record<string, unknown>;
-    return typeof quotationId === "string" ? { kind, chatId, quotationId } : null;
+    return typeof quotationId === "string" ? { kind, chatId, quotationId, fromMe } : null;
   }
-  if (kind === "chat.read") return { kind, chatId };
+  if (kind === "chat.read") return { kind, chatId, fromMe };
   return null;
 }
 

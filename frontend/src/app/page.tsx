@@ -24,6 +24,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
+import { ChatNotifications } from "@/components/marketplace/chat-notifications";
+import { useNavUserId } from "@/components/marketplace/site-navigation";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { getServiceTypes } from "@/lib/marketplace-api";
 
@@ -182,6 +184,8 @@ function Brand() {
 
 export default function HomePage() {
   const router = useRouter();
+  // The landing page has no chat nav, but signed-in visitors still get the in-app chat toasts.
+  const { userId } = useNavUserId();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [service, setService] = useState("");
   const [location, setLocation] = useState<RegionCommuneValue>({ regionCode: "", communeCode: "" });
@@ -423,6 +427,7 @@ export default function HomePage() {
         <div className="section-wrap footer-bottom"><span>© 2026 Amira. Información de demostración.</span><span>Conecta. Cotiza. Coordina.</span></div>
       </footer>
       {demoNotice && <div aria-live="polite" className="notice-toast" role="status"><span>{demoNotice}</span><button aria-label="Cerrar aviso" onClick={() => setDemoNotice("")} type="button"><X aria-hidden="true" size={16} /></button></div>}
+      <ChatNotifications userId={userId} />
       <a className="skip-link" href="#contenido">Ir al contenido</a>
     </>
   );

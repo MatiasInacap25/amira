@@ -202,6 +202,19 @@ test("every in-page anchor points to an element that exists on the page", async 
   }
 });
 
+test("a signed-out visitor on the landing page opens no chat event stream and makes no chat request", async ({ page }) => {
+  const chatRequests: string[] = [];
+  await page.route("**/api/chats/**", async (route) => {
+    chatRequests.push(route.request().url());
+    await route.fulfill({ status: 401, json: { detail: "Unauthorized" } });
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  expect(chatRequests).toEqual([]);
+});
+
 test("skip link moves keyboard users to the main content", async ({ page }) => {
   const skipLink = page.getByRole("link", { name: "Ir al contenido" });
   await skipLink.focus();

@@ -8,29 +8,22 @@ import { useChatEvents } from "@/components/marketplace/use-chat-events";
 import { useNavUserId } from "@/components/marketplace/site-navigation";
 import { chatRefetchInterval } from "@/lib/chat-quotations";
 import { formatUnreadBadge, unreadAccessibleLabel } from "@/lib/chat-unread";
+import { chatListQueryOptions } from "@/lib/chat-list-query";
 import {
-  CHAT_LIST_PAGE_SIZE,
   chatHref,
-  chatListKey,
   chatRouteLabel,
   counterpartKindLabel,
   formatChatRelativeTime,
   lastMessageLabel,
-  nextChatListOffset,
   type ChatSummary,
 } from "@/lib/chats";
-import { getChats } from "@/lib/marketplace-api";
-import { currentAccessToken } from "@/lib/provider-request-access";
 
 // Same view for customers and providers: the counterpart is labelled by its kind.
 export function ChatListView() {
   const { userId, pending: sessionPending } = useNavUserId();
   const streamConnected = useChatEvents(userId);
   const chatsQuery = useInfiniteQuery({
-    queryKey: chatListKey(userId ?? ""),
-    queryFn: async ({ pageParam }) => getChats(await currentAccessToken(), { limit: CHAT_LIST_PAGE_SIZE, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: nextChatListOffset,
+    ...chatListQueryOptions(userId ?? ""),
     enabled: Boolean(userId),
     retry: false,
     refetchInterval: chatRefetchInterval(streamConnected),
