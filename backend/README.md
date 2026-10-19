@@ -137,6 +137,14 @@ Optional settings and defaults: `CHAT_ATTACHMENTS_BUCKET` (`chat-attachments`), 
 
 Timeline message entries carry `attachment: {contentType, sizeBytes} | null`. The chat list shows `Foto` as the preview when the last message has no text and an attachment.
 
+### Unread counts
+
+Each participant has a read time, `Chat_participantes.Ultima_Lectura` (migration `20261019_0002`, default `now()`, so existing chats start read). A message is unread for a participant when another participant sent it after that time; the caller's own messages and quotations never count.
+
+- `GET /api/chats` items carry `unreadCount`, computed in one grouped query for the whole page.
+- `GET /api/chats/unread` returns `{total}`, the sum over the caller's chats.
+- `POST /api/chats/{chatId}/read` sets the read time to the database `now()` and never moves it backwards. It answers 204; non-participants get 404. It publishes `chat.read` to the reader's own streams only, so their other tabs update.
+
 ## Checks
 
 ```powershell

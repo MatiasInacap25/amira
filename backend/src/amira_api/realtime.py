@@ -51,6 +51,14 @@ STREAM_CLOSED = object()
 class ChatEventKind(StrEnum):
     MESSAGE_CREATED = "message.created"
     QUOTATION_CHANGED = "quotation.changed"
+    CHAT_READ = "chat.read"
+
+
+# The id field each kind carries besides chatId. chat.read names no entity: it only tells the reader's tabs.
+_REF_KEYS = {
+    ChatEventKind.MESSAGE_CREATED: "messageId",
+    ChatEventKind.QUOTATION_CHANGED: "quotationId",
+}
 
 
 class ListenerState(StrEnum):
@@ -64,23 +72,26 @@ class ListenerState(StrEnum):
 class ChatEvent:
     kind: ChatEventKind
     chat_id: UUID
-    ref_id: UUID
+    ref_id: UUID | None
     recipients: tuple[UUID, ...]
 
     def to_payload(self) -> str:
-        ref_key = "messageId" if self.kind is ChatEventKind.MESSAGE_CREATED else "quotationId"
-        payload = json.dumps(
-            {
-                "kind": self.kind.value,
-                "chatId": str(self.chat_id),
-                ref_key: str(self.ref_id),
-                "recipients": [str(user_id) for user_id in self.recipients],
-            },
-            separators=(",", ":"),
-        )
+        fields = {"kind": self.kind.value, "chatId": str(self.chat_id)}
+        ref_key = _REF_KEYS.get(self.kind)
+        if ref_key is not None:
+            fields[ref_key] = str(self.ref_id)
+        fields["recipients"] = [str(user_id) for user_id in self.recipients]
+        payload = json.dumps(fields, separators=(",", ":"))
         if len(payload.encode()) >= MAX_PAYLOAD_BYTES:
             raise ValueError("Chat event payload exceeds the pg_notify size limit.")
         return payload
+
+
+def _notify(session: Session, event: ChatEvent) -> None:
+    session.execute(
+        text("SELECT pg_notify(:channel, :payload)"),
+        {"channel": CHAT_EVENTS_CHANNEL, "payload": event.to_payload()},
+    )
 
 
 def publish_chat_event(session: Session, *, chat_id: UUID, kind: ChatEventKind | str, ref_id: UUID) -> None:
@@ -95,11 +106,12 @@ def publish_chat_event(session: Session, *, chat_id: UUID, kind: ChatEventKind |
     )
     if not recipients:
         return
-    event = ChatEvent(kind=event_kind, chat_id=chat_id, ref_id=ref_id, recipients=recipients)
-    session.execute(
-        text("SELECT pg_notify(:channel, :payload)"),
-        {"channel": CHAT_EVENTS_CHANNEL, "payload": event.to_payload()},
-    )
+    _notify(session, ChatEvent(kind=event_kind, chat_id=chat_id, ref_id=ref_id, recipients=recipients))
+
+
+def publish_chat_read(session: Session, *, chat_id: UUID, reader_id: UUID) -> None:
+    """Tell only the reader's open streams that they read this chat, inside the caller's transaction."""
+    _notify(session, ChatEvent(kind=ChatEventKind.CHAT_READ, chat_id=chat_id, ref_id=None, recipients=(reader_id,)))
 
 
 class TooManyStreams(Exception):
@@ -202,13 +214,17 @@ def parse_chat_event(raw: str) -> dict | None:
         kind = ChatEventKind(event.get("kind"))
     except ValueError:
         return None
-    ref_key = "messageId" if kind is ChatEventKind.MESSAGE_CREATED else "quotationId"
+    ref_key = _REF_KEYS.get(kind)
     recipients = event.get("recipients")
     if not isinstance(recipients, list) or not recipients or not all(_is_uuid(user_id) for user_id in recipients):
         return None
-    if not _is_uuid(event.get("chatId")) or not _is_uuid(event.get(ref_key)):
+    if not _is_uuid(event.get("chatId")) or (ref_key is not None and not _is_uuid(event.get(ref_key))):
         return None
-    return {"kind": kind.value, "chatId": event["chatId"], ref_key: event[ref_key], "recipients": recipients}
+    parsed = {"kind": kind.value, "chatId": event["chatId"]}
+    if ref_key is not None:
+        parsed[ref_key] = event[ref_key]
+    parsed["recipients"] = recipients
+    return parsed
 
 
 def handle_notify(raw: str, broker: ChatBroker) -> None:

@@ -359,6 +359,10 @@ class ChatParticipante(Base):
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id: Mapped[UUID] = mapped_column("ID_user", ForeignKey("Usuario.ID", ondelete="CASCADE"), nullable=False, index=True)
     chat_id: Mapped[UUID] = mapped_column("ID_Chat", ForeignKey("Chat.ID", ondelete="CASCADE"), nullable=False, index=True)
+    # Messages sent after this time by the other participant are unread. Only ever moves forward.
+    last_read_at: Mapped[datetime] = mapped_column(
+        "Ultima_Lectura", DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
     user: Mapped[Usuario] = relationship(back_populates="chat_memberships")
     chat: Mapped[Chat] = relationship(back_populates="participants")

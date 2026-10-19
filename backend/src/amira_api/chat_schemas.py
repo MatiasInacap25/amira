@@ -36,6 +36,7 @@ class ChatLastMessage(PublicResponse):
 
 class ChatListItem(ChatHeader):
     last_message: ChatLastMessage | None
+    unread_count: int
 
 
 class ChatPage(PublicResponse):
@@ -43,6 +44,10 @@ class ChatPage(PublicResponse):
     total: int
     limit: int
     offset: int
+
+
+class ChatUnreadTotal(PublicResponse):
+    total: int
 
 
 class ChatMessageCreate(BaseModel):

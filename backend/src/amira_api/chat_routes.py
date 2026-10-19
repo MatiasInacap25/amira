@@ -6,9 +6,9 @@ from datetime import datetime, timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from sqlalchemy import and_, func, literal_column, or_, select, union_all
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from sqlalchemy import and_, case, func, literal_column, or_, select, union_all, update
+from sqlalchemy.orm import Session, aliased
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.chat_access import caller_account, caller_chats
@@ -26,6 +26,7 @@ from amira_api.chat_schemas import (
     ChatPage,
     ChatTimelineMessage,
     ChatTimelineQuotation,
+    ChatUnreadTotal,
     MESSAGE_MAX_LENGTH,
 )
 from amira_api.contact_filter import CONTACT_KIND_LABELS, find_contact_detail
@@ -37,8 +38,8 @@ from amira_api.evidence_storage import (
     get_chat_attachment_storage_resolver,
     read_capped,
 )
-from amira_api.realtime import ChatEventKind, publish_chat_event
-from amira_api.models import Chat, Cotizacion, Mensaje
+from amira_api.realtime import ChatEventKind, publish_chat_event, publish_chat_read
+from amira_api.models import Chat, ChatParticipante, Cotizacion, Mensaje
 from amira_api.public_routes import MAX_OFFSET, MAX_PAGE_SIZE
 from amira_api.quotation_service import quotation_view
 from amira_api.settings import Settings, get_settings
@@ -71,6 +72,22 @@ def _last_message_per_chat():
         .label("position"),
     ).subquery()
     return select(ranked).where(ranked.c.position == 1).subquery("last_message")
+
+
+def _unread_by_chat(caller_id: UUID):
+    """Unread messages per chat the caller is in: other people's messages sent after the caller's read time.
+
+    Quotations are not messages, so they never count. The join on the caller's membership limits the rows to
+    their own chats, which both the list and the total rely on.
+    """
+    participant = aliased(ChatParticipante)
+    return (
+        select(Mensaje.chat_id.label("chat_id"), func.count(Mensaje.id).label("unread_count"))
+        .join(participant, and_(participant.chat_id == Mensaje.chat_id, participant.user_id == caller_id))
+        .where(Mensaje.user_id != caller_id, Mensaje.created_at > participant.last_read_at)
+        .group_by(Mensaje.chat_id)
+        .subquery("unread")
+    )
 
 
 def _counterpart(row, caller_id: UUID) -> ChatCounterpart:
@@ -106,6 +123,7 @@ def _list_item(row, caller_id: UUID) -> ChatListItem:
         destination_commune_name=row["destination_commune_name"],
         counterpart=_counterpart(row, caller_id),
         last_message=last_message,
+        unread_count=row["unread_count"],
     )
 
 
@@ -125,14 +143,17 @@ def list_chats(
     total = session.execute(select(func.count()).select_from(relation.subquery())).scalar_one()
 
     last = _last_message_per_chat()
+    unread = _unread_by_chat(caller_id)
     rows = session.execute(
         relation.add_columns(
             last.c.content.label("last_content"),
             last.c.attachment_key.label("last_attachment_key"),
             last.c.sent_at.label("last_sent_at"),
             last.c.sender_id.label("last_sender_id"),
+            func.coalesce(unread.c.unread_count, 0).label("unread_count"),
         )
         .outerjoin(last, last.c.chat_id == Chat.id)
+        .outerjoin(unread, unread.c.chat_id == Chat.id)
         .order_by(func.coalesce(last.c.sent_at, Chat.created_at).desc(), Chat.id.desc())
         .limit(limit)
         .offset(offset)
@@ -143,6 +164,41 @@ def list_chats(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/unread", response_model=ChatUnreadTotal)
+def unread_total(current_user: CurrentUser, session: Database) -> ChatUnreadTotal:
+    account = caller_account(session, current_user)
+    if account is None:
+        return ChatUnreadTotal(total=0)
+    unread = _unread_by_chat(account.id)
+    total = session.execute(select(func.coalesce(func.sum(unread.c.unread_count), 0)).select_from(unread)).scalar_one()
+    return ChatUnreadTotal(total=int(total))
+
+
+@router.post("/{chat_id}/read", status_code=204)
+def mark_chat_read(chat_id: UUID, current_user: CurrentUser, session: Database) -> Response:
+    account = caller_account(session, current_user)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    caller_id = account.id
+    if session.execute(caller_chats(caller_id).where(Chat.id == chat_id)).one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+
+    # Uses the database clock, like the message timestamps. Never moves the read time backwards.
+    session.execute(
+        update(ChatParticipante)
+        .where(ChatParticipante.chat_id == chat_id, ChatParticipante.user_id == caller_id)
+        .values(
+            last_read_at=case(
+                (ChatParticipante.last_read_at < func.now(), func.now()),
+                else_=ChatParticipante.last_read_at,
+            )
+        )
+    )
+    publish_chat_read(session, chat_id=chat_id, reader_id=caller_id)
+    session.commit()
+    return Response(status_code=204)
 
 
 def _header(row, caller_id: UUID) -> ChatHeader:
