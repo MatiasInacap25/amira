@@ -42,8 +42,8 @@ VALID_QUOTATION = {
 def announcements(monkeypatch) -> list[dict]:
     calls: list[dict] = []
 
-    def spy(session, *, chat_id, kind, ref_id):
-        calls.append({"chat_id": chat_id, "kind": kind, "ref_id": ref_id})
+    def spy(session, *, chat_id, actor_id, kind, ref_id):
+        calls.append({"chat_id": chat_id, "actor_id": actor_id, "kind": kind, "ref_id": ref_id})
 
     for module in (chat_routes, quotation_routes, payment_service):
         monkeypatch.setattr(module, "publish_chat_event", spy)
@@ -53,34 +53,38 @@ def announcements(monkeypatch) -> list[dict]:
 # Payload builder
 
 
-def test_message_payload_names_the_message_chat_and_recipients_without_content():
-    chat_id, message_id, customer, provider = uuid4(), uuid4(), uuid4(), uuid4()
+def test_message_payload_names_the_message_chat_actor_and_recipients_without_content():
+    chat_id, message_id, actor, customer, provider = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
 
-    payload = json.loads(ChatEvent(ChatEventKind.MESSAGE_CREATED, chat_id, message_id, (customer, provider)).to_payload())
+    payload = json.loads(
+        ChatEvent(ChatEventKind.MESSAGE_CREATED, chat_id, message_id, actor, (customer, provider)).to_payload()
+    )
 
     assert payload == {
         "kind": "message.created",
         "chatId": str(chat_id),
         "messageId": str(message_id),
+        "actorId": str(actor),
         "recipients": [str(customer), str(provider)],
     }
 
 
 def test_quotation_payload_names_the_quotation_and_never_carries_message_text():
-    chat_id, quotation_id = uuid4(), uuid4()
+    chat_id, quotation_id, actor = uuid4(), uuid4(), uuid4()
 
     payload = json.loads(
-        ChatEvent(ChatEventKind.QUOTATION_CHANGED, chat_id, quotation_id, (uuid4(), uuid4())).to_payload()
+        ChatEvent(ChatEventKind.QUOTATION_CHANGED, chat_id, quotation_id, actor, (uuid4(), uuid4())).to_payload()
     )
 
     assert payload["kind"] == "quotation.changed"
     assert payload["quotationId"] == str(quotation_id)
+    assert payload["actorId"] == str(actor)
     assert "messageId" not in payload
-    assert set(payload) == {"kind", "chatId", "quotationId", "recipients"}
+    assert set(payload) == {"kind", "chatId", "quotationId", "actorId", "recipients"}
 
 
 def test_payload_stays_well_under_the_pg_notify_limit():
-    event = ChatEvent(ChatEventKind.QUOTATION_CHANGED, uuid4(), uuid4(), (uuid4(), uuid4()))
+    event = ChatEvent(ChatEventKind.QUOTATION_CHANGED, uuid4(), uuid4(), uuid4(), (uuid4(), uuid4()))
 
     assert len(event.to_payload().encode()) < MAX_PAYLOAD_BYTES
     assert MAX_PAYLOAD_BYTES == 8000
@@ -89,20 +93,32 @@ def test_payload_stays_well_under_the_pg_notify_limit():
 # Publisher
 
 
-def test_publish_notifies_the_channel_with_both_participants_on_the_same_session(db: Session, scenario: Scenario):
+def test_publish_notifies_the_channel_with_both_participants_and_the_actor_on_the_same_session(
+    db: Session, scenario: Scenario
+):
     message_id = uuid4()
 
-    publish_chat_event(db, chat_id=scenario.chat_a.id, kind="message.created", ref_id=message_id)
+    publish_chat_event(
+        db, chat_id=scenario.chat_a.id, actor_id=scenario.provider_owner.id, kind="message.created", ref_id=message_id
+    )
 
     [(channel, raw_payload)] = db.info["notifications"]
     payload = json.loads(raw_payload)
     assert channel == CHAT_EVENTS_CHANNEL == "amira_chat_events"
     assert payload["messageId"] == str(message_id)
+    assert payload["actorId"] == str(scenario.provider_owner.id)
     assert set(payload["recipients"]) == {str(scenario.customer.id), str(scenario.provider_owner.id)}
 
 
+def test_publish_requires_the_actor():
+    with pytest.raises(TypeError):
+        publish_chat_event(object(), chat_id=uuid4(), kind="message.created", ref_id=uuid4())  # type: ignore[call-arg]
+
+
 def test_publish_never_targets_users_outside_the_chat(db: Session, scenario: Scenario):
-    publish_chat_event(db, chat_id=scenario.chat_c.id, kind="quotation.changed", ref_id=uuid4())
+    publish_chat_event(
+        db, chat_id=scenario.chat_c.id, actor_id=scenario.driver_owner.id, kind="quotation.changed", ref_id=uuid4()
+    )
 
     [(_, raw_payload)] = db.info["notifications"]
     recipients = set(json.loads(raw_payload)["recipients"])
@@ -111,14 +127,16 @@ def test_publish_never_targets_users_outside_the_chat(db: Session, scenario: Sce
 
 
 def test_publish_for_a_chat_without_participants_announces_nothing(db: Session):
-    publish_chat_event(db, chat_id=uuid4(), kind="message.created", ref_id=uuid4())
+    publish_chat_event(db, chat_id=uuid4(), actor_id=uuid4(), kind="message.created", ref_id=uuid4())
 
     assert db.info["notifications"] == []
 
 
 def test_publish_rejects_an_unknown_kind(db: Session, scenario: Scenario):
     with pytest.raises(ValueError):
-        publish_chat_event(db, chat_id=scenario.chat_a.id, kind="message.deleted", ref_id=uuid4())
+        publish_chat_event(
+            db, chat_id=scenario.chat_a.id, actor_id=scenario.customer.id, kind="message.deleted", ref_id=uuid4()
+        )
 
 
 # Message write
@@ -129,7 +147,12 @@ def test_sending_a_message_publishes_message_created_for_the_new_message(api, sc
 
     assert response.status_code == 201
     assert announcements == [
-        {"chat_id": scenario.chat_a.id, "kind": "message.created", "ref_id": UUID(response.json()["messageId"])}
+        {
+            "chat_id": scenario.chat_a.id,
+            "actor_id": scenario.customer.id,
+            "kind": "message.created",
+            "ref_id": UUID(response.json()["messageId"]),
+        }
     ]
 
 
@@ -169,11 +192,16 @@ def test_new_quotation_publishes_quotation_changed(api, scenario, announcements)
 
     assert response.status_code == 201
     assert announcements == [
-        {"chat_id": scenario.chat_a.id, "kind": "quotation.changed", "ref_id": UUID(response.json()["quotationId"])}
+        {
+            "chat_id": scenario.chat_a.id,
+            "actor_id": scenario.provider_owner.id,
+            "kind": "quotation.changed",
+            "ref_id": UUID(response.json()["quotationId"]),
+        }
     ]
 
 
-def test_superseding_a_pending_quotation_announces_both_quotations(api, scenario, announcements):
+def test_superseding_a_pending_quotation_announces_both_quotations_as_the_provider(api, scenario, announcements):
     first = _create_quotation(api, scenario).json()["quotationId"]
     announcements.clear()
 
@@ -181,6 +209,7 @@ def test_superseding_a_pending_quotation_announces_both_quotations(api, scenario
 
     assert {call["ref_id"] for call in announcements} == {UUID(first), UUID(second)}
     assert all(call["kind"] == "quotation.changed" for call in announcements)
+    assert all(call["actor_id"] == scenario.provider_owner.id for call in announcements)
 
 
 def test_customer_cannot_create_a_quotation_and_publishes_nothing(api, scenario, announcements):
@@ -209,7 +238,14 @@ def test_customer_rejection_publishes_quotation_changed(api, scenario, announcem
     response = api(f"/api/quotations/{quotation_id}/reject", as_auth_id=CUSTOMER_AUTH, method="POST")
 
     assert response.status_code == 200
-    assert announcements == [{"chat_id": scenario.chat_a.id, "kind": "quotation.changed", "ref_id": UUID(quotation_id)}]
+    assert announcements == [
+        {
+            "chat_id": scenario.chat_a.id,
+            "actor_id": scenario.customer.id,
+            "kind": "quotation.changed",
+            "ref_id": UUID(quotation_id),
+        }
+    ]
 
 
 def test_provider_cannot_reject_and_publishes_nothing(api, scenario, announcements):
@@ -295,7 +331,14 @@ def test_approved_payment_publishes_the_paid_quotation(db: Session, scenario: Sc
 
     _confirm(db, payment, "approved")
 
-    assert announcements == [{"chat_id": scenario.chat_a.id, "kind": "quotation.changed", "ref_id": quotation.id}]
+    assert announcements == [
+        {
+            "chat_id": scenario.chat_a.id,
+            "actor_id": scenario.customer.id,
+            "kind": "quotation.changed",
+            "ref_id": quotation.id,
+        }
+    ]
 
 
 def test_rejected_payment_publishes_nothing_because_the_quotation_is_unchanged(db: Session, scenario: Scenario, announcements):
@@ -327,6 +370,7 @@ def test_marking_a_chat_read_publishes_chat_read_to_the_reader_only(api, scenari
     assert json.loads(raw_payload) == {
         "kind": "chat.read",
         "chatId": str(scenario.chat_a.id),
+        "actorId": str(scenario.customer.id),
         "recipients": [str(scenario.customer.id)],
     }
 
@@ -341,16 +385,27 @@ def test_non_participant_read_publishes_nothing(api, scenario, db: Session):
 def test_chat_read_payload_carries_no_message_or_quotation_reference():
     chat_id, reader = uuid4(), uuid4()
 
-    payload = json.loads(ChatEvent(ChatEventKind.CHAT_READ, chat_id, None, (reader,)).to_payload())
+    payload = json.loads(ChatEvent(ChatEventKind.CHAT_READ, chat_id, None, reader, (reader,)).to_payload())
 
-    assert payload == {"kind": "chat.read", "chatId": str(chat_id), "recipients": [str(reader)]}
+    assert payload == {"kind": "chat.read", "chatId": str(chat_id), "actorId": str(reader), "recipients": [str(reader)]}
 
 
 def test_listener_relays_a_chat_read_event_to_its_reader():
     chat_id, reader = uuid4(), uuid4()
-    raw = ChatEvent(ChatEventKind.CHAT_READ, chat_id, None, (reader,)).to_payload()
+    raw = ChatEvent(ChatEventKind.CHAT_READ, chat_id, None, reader, (reader,)).to_payload()
 
-    assert parse_chat_event(raw) == {"kind": "chat.read", "chatId": str(chat_id), "recipients": [str(reader)]}
+    assert parse_chat_event(raw) == {
+        "kind": "chat.read",
+        "chatId": str(chat_id),
+        "actorId": str(reader),
+        "recipients": [str(reader)],
+    }
+
+
+def test_listener_rejects_a_chat_event_without_an_actor():
+    raw = json.dumps({"kind": "chat.read", "chatId": str(uuid4()), "recipients": [str(uuid4())]})
+
+    assert parse_chat_event(raw) is None
 
 
 def test_chat_read_without_a_chat_id_is_rejected_by_the_listener():

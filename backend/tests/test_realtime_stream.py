@@ -34,20 +34,22 @@ QUOTATION = UUID("5f0c1e2a-0000-4000-8000-0000000000e1")
 T0 = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 
 
-def message_payload(message_id: UUID, recipients: list[UUID]) -> dict:
+def message_payload(message_id: UUID, recipients: list[UUID], actor_id: UUID = ALICE) -> dict:
     return {
         "kind": "message.created",
         "chatId": str(CHAT),
         "messageId": str(message_id),
+        "actorId": str(actor_id),
         "recipients": [str(user_id) for user_id in recipients],
     }
 
 
-def quotation_payload(recipients: list[UUID]) -> dict:
+def quotation_payload(recipients: list[UUID], actor_id: UUID = ALICE) -> dict:
     return {
         "kind": "quotation.changed",
         "chatId": str(CHAT),
         "quotationId": str(QUOTATION),
+        "actorId": str(actor_id),
         "recipients": [str(user_id) for user_id in recipients],
     }
 
@@ -208,6 +210,8 @@ def test_parse_accepts_message_and_quotation_payloads():
         json.dumps({k: v for k, v in message_payload(MESSAGE, [ALICE]).items() if k != "messageId"}),
         json.dumps({k: v for k, v in quotation_payload([ALICE]).items() if k != "quotationId"}),
         json.dumps({**message_payload(MESSAGE, [ALICE]), "chatId": "not-a-uuid"}),
+        json.dumps({k: v for k, v in message_payload(MESSAGE, [ALICE]).items() if k != "actorId"}),
+        json.dumps({**message_payload(MESSAGE, [ALICE]), "actorId": "not-a-uuid"}),
         json.dumps({**message_payload(MESSAGE, [ALICE]), "recipients": []}),
         json.dumps({**message_payload(MESSAGE, [ALICE]), "recipients": "alice"}),
         json.dumps({**message_payload(MESSAGE, [ALICE]), "recipients": ["nope"]}),
@@ -273,7 +277,7 @@ def test_stream_sends_only_the_callers_events_without_recipients(stream):
 
     async def during() -> None:
         await wait_for_subscriber(broker, ALICE)
-        broker.publish(message_payload(BOB_MESSAGE, [BOB]))
+        broker.publish(message_payload(BOB_MESSAGE, [BOB], actor_id=BOB))
         broker.publish(message_payload(MESSAGE, [ALICE]))
         clock.now = T0 + timedelta(hours=1)
 
@@ -291,8 +295,39 @@ def test_stream_sends_only_the_callers_events_without_recipients(stream):
         "kind": "message.created",
         "chatId": str(CHAT),
         "messageId": str(MESSAGE),
+        "fromMe": True,
     }
     assert str(BOB_MESSAGE) not in response.text
+
+
+def test_stream_marks_the_actors_own_event_fromMe_true_and_hides_actor_and_recipients(stream):
+    broker, clock = stream
+
+    async def during() -> None:
+        await wait_for_subscriber(broker, ALICE)
+        broker.publish(message_payload(MESSAGE, [ALICE, BOB], actor_id=ALICE))
+        clock.now = T0 + timedelta(hours=1)
+
+    response = open_stream(ALICE, expires_at=T0 + timedelta(minutes=1), during=during)
+
+    assert json.loads(response.text.split("data: ", 1)[1].split("\n", 1)[0])["fromMe"] is True
+    assert "actorId" not in response.text
+    assert "recipients" not in response.text
+
+
+def test_stream_marks_the_other_participants_event_fromMe_false_and_hides_actor_and_recipients(stream):
+    broker, clock = stream
+
+    async def during() -> None:
+        await wait_for_subscriber(broker, BOB)
+        broker.publish(message_payload(MESSAGE, [ALICE, BOB], actor_id=ALICE))
+        clock.now = T0 + timedelta(hours=1)
+
+    response = open_stream(BOB, expires_at=T0 + timedelta(minutes=1), during=during)
+
+    assert json.loads(response.text.split("data: ", 1)[1].split("\n", 1)[0])["fromMe"] is False
+    assert "actorId" not in response.text
+    assert "recipients" not in response.text
 
 
 def test_stream_emits_keepalive_comments_while_idle(stream):

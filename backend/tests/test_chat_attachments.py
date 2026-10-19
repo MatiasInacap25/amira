@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from uuid import UUID, uuid4
 
 import pytest
@@ -140,6 +141,7 @@ def test_the_upload_publishes_message_created_in_the_same_transaction(api, db: S
     _, payload = notifications[0]
     assert "message.created" in payload
     assert response.json()["messageId"] in payload
+    assert json.loads(payload)["actorId"] == str(scenario.customer.id)
 
 
 def test_non_participant_gets_404_and_nothing_is_uploaded(api, db: Session, scenario: Scenario, storage):

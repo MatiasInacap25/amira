@@ -154,7 +154,13 @@ def confirm_payment(
         .values(status="superseded")
     )
     for superseded_id in superseded_ids:
-        publish_chat_event(session, chat_id=quotation.chat_id, kind=ChatEventKind.QUOTATION_CHANGED, ref_id=superseded_id)
+        publish_chat_event(
+            session,
+            chat_id=quotation.chat_id,
+            actor_id=form.customer_id,
+            kind=ChatEventKind.QUOTATION_CHANGED,
+            ref_id=superseded_id,
+        )
     session.add(
         Servicio(
             id=uuid4(),
@@ -171,7 +177,13 @@ def confirm_payment(
             accepted_quotation_id=quotation.id,
         )
     )
-    publish_chat_event(session, chat_id=quotation.chat_id, kind=ChatEventKind.QUOTATION_CHANGED, ref_id=quotation.id)
+    publish_chat_event(
+        session,
+        chat_id=quotation.chat_id,
+        actor_id=form.customer_id,
+        kind=ChatEventKind.QUOTATION_CHANGED,
+        ref_id=quotation.id,
+    )
     try:
         session.commit()
     except IntegrityError:

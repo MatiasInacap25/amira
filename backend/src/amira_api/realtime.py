@@ -1,8 +1,8 @@
 """Chat change announcements over PostgreSQL LISTEN/NOTIFY.
 
 Writers call publish_chat_event on the same session as their row change, before the commit. pg_notify is delivered
-only when that transaction commits, so a rolled-back write announces nothing. Payloads carry ids and recipient user
-ids only, never message content.
+only when that transaction commits, so a rolled-back write announces nothing. Payloads carry ids, the acting user's
+id and recipient user ids only, never message content.
 
 The listener task relays those notifications to the in-process ChatBroker, which fans them out to the open
 per-user event streams in realtime_routes.
@@ -73,6 +73,7 @@ class ChatEvent:
     kind: ChatEventKind
     chat_id: UUID
     ref_id: UUID | None
+    actor_id: UUID
     recipients: tuple[UUID, ...]
 
     def to_payload(self) -> str:
@@ -80,6 +81,7 @@ class ChatEvent:
         ref_key = _REF_KEYS.get(self.kind)
         if ref_key is not None:
             fields[ref_key] = str(self.ref_id)
+        fields["actorId"] = str(self.actor_id)
         fields["recipients"] = [str(user_id) for user_id in self.recipients]
         payload = json.dumps(fields, separators=(",", ":"))
         if len(payload.encode()) >= MAX_PAYLOAD_BYTES:
@@ -94,8 +96,10 @@ def _notify(session: Session, event: ChatEvent) -> None:
     )
 
 
-def publish_chat_event(session: Session, *, chat_id: UUID, kind: ChatEventKind | str, ref_id: UUID) -> None:
-    """Announce a chat change to both participants, inside the caller's transaction."""
+def publish_chat_event(
+    session: Session, *, chat_id: UUID, actor_id: UUID, kind: ChatEventKind | str, ref_id: UUID
+) -> None:
+    """Announce a chat change caused by actor_id to both participants, inside the caller's transaction."""
     event_kind = ChatEventKind(kind)
     recipients = tuple(
         session.execute(
@@ -106,12 +110,20 @@ def publish_chat_event(session: Session, *, chat_id: UUID, kind: ChatEventKind |
     )
     if not recipients:
         return
-    _notify(session, ChatEvent(kind=event_kind, chat_id=chat_id, ref_id=ref_id, recipients=recipients))
+    _notify(
+        session,
+        ChatEvent(kind=event_kind, chat_id=chat_id, ref_id=ref_id, actor_id=actor_id, recipients=recipients),
+    )
 
 
 def publish_chat_read(session: Session, *, chat_id: UUID, reader_id: UUID) -> None:
     """Tell only the reader's open streams that they read this chat, inside the caller's transaction."""
-    _notify(session, ChatEvent(kind=ChatEventKind.CHAT_READ, chat_id=chat_id, ref_id=None, recipients=(reader_id,)))
+    _notify(
+        session,
+        ChatEvent(
+            kind=ChatEventKind.CHAT_READ, chat_id=chat_id, ref_id=None, actor_id=reader_id, recipients=(reader_id,)
+        ),
+    )
 
 
 class TooManyStreams(Exception):
@@ -218,11 +230,14 @@ def parse_chat_event(raw: str) -> dict | None:
     recipients = event.get("recipients")
     if not isinstance(recipients, list) or not recipients or not all(_is_uuid(user_id) for user_id in recipients):
         return None
-    if not _is_uuid(event.get("chatId")) or (ref_key is not None and not _is_uuid(event.get(ref_key))):
+    if not _is_uuid(event.get("chatId")) or not _is_uuid(event.get("actorId")):
+        return None
+    if ref_key is not None and not _is_uuid(event.get(ref_key)):
         return None
     parsed = {"kind": kind.value, "chatId": event["chatId"]}
     if ref_key is not None:
         parsed[ref_key] = event[ref_key]
+    parsed["actorId"] = event["actorId"]
     parsed["recipients"] = recipients
     return parsed
 
