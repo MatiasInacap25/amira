@@ -25,6 +25,7 @@ from amira_api.chat_schemas import (
 )
 from amira_api.contact_filter import CONTACT_KIND_LABELS, find_contact_detail
 from amira_api.db import get_db_session
+from amira_api.realtime import ChatEventKind, publish_chat_event
 from amira_api.models import Chat, Cotizacion, Mensaje
 from amira_api.public_routes import MAX_OFFSET, MAX_PAGE_SIZE
 from amira_api.quotation_service import quotation_view
@@ -269,6 +270,7 @@ def send_chat_message(
 
     message = Mensaje(id=uuid4(), chat_id=chat_id, user_id=caller_id, content=payload.content)
     session.add(message)
+    publish_chat_event(session, chat_id=chat_id, kind=ChatEventKind.MESSAGE_CREATED, ref_id=message.id)
     session.commit()
     session.refresh(message)
     return ChatMessage(

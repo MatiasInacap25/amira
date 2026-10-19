@@ -52,10 +52,23 @@ def _register_btrim(connection, _record) -> None:
     connection.create_function("btrim", 1, lambda value: value.strip() if value else value, deterministic=True)
 
 
+def _register_pg_notify(notifications: list[tuple[str, str]]):
+    # SQLite has no LISTEN/NOTIFY. The fake records (channel, payload) so tests can see what a commit would announce.
+    def record(channel: str, payload: str) -> None:
+        notifications.append((channel, payload))
+
+    def register(connection, _record) -> None:
+        connection.create_function("pg_notify", 2, record)
+
+    return register
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    notifications: list[tuple[str, str]] = []
     event.listen(engine, "connect", _register_btrim)
+    event.listen(engine, "connect", _register_pg_notify(notifications))
     tables = (
         "Usuario",
         "Perfil",
@@ -76,6 +89,7 @@ def db():
             'CREATE TABLE "Tipos_Servicio" ("ID" CHAR(32) PRIMARY KEY, "Nombre_servicio" VARCHAR(120) NOT NULL, "Slug" VARCHAR(120) NOT NULL)'
         ))
     with Session(engine) as session:
+        session.info["notifications"] = notifications
         yield session
     engine.dispose()
 
