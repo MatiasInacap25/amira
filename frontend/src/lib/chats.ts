@@ -67,7 +67,14 @@ export type ChatTimelineEntry =
   | ({ kind: "message" } & ChatMessage)
   | { kind: "quotation"; quotation: ChatQuotation };
 
-// Contract shape: the header is nested under `chat`; `timeline` runs oldest to newest within the page.
+// Payload of GET /api/chats/{id}/messages: the header fields sit flat at the top level.
+export type BackendChatMessagesPage = ChatHeader & {
+  viewerRole: ChatViewerRole;
+  timeline: ChatTimelineEntry[];
+  nextBefore: string | null;
+};
+
+// View shape: the header is nested under `chat`; `timeline` runs oldest to newest within the page.
 // `nextBefore` is an opaque cursor for the next older page, null when no more messages exist.
 export type ChatMessagesPage = {
   chat: ChatHeader;
@@ -76,6 +83,17 @@ export type ChatMessagesPage = {
   nextBefore: string | null;
   viewerRole: ChatViewerRole;
 };
+
+export function adaptChatMessagesPage(page: BackendChatMessagesPage): ChatMessagesPage {
+  const { chatId, requestId, createdAt, serviceName, originCommuneName, destinationCommuneName, counterpart } = page;
+  return {
+    chat: { chatId, requestId, createdAt, serviceName, originCommuneName, destinationCommuneName, counterpart },
+    timeline: page.timeline,
+    hasMore: page.nextBefore !== null,
+    nextBefore: page.nextBefore,
+    viewerRole: page.viewerRole,
+  };
+}
 
 export const CHAT_ROOT_KEY = ["chats"] as const;
 

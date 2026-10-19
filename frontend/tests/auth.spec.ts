@@ -526,17 +526,14 @@ test("provider inbox opens an owned request, accepts it with the verified token 
   });
   await page.route(/\/api\/chats\/chat-provider-1(\/|$)/, async (route) => route.fulfill({
     json: {
-      chat: {
-        chatId: "chat-provider-1",
-        requestId: pendingProviderRequest.requestId,
-        createdAt: "2026-10-12T12:00:00Z",
-        serviceName: "Mudanzas",
-        originCommuneName: "Santiago",
-        destinationCommuneName: "Valparaíso",
-        counterpart: { name: "Camila Rojas", kind: "customer", providerProfileId: null },
-      },
+      chatId: "chat-provider-1",
+      requestId: pendingProviderRequest.requestId,
+      createdAt: "2026-10-12T12:00:00Z",
+      serviceName: "Mudanzas",
+      originCommuneName: "Santiago",
+      destinationCommuneName: "Valparaíso",
+      counterpart: { name: "Camila Rojas", kind: "customer", providerProfileId: null },
       timeline: [],
-      hasMore: false,
       nextBefore: null,
       viewerRole: "provider",
     },

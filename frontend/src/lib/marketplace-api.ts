@@ -1,5 +1,12 @@
 import { authenticatedApiFetch, resolveApiBaseUrl } from "@/lib/auth/account-api";
-import { ChatRequestError, type ChatListPage, type ChatMessage, type ChatMessagesPage, type ChatQuotation } from "@/lib/chats";
+import {
+  adaptChatMessagesPage,
+  ChatRequestError,
+  type BackendChatMessagesPage,
+  type ChatListPage,
+  type ChatMessage,
+  type ChatQuotation,
+} from "@/lib/chats";
 import { buildProviderRequestsQuery, type ProviderRequestStatus } from "@/lib/provider-requests";
 
 export type LocationCommune = {
@@ -500,7 +507,7 @@ export async function getChatMessages(
     { headers: { Accept: "application/json" }, signal },
   );
   if (!response.ok) throw new ChatRequestError(response.status);
-  return response.json() as Promise<ChatMessagesPage>;
+  return adaptChatMessagesPage((await response.json()) as BackendChatMessagesPage);
 }
 
 // FastAPI validation errors arrive as { detail: [{ type, msg }] }; other errors carry no usable detail.
