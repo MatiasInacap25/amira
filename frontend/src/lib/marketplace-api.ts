@@ -3,6 +3,7 @@ import {
   adaptChatMessagesPage,
   ChatRequestError,
   type BackendChatMessagesPage,
+  type ChatAttachmentUrl,
   type ChatListPage,
   type ChatMessage,
   type ChatQuotation,
@@ -532,6 +533,32 @@ async function postChatJson<T>(accessToken: string, path: string, body?: unknown
 
 export function sendChatMessage(accessToken: string, chatId: string, content: string) {
   return postChatJson<ChatMessage>(accessToken, `/api/chats/${encodeURIComponent(chatId)}/messages`, { content });
+}
+
+// Multipart upload: the browser sets the boundary, so no Content-Type header is passed.
+export async function uploadChatAttachment(accessToken: string, chatId: string, photo: File, content?: string) {
+  const form = new FormData();
+  form.append("photo", photo);
+  if (content) form.append("content", content);
+  const response = await authenticatedApiFetch(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/attachments`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { Accept: "application/json" }, body: form },
+  );
+  if (!response.ok) throw await chatErrorFrom(response);
+  return response.json() as Promise<ChatMessage>;
+}
+
+export async function getChatAttachmentUrl(accessToken: string, chatId: string, messageId: string) {
+  const response = await authenticatedApiFetch(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/attachment`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) throw new ChatRequestError(response.status);
+  return response.json() as Promise<ChatAttachmentUrl>;
 }
 
 export type QuotationInput = {

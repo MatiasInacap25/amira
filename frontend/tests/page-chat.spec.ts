@@ -1,5 +1,9 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import path from "node:path";
 import { locationsResponse } from "./support/catalog-fixtures";
+
+const photoPath = path.resolve("tests/fixtures/chat-photo.png");
+const photoPreview = { name: "Vista previa de la foto adjunta" };
 
 const user = {
   id: "user-test-1",
@@ -622,6 +626,127 @@ test("a quotation that can no longer be paid explains it and refreshes the conve
   await quotation.getByRole("button", { name: "Pagar" }).click();
 
   await expect(quotation.getByRole("alert")).toHaveText("Esta cotización ya no se puede pagar. Actualizamos la conversación.");
+});
+
+function attachmentEntry(messageId: string, content: string, senderName: string) {
+  return {
+    kind: "message",
+    messageId,
+    content,
+    sentAt: "2026-10-10T12:00:00Z",
+    fromMe: false,
+    senderName,
+    attachment: { contentType: "image/png", sizeBytes: 70 },
+  };
+}
+
+test("attaches a photo, previews it and sends it with its text as multipart", async ({ page }) => {
+  const posts: { body: string; authorization: string | undefined }[] = [];
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage() }));
+  await page.route("**/api/chats/chat-1/messages/attachments", async (route) => {
+    posts.push({ body: route.request().postData() ?? "", authorization: route.request().headers()["authorization"] });
+    await route.fulfill({ status: 201, json: { ...messageEntry("message-photo", "", true, "Tú"), attachment: { contentType: "image/png", sizeBytes: 70 } } });
+  });
+
+  await signInToChat(page, "customer");
+
+  await page.locator('input[type="file"]').setInputFiles(photoPath);
+  await expect(page.getByRole("img", photoPreview)).toBeVisible();
+
+  await page.getByRole("textbox", { name: "Escribe un mensaje" }).fill("Así llegó el sofá");
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+
+  await expect(page.getByRole("img", photoPreview)).toHaveCount(0);
+  expect(posts).toHaveLength(1);
+  expect(posts[0].body).toContain('name="photo"');
+  expect(posts[0].body).toContain('name="content"');
+  expect(posts[0].body).toContain("Así llegó el sofá");
+  expect(posts[0].authorization).toMatch(/^Bearer /);
+});
+
+test("a thread photo fetches its signed URL and shows the image in a new tab", async ({ page }) => {
+  const signedUrl = "https://storage.example.test/chat-attachments/photo.png?token=signed";
+  const urlRequests: (string | undefined)[] = [];
+  await mockThread(page, async (route) =>
+    route.fulfill({ json: threadPage({ timeline: [attachmentEntry("message-photo", "", "Ana Pérez")] }) }),
+  );
+  await page.route("**/api/chats/chat-1/messages/message-photo/attachment", async (route) => {
+    urlRequests.push(route.request().headers()["authorization"]);
+    await route.fulfill({ json: { url: signedUrl, expiresAt: "2026-10-10T12:05:00Z" } });
+  });
+  await page.route("https://storage.example.test/**", (route) => route.fulfill({ contentType: "image/png", path: photoPath }));
+
+  await signInToChat(page, "customer");
+
+  const photo = page.getByRole("img", { name: "Foto enviada por Ana Pérez" });
+  await expect(photo).toBeVisible();
+  await expect(photo).toHaveJSProperty("naturalWidth", 1);
+  const link = page.getByRole("link", { name: "Foto enviada por Ana Pérez" });
+  await expect(link).toHaveAttribute("href", signedUrl);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", /noopener/);
+  expect(urlRequests).toHaveLength(1);
+  expect(urlRequests[0]).toMatch(/^Bearer /);
+});
+
+test("a 415 and a 422 from the server show their Spanish messages and keep the draft and photo", async ({ page }) => {
+  let attempts = 0;
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage() }));
+  await page.route("**/api/chats/chat-1/messages/attachments", async (route) => {
+    attempts += 1;
+    if (attempts === 1) {
+      await route.fulfill({ status: 415, json: { detail: "The chat photo must be a JPEG, PNG or WebP image." } });
+      return;
+    }
+    await route.fulfill({
+      status: 422,
+      json: { detail: [{ type: "contact_details_blocked", msg: "El chat no permite compartir datos de contacto." }] },
+    });
+  });
+
+  await signInToChat(page, "customer");
+
+  const composer = page.getByRole("textbox", { name: "Escribe un mensaje" });
+  const error = page.locator(".chat-composer").getByRole("alert");
+  await composer.fill("Nos vemos en la plaza");
+  await page.locator('input[type="file"]').setInputFiles(photoPath);
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+
+  await expect(error).toHaveText("Solo puedes adjuntar fotos en formato JPEG, PNG o WebP.");
+  await expect(composer).toHaveValue("Nos vemos en la plaza");
+  await expect(page.getByRole("img", photoPreview)).toBeVisible();
+
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+
+  await expect(error).toHaveText("El chat no permite compartir datos de contacto.");
+  await expect(composer).toHaveValue("Nos vemos en la plaza");
+  await expect(page.getByRole("img", photoPreview)).toBeVisible();
+});
+
+test("a too-large or wrong-type photo is rejected before any request is sent", async ({ page }) => {
+  const posts: string[] = [];
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage() }));
+  await page.route("**/api/chats/chat-1/messages/attachments", async (route) => {
+    posts.push(route.request().url());
+    await route.fulfill({ status: 201, json: {} });
+  });
+
+  await signInToChat(page, "customer");
+
+  const error = page.locator(".chat-composer").getByRole("alert");
+  await page.locator('input[type="file"]').setInputFiles({ name: "notas.txt", mimeType: "text/plain", buffer: Buffer.from("hola") });
+  await expect(error).toHaveText("Solo puedes adjuntar fotos en formato JPEG, PNG o WebP.");
+  await expect(page.getByRole("img", photoPreview)).toHaveCount(0);
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "grande.png",
+    mimeType: "image/png",
+    buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
+  });
+  await expect(error).toHaveText("La foto no puede superar los 5 MB.");
+  await expect(page.getByRole("img", photoPreview)).toHaveCount(0);
+
+  expect(posts).toHaveLength(0);
 });
 
 test("paid quotation shows its payment date and offers no actions", async ({ page }) => {

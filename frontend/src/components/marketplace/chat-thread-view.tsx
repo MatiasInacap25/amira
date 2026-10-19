@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ChatAttachmentImage } from "@/components/marketplace/chat-attachment-image";
 import { ChatComposer } from "@/components/marketplace/chat-composer";
 import { ChatErrorState } from "@/components/marketplace/chat-error-state";
 import { ChatQuotationCard } from "@/components/marketplace/chat-quotation-card";
@@ -15,6 +16,7 @@ import {
   CHAT_MESSAGE_PAGE_SIZE,
   ChatRequestError,
   chatHref,
+  chatListKey,
   chatRouteLabel,
   chatThreadKey,
   counterpartKindLabel,
@@ -50,7 +52,11 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
   const viewerRole = pages[0]?.viewerRole;
   const endRef = useRef<HTMLDivElement>(null);
   const [quotationOpen, setQuotationOpen] = useState(false);
-  const refreshThread = () => void queryClient.invalidateQueries({ queryKey: chatThreadKey(userId ?? "", chatId) });
+  // A new message or quotation changes both the thread and the list preview.
+  const refreshThread = () => {
+    void queryClient.invalidateQueries({ queryKey: chatThreadKey(userId ?? "", chatId) });
+    void queryClient.invalidateQueries({ queryKey: chatListKey(userId ?? "") });
+  };
 
   // Opens the conversation at its latest message. Loading older pages keeps the last message, so it does not jump.
   useEffect(() => {
@@ -117,7 +123,8 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
               {timeline.map((entry) => entry.kind === "message" ? (
                 <li className={entry.fromMe ? "chat-message chat-message-own" : "chat-message"} key={entry.messageId}>
                   {!entry.fromMe && <p className="chat-message-sender">{entry.senderName}</p>}
-                  <p className="chat-message-content">{entry.content}</p>
+                  {entry.attachment && <ChatAttachmentImage chatId={chatId} messageId={entry.messageId} senderName={entry.senderName} />}
+                  {entry.content && <p className="chat-message-content">{entry.content}</p>}
                   <time dateTime={entry.sentAt}>{timeFormatter.format(new Date(entry.sentAt))}</time>
                 </li>
               ) : (
