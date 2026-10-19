@@ -10,7 +10,7 @@ import {
   parseChatStreamState,
   type ChatEvent,
 } from "@/lib/chat-events";
-import { chatListKey, chatThreadKey } from "@/lib/chats";
+import { CHAT_ROOT_KEY, chatListKey, chatThreadKey } from "@/lib/chats";
 import { currentAccessToken, isSignInRequired } from "@/lib/provider-request-access";
 
 type ChatEventListener = (event: ChatEvent) => void;
@@ -132,10 +132,18 @@ export function useChatEvents(userId: string | null | undefined): boolean {
 
   useEffect(() => {
     if (!userId) return;
-    return subscribeChatEvents((event) => {
+    // Events published while the stream was down are not replayed, so each transition to ready resyncs every chat query.
+    const unsubscribeStatus = subscribeStatus(() => {
+      if (connected) void queryClient.invalidateQueries({ queryKey: CHAT_ROOT_KEY });
+    });
+    const unsubscribeEvents = subscribeChatEvents((event) => {
       void queryClient.invalidateQueries({ queryKey: chatListKey(userId) });
       void queryClient.invalidateQueries({ queryKey: chatThreadKey(userId, event.chatId) });
     });
+    return () => {
+      unsubscribeStatus();
+      unsubscribeEvents();
+    };
   }, [queryClient, userId]);
 
   return useSyncExternalStore(subscribeStatus, () => connected, () => false);

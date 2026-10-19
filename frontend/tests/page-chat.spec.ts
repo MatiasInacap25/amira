@@ -198,19 +198,37 @@ test("a keepalive-only stream keeps the thread polling every 10 s", async ({ pag
 test("a ready event stops the 10 s fallback poll", async ({ page }) => {
   test.setTimeout(90_000);
   let threadRequests = 0;
+  let streamConnections = 0;
   await mockThread(page, async (route) => {
     threadRequests += 1;
     await route.fulfill({ json: threadPage({ timeline: [messageEntry("message-1", "Hola", false, "Ana Pérez")] }) });
   });
-  await signInToChat(page, "customer", "chat-1", async (route) =>
-    route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: ready\ndata: {}\n\n" }),
-  );
+  await signInToChat(page, "customer", "chat-1", async (route) => {
+    streamConnections += 1;
+    await route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: ready\ndata: {}\n\n" });
+  });
 
   await expect.poll(() => threadRequests).toBeGreaterThanOrEqual(1);
-  const afterReady = threadRequests;
-  // A fulfilled route ends the body, so the client reconnects; while it reports ready, no interval poll fires.
+  // A fulfilled route ends the body, so the client reconnects. Each ready after a reconnect resyncs once; no interval poll fires between them.
   await page.waitForTimeout(11_000);
-  expect(threadRequests).toBe(afterReady);
+  expect(threadRequests).toBeLessThanOrEqual(1 + streamConnections);
+});
+
+test("a reconnect that reports ready shows a message committed while the stream was down", async ({ page }) => {
+  let serverTimeline = [messageEntry("message-1", "Hola", false, "Ana Pérez")];
+  let streamConnections = 0;
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ timeline: serverTimeline }) }));
+  await signInToChat(page, "customer", "chat-1", async (route) => {
+    streamConnections += 1;
+    // The first stream ends right after ready; the counterpart writes while the client is disconnected.
+    if (streamConnections === 2) {
+      serverTimeline = [...serverTimeline, messageEntry("message-2", "¿Llegas a las 10?", false, "Ana Pérez")];
+    }
+    await route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: ready\ndata: {}\n\n" });
+  });
+
+  // The gap is shorter than the 10 s fallback poll, so only the resync on ready can show the message this fast.
+  await expect(page.getByText("¿Llegas a las 10?")).toBeVisible({ timeout: 5_000 });
 });
 
 test("signed-in customer opens the thread with counterpart, route and messages oldest first", async ({ page }) => {
