@@ -866,6 +866,9 @@ h1, h2, h3, p { margin-top: 0; }
 .provider-request-facts dd { margin: 0; color: #173f55; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
 .provider-request-privacy { margin: 16px 0 0; padding: 10px 12px; border-radius: 7px; background: #f3f8f7; color: #315f50; font-size: 12px; line-height: 1.55; }
 .provider-request-muted { margin: 0; color: #69777b; font-size: 13px; }
+.chat-card-unread { border-color: #b04f25; }
+.chat-card-unread h2, .chat-card-unread .chat-card-preview { font-weight: 800; }
+.chat-card-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; margin-top: 8px; padding: 0 7px; border-radius: 99px; background: #b04f25; color: #fff; font-size: 12px; font-weight: 750; }
 .nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; margin-left: 6px; padding: 0 6px; border-radius: 99px; background: #b04f25; color: #fff; font-size: 11px; font-weight: 750; vertical-align: middle; }
 .chat-page { min-height: 58vh; padding: clamp(28px, 5vw, 64px) 22px; }
 .chat-wrap { width: min(100%, 880px); margin: 0 auto; }

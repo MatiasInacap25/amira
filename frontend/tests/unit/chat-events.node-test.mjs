@@ -96,3 +96,15 @@ test("parser and parseChatStreamState report ready and degraded frames and ignor
 
   assert.deepEqual(frames.map(parseChatStreamState), ["ready", "degraded", null]);
 });
+
+test("maps a chat.read frame to the reader's chat id without a message or quotation id", () => {
+  const { frames, parser } = collect();
+
+  parser.push('event: chat.read\ndata: {"kind":"chat.read","chatId":"chat-1"}\n\n');
+
+  assert.deepEqual(parseChatEvent(frames[0]), { kind: "chat.read", chatId: "chat-1" });
+});
+
+test("rejects a chat.read frame without a chat id", () => {
+  assert.equal(parseChatEvent({ event: "chat.read", data: '{"kind":"chat.read"}' }), null);
+});

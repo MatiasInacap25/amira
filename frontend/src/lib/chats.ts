@@ -30,7 +30,11 @@ export type ChatHeader = {
 
 export type ChatSummary = ChatHeader & {
   lastMessage: ChatLastMessage | null;
+  unreadCount: number;
 };
+
+// GET /api/chats/unread
+export type ChatUnreadTotal = { total: number };
 
 export type ChatListPage = {
   items: ChatSummary[];
@@ -115,6 +119,10 @@ export function chatListKey(userId: string) {
 
 export function chatThreadKey(userId: string, chatId: string) {
   return [...CHAT_ROOT_KEY, "thread", userId, chatId] as const;
+}
+
+export function chatUnreadTotalKey(userId: string) {
+  return [...CHAT_ROOT_KEY, "unread", userId] as const;
 }
 
 // Stops on an empty page so a total/items mismatch cannot cause endless requests.

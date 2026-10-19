@@ -19,12 +19,14 @@ import {
   chatListKey,
   chatRouteLabel,
   chatThreadKey,
+  chatUnreadTotalKey,
   counterpartKindLabel,
   nextMessagesBefore,
   orderTimelineOldestFirst,
 } from "@/lib/chats";
 import { chatRefetchInterval } from "@/lib/chat-quotations";
-import { getChatMessages } from "@/lib/marketplace-api";
+import { shouldMarkChatRead } from "@/lib/chat-unread";
+import { getChatMessages, markChatRead } from "@/lib/marketplace-api";
 import { currentAccessToken, ProviderRequestAccessError } from "@/lib/provider-request-access";
 
 const timeFormatter = new Intl.DateTimeFormat("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: "America/Santiago" });
@@ -62,6 +64,31 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
   useEffect(() => {
     if (lastEntryId) endRef.current?.scrollIntoView({ block: "end" });
   }, [lastEntryId]);
+
+  // Marks the chat read on open and when a newer entry arrives while the tab is visible. Each mark is for one newest entry.
+  const lastMarkedRef = useRef<{ chatId: string; entryId: string } | undefined>(undefined);
+  useEffect(() => {
+    if (!userId) return;
+    const markIfNew = () => {
+      const lastMarked = lastMarkedRef.current?.chatId === chatId ? lastMarkedRef.current.entryId : undefined;
+      if (!shouldMarkChatRead({ visibility: document.visibilityState, newestEntryId: lastEntryId, lastMarkedEntryId: lastMarked })) return;
+      if (!lastEntryId) return;
+      lastMarkedRef.current = { chatId, entryId: lastEntryId };
+      void currentAccessToken()
+        .then((token) => markChatRead(token, chatId))
+        .then(() => {
+          void queryClient.invalidateQueries({ queryKey: chatListKey(userId) });
+          void queryClient.invalidateQueries({ queryKey: chatUnreadTotalKey(userId) });
+        })
+        .catch(() => {
+          // Allow the next visible change or return to the tab to try again.
+          if (lastMarkedRef.current?.entryId === lastEntryId) lastMarkedRef.current = undefined;
+        });
+    };
+    markIfNew();
+    document.addEventListener("visibilitychange", markIfNew);
+    return () => document.removeEventListener("visibilitychange", markIfNew);
+  }, [chatId, lastEntryId, queryClient, userId]);
 
   const notFound = threadQuery.error instanceof ChatRequestError && threadQuery.error.status === 404;
   const loading = sessionPending || (Boolean(userId) && threadQuery.isPending);

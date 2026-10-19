@@ -5,7 +5,9 @@ export type ChatStreamFrame = { event: string; data: string };
 
 export type ChatEvent =
   | { kind: "message.created"; chatId: string; messageId: string }
-  | { kind: "quotation.changed"; chatId: string; quotationId: string };
+  | { kind: "quotation.changed"; chatId: string; quotationId: string }
+  // Sent to the reader only: their other tabs drop the unread state of this chat.
+  | { kind: "chat.read"; chatId: string };
 
 export const CHAT_EVENTS_INITIAL_BACKOFF_MS = 1_000;
 export const CHAT_EVENTS_MAX_BACKOFF_MS = 30_000;
@@ -67,6 +69,7 @@ export function parseChatEvent(frame: ChatStreamFrame): ChatEvent | null {
     const { quotationId } = payload as Record<string, unknown>;
     return typeof quotationId === "string" ? { kind, chatId, quotationId } : null;
   }
+  if (kind === "chat.read") return { kind, chatId };
   return null;
 }
 

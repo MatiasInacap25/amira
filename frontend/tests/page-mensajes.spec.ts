@@ -41,8 +41,14 @@ function chat(overrides: Record<string, unknown> = {}) {
     destinationCommuneName: "Valparaíso",
     counterpart: { name: "Ana Pérez", kind: "customer", providerProfileId: null },
     lastMessage: null,
+    unreadCount: 0,
     ...overrides,
   };
+}
+
+// Answers GET /api/chats/unread with the given total.
+function unreadTotal(total: number) {
+  return async (route: Route) => route.fulfill({ json: { total } });
 }
 
 function chatPage(items: unknown[], total = items.length, offset = 0) {
@@ -84,9 +90,14 @@ async function mockSmsVerifiedAuth(page: Page) {
 }
 
 // Signs in through the real login form and lands on /mensajes. The real-time stream answers with `events`.
-async function signInToMessages(page: Page, events: (route: Route) => Promise<void> = idleEventStream) {
+async function signInToMessages(
+  page: Page,
+  events: (route: Route) => Promise<void> = idleEventStream,
+  unread: (route: Route) => Promise<void> = unreadTotal(0),
+) {
   await mockSmsVerifiedAuth(page);
   await page.route("**/api/chats/events", events);
+  await page.route("**/api/chats/unread", unread);
   await page.route("**/api/account/me", async (route) =>
     route.fulfill({ json: { user_id: "account-test-1", role: "customer", profile_id: null } }),
   );
@@ -287,4 +298,86 @@ test("chat list fits a phone-width viewport without horizontal scrolling", async
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("list shows each chat's unread count in its row and the navigation badge shows the total", async ({ page }) => {
+  await mockChats(page, async (_url, route) =>
+    route.fulfill({
+      json: chatPage([
+        chat({ chatId: "chat-ana", counterpart: { name: "Ana Pérez", kind: "customer", providerProfileId: null }, unreadCount: 3 }),
+        chat({ chatId: "chat-luis", counterpart: { name: "Luis Soto", kind: "company", providerProfileId: "p-2" }, unreadCount: 0 }),
+      ]),
+    }),
+  );
+  await signInToMessages(page, idleEventStream, unreadTotal(3));
+
+  const anaRow = page.locator(".chat-card", { hasText: "Ana Pérez" });
+  await expect(anaRow.getByLabel("3 mensajes sin leer")).toHaveText("3");
+  await expect(anaRow).toHaveClass(/chat-card-unread/);
+  const luisRow = page.locator(".chat-card", { hasText: "Luis Soto" });
+  await expect(luisRow.getByLabel(/mensajes? sin leer/)).toHaveCount(0);
+  await expect(luisRow).not.toHaveClass(/chat-card-unread/);
+  await expect(page.locator(".desktop-nav").getByLabel("3 mensajes sin leer")).toHaveText("3");
+});
+
+test("a chat.read event from the stream refreshes the navigation badge", async ({ page }) => {
+  let total = 4;
+  let unreadRequests = 0;
+  await signInToMessages(
+    page,
+    async (route) => {
+      await expect.poll(() => unreadRequests).toBeGreaterThanOrEqual(1);
+      total = 0;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: 'event: chat.read\ndata: {"kind":"chat.read","chatId":"chat-1"}\n\n',
+      });
+    },
+    async (route) => {
+      unreadRequests += 1;
+      await route.fulfill({ json: { total } });
+    },
+  );
+
+  await expect(page.locator(".desktop-nav").getByLabel("4 mensajes sin leer")).toBeVisible();
+  await expect(page.locator(".desktop-nav .nav-badge")).toHaveCount(0);
+});
+
+test("a message.created event refreshes the navigation badge total", async ({ page }) => {
+  let total = 1;
+  let unreadRequests = 0;
+  await signInToMessages(
+    page,
+    async (route) => {
+      await expect.poll(() => unreadRequests).toBeGreaterThanOrEqual(1);
+      total = 2;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: 'event: message.created\ndata: {"kind":"message.created","chatId":"chat-1","messageId":"message-2"}\n\n',
+      });
+    },
+    async (route) => {
+      unreadRequests += 1;
+      await route.fulfill({ json: { total } });
+    },
+  );
+
+  await expect(page.locator(".desktop-nav").getByLabel("2 mensajes sin leer")).toBeVisible();
+});
+
+test("signed-out pages make no unread-total request", async ({ page }) => {
+  const unreadRequests: string[] = [];
+  await page.route("**/api/chats/unread", async (route) => {
+    unreadRequests.push(route.request().url());
+    await route.fulfill({ json: { total: 5 } });
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Mensajes" })).toHaveCount(0);
+  await page.goto("/mensajes");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("Inicia sesión para ver tus mensajes.");
+
+  expect(unreadRequests).toHaveLength(0);
 });
