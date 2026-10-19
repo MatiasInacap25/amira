@@ -48,7 +48,7 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
 | T9 | S4.5 (frontend) | delegated (herdr worker, Haiku) | done | `603dd03` |
 | V3 | S4 | independent verifier (migration, authorization) | done | see L20 |
 | T10 | S5.1 (backend) | delegated (herdr worker, Haiku) | done | `ca1e784` |
-| T11 | S5.2 (frontend) | delegated (herdr worker, Haiku) | pending | |
+| T11 | S5.2 (frontend) | delegated (herdr worker, Haiku) | done | `ec0fe70` |
 
 Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
 
@@ -77,3 +77,4 @@ Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchest
 - L21 (2026-10-19): Full-range review refused again (lens_context_budget_exceeded, 47 files). Reduced to the unread slice (base `b1e5e07`, lenses risk/reliability, consent granted, lineage `review-de556cf0b8f2cf25`): approved and acknowledged. User chose "Toast en la app (Recomendado)" for notifications; S5 plan awaiting approval.
 - L22 (2026-10-19): "si" (approval of the S5 plan). Branch `feat/chat-notifications` on top of `feat/chat-unread`. No independent verifier (no high-risk item).
 - L23 (2026-10-19): T10 done (`ca1e784`): actorId recorded at every publish site (payment: the paying customer), stream emits fromMe and strips actorId/recipients. Backend 677 passed. Full-range review refused again (budget); reduced to S5 spec + T10 (lenses risk/reliability, consent granted, lineage `review-ae56f6ace17c82f9`): approved and acknowledged. Advisories R3-001 (realtime.py:233-234), R3-002, R3-003 for later.
+- L24 (2026-10-19): T11 done (`ec0fe70`): Sonner toasts for message.created/quotation.changed with fromMe false; skipped for the open visible chat; fresh first list page fetched per event (parent review: off-chat pages showed stale previews); shared chatListQueryOptions; notifier also on the landing page; signed-out opens no stream. Full Playwright 306 passed; unit 108; lint 0; build 0. Known gap: the signed-in landing toast case was written after the change (no observed RED on /). S1-S5 done.
