@@ -22,9 +22,9 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 | S1 | delegated (herdr worker, Haiku) | done | `3f78f72` |
-| T2 | S2.2, S2.3 | delegated (herdr worker, Haiku) | pending | |
-| T3 | S2.1, S2.2, S2.4, S2.5 | delegated (herdr worker, Haiku) | pending | |
-| T4 | S2.6 | delegated (herdr worker, Haiku) | pending | |
+| T2 | S2.2, S2.3 | delegated (herdr worker, Haiku) | done | `3d0efa3` |
+| T3 | S2.1, S2.2, S2.4, S2.5 | delegated (herdr worker, Haiku) | done | `8f51d1a` |
+| T4 | S2.6 | delegated (herdr worker, Haiku) | done | `911708f` |
 | V1 | S2 | independent verifier (high risk: auth, concurrency) | pending | |
 
 Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
@@ -36,3 +36,6 @@ Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchest
 - L3 (2026-10-18): T1 done (`3f78f72`). Frontend adapter adaptChatMessagesPage in chats.ts; shared fixture frontend/tests/fixtures/chat-messages-page.json validated by backend/tests/test_chat_contract.py and the node unit tests. RED: 11 page-chat failures with backend-shaped mocks; unit import failure. auth.spec.ts:498 mock updated to the flat shape. Parent checks: Playwright auth + page-chat 43 passed (full suite before the auth fix: 284 passed, 1 failed = that test); unit 70 passed; backend 559 passed; lint 0.
 - L4 (2026-10-18): Native review of T1 (base `dbc26a8`, committed-only): consent granted; lens reliability; approved and acknowledged (lineage `review-9910ca6229b19bc8`). Advisory SUGGESTION R3-adapter-header-fields-partially-asserted at frontend/tests/unit/chats.node-test.mjs:99-111 (later work). Next: user approval of the S2 real-time plan (SSE from FastAPI chosen).
 - L5 (2026-10-18): "si, dale" (approval of the S2 SSE plan). Branch `feat/chat-realtime` created on top of `fix/chat-thread-contract` (not merged yet).
+- L6 (2026-10-18): T2 done (`3d0efa3`): realtime.publish_chat_event in send message, quotation create (superseded + new), reject, payment confirmation; superseded ids selected before the update. Backend 579 passed. pg_notify SQL not exercised against Postgres (offline tests).
+- L7 (2026-10-18): T3 done (`8f51d1a`): ChatBroker (per-user cap 5, slow subscribers dropped), LISTEN listener in the lifespan with 1-30 s backoff, `GET /api/chats/events`. Parent review found the auth DB session lived for the whole stream (yield dependency exits after the response in FastAPI 0.141.1); fixed with `Depends(get_db_session, scope="function")` on this route plus `authorize_current_user` extracted unchanged; RED/GREEN test proves the session closes before the first frame. Backend 604 passed. Untested: listener reconnect loop, mid-stream disconnect cleanup.
+- L8 (2026-10-18): T4 done (`911708f`): chat-events.ts parser + backoff, one ref-counted stream per tab, invalidation per event, polling 30 s only while disconnected. Full Playwright 287 passed; unit 79 passed; lint 0; worker build 0.
