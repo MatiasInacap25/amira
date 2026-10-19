@@ -182,6 +182,18 @@ def test_slow_subscriber_is_dropped_without_blocking_the_others():
 # Listener handler: parse notify payloads and publish the valid ones.
 
 
+def test_full_queue_closes_the_stream_on_a_state_change():
+    broker = ChatBroker(queue_size=1)
+    subscription = broker.subscribe(ALICE)
+    broker.publish(message_payload(MESSAGE, [ALICE]))
+
+    broker.set_listening(True)
+
+    assert subscription.closed is True
+    assert subscription.queue.get_nowait() is STREAM_CLOSED
+    assert broker.subscriber_count(ALICE) == 0
+
+
 def test_parse_accepts_message_and_quotation_payloads():
     assert parse_chat_event(json.dumps(message_payload(MESSAGE, [ALICE, BOB]))) == message_payload(MESSAGE, [ALICE, BOB])
     assert parse_chat_event(json.dumps(quotation_payload([BOB]))) == quotation_payload([BOB])

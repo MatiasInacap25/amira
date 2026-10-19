@@ -9,10 +9,14 @@ per-user event streams in realtime_routes.
 """
 
 import asyncio
+from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 import json
 import logging
+import secrets
+import time
 from uuid import UUID
 
 from psycopg import AsyncConnection, sql
@@ -21,12 +25,19 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import Session
 
+from amira_api.db import get_engine
 from amira_api.models import ChatParticipante
 from amira_api.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 CHAT_EVENTS_CHANNEL = "amira_chat_events"
+# Heartbeats travel the same NOTIFY path as chat events, so a round trip proves delivery works.
+CHAT_HEALTH_CHANNEL = "amira_chat_health"
+HEARTBEAT_SECONDS = 15.0
+# About two heartbeat intervals: a silent LISTEN connection is reported degraded after this.
+HEARTBEAT_TIMEOUT_SECONDS = 35.0
+PENDING_NONCE_LIMIT = 8
 # pg_notify rejects payloads of 8000 bytes or more; the builder stays far below that.
 MAX_PAYLOAD_BYTES = 8000
 MAX_STREAMS_PER_USER = 5
@@ -208,6 +219,56 @@ def handle_notify(raw: str, broker: ChatBroker) -> None:
     broker.publish(event)
 
 
+class ListenerHealth:
+    """Heartbeat nonces the listener sent, and when one last came back on the LISTEN connection."""
+
+    def __init__(self, *, timeout_seconds: float, clock: Callable[[], float] = time.monotonic):
+        self._timeout_seconds = timeout_seconds
+        self._clock = clock
+        self._pending: deque[str] = deque(maxlen=PENDING_NONCE_LIMIT)
+        self._confirmed_at: float | None = None
+
+    def issue(self) -> str:
+        nonce = secrets.token_urlsafe(16)
+        self._pending.append(nonce)
+        return nonce
+
+    def confirm(self, nonce: str) -> bool:
+        try:
+            self._pending.remove(nonce)
+        except ValueError:
+            return False
+        self._confirmed_at = self._clock()
+        return True
+
+    def is_fresh(self) -> bool:
+        return self._confirmed_at is not None and self._clock() - self._confirmed_at <= self._timeout_seconds
+
+
+def send_app_heartbeat(nonce: str) -> None:
+    """Send one heartbeat through the app engine (DATABASE_URL), in a short transaction."""
+    with get_engine().begin() as connection:
+        connection.execute(text("SELECT pg_notify(:channel, :nonce)"), {"channel": CHAT_HEALTH_CHANNEL, "nonce": nonce})
+
+
+async def _send_heartbeats(
+    broker: ChatBroker,
+    health: ListenerHealth,
+    send_heartbeat: Callable[[str], None],
+    interval_seconds: float,
+) -> None:
+    while True:
+        nonce = health.issue()
+        try:
+            # The engine is synchronous; running it in a thread keeps the event loop free.
+            await asyncio.to_thread(send_heartbeat, nonce)
+        except Exception as exc:
+            logger.warning("Chat heartbeat was not sent (%s).", type(exc).__name__)
+        await asyncio.sleep(interval_seconds)
+        if not health.is_fresh():
+            broker.set_listening(False)
+
+
 def listener_database_url(settings: Settings) -> str | None:
     """A plain postgresql:// URL for psycopg, from REALTIME_DATABASE_URL or DATABASE_URL."""
     url = settings.realtime_database_url or settings.database_url
@@ -227,20 +288,38 @@ async def run_chat_listener(
     *,
     base_delay: float = RECONNECT_BASE_SECONDS,
     max_delay: float = RECONNECT_MAX_SECONDS,
+    connect: Callable[..., Awaitable[AsyncConnection]] = AsyncConnection.connect,
+    send_heartbeat: Callable[[str], None] | None = None,
+    heartbeat_seconds: float = HEARTBEAT_SECONDS,
+    heartbeat_timeout_seconds: float = HEARTBEAT_TIMEOUT_SECONDS,
+    clock: Callable[[], float] = time.monotonic,
 ) -> None:
     delay = base_delay
     while True:
+        health = ListenerHealth(timeout_seconds=heartbeat_timeout_seconds, clock=clock)
+        heartbeat: asyncio.Task | None = None
         try:
-            async with await AsyncConnection.connect(database_url, autocommit=True, sslmode="require") as connection:
+            async with await connect(database_url, autocommit=True, sslmode="require") as connection:
                 await connection.execute(sql.SQL("LISTEN {}").format(sql.Identifier(CHAT_EVENTS_CHANNEL)))
-                broker.set_listening(True)
+                await connection.execute(sql.SQL("LISTEN {}").format(sql.Identifier(CHAT_HEALTH_CHANNEL)))
                 delay = base_delay
+                # Ready only once a heartbeat comes back; LISTEN succeeding proves nothing about delivery.
+                if send_heartbeat is None:
+                    logger.warning("Chat heartbeat disabled: DATABASE_URL is not set, so live updates stay degraded.")
+                else:
+                    heartbeat = asyncio.create_task(_send_heartbeats(broker, health, send_heartbeat, heartbeat_seconds))
                 async for notification in connection.notifies():
+                    if notification.channel == CHAT_HEALTH_CHANNEL:
+                        if health.confirm(notification.payload):
+                            broker.set_listening(True)
+                        continue
                     handle_notify(notification.payload, broker)
         except Exception as exc:
             # Only the exception type is logged: driver messages can echo connection details.
             logger.warning("Chat listener lost its connection (%s); retrying in %.0f s.", type(exc).__name__, delay)
         finally:
+            if heartbeat is not None:
+                heartbeat.cancel()
             broker.set_listening(False)
         await asyncio.sleep(delay)
         delay = min(delay * 2, max_delay)
@@ -251,4 +330,5 @@ def start_chat_listener(broker: ChatBroker, settings: Settings) -> asyncio.Task 
     if database_url is None:
         logger.info("Chat real-time listener not started: no REALTIME_DATABASE_URL or DATABASE_URL is set.")
         return None
-    return asyncio.create_task(run_chat_listener(broker, database_url))
+    send_heartbeat = send_app_heartbeat if settings.database_url else None
+    return asyncio.create_task(run_chat_listener(broker, database_url, send_heartbeat=send_heartbeat))
