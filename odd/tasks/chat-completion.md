@@ -36,7 +36,7 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
 | V1 | S2 | independent verifier (high risk: auth, concurrency) | done | see L9 |
 | T6 | S3.1-S3.4 (backend) | delegated (herdr worker, Haiku) | done | `1437a49` |
 | T7 | S3.4-S3.5 (frontend) | delegated (herdr worker, Haiku) | done | `0e0a29d` |
-| V2 | S3 | independent verifier (high risk: migration, file authorization) | pending | |
+| V2 | S3 | independent verifier (high risk: migration, file authorization) | done | see L16 |
 
 Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
 
@@ -57,3 +57,4 @@ Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchest
 - L13 (2026-10-18): New native review (base `575c5f6`, lenses risk/resilience/reliability, consent granted, lineage `review-bb406f59a1367a27`). Blocking CRITICAL R4-no-resync-after-stream-gap: events during a reconnect were lost. Bounded correction `de75d3e` (resync CHAT_ROOT_KEY on each transition to ready; RED/GREEN Playwright case). Targeted validator approved; acknowledged. Advisories for later: R4-half-open-listen-never-reconnects (realtime.py:268-269: a dead heartbeat marks degraded but does not reconnect LISTEN; clients poll, so not frozen); R3-payment-supersede-publish-unproved (payment_service.py:157-158); R3-listener-reconnect-path-untested (realtime.py:317-325). S2 done; next S3-S5 need design decisions.
 - L14 (2026-10-19): Full-range native review (base `dbc26a8`, 4 lenses, consent granted, lineage `review-8d1ec09466fa460e`) approved and acknowledged. User chose "Solo imágenes (Recomendado)" for attachments; "continua" taken as approval of the S3 plan. Branch `feat/chat-attachments` on top of `feat/chat-realtime`.
 - L15 (2026-10-19): T6 done (`1437a49`): migration 20261019_0001 (down 20261011_0004; single head), upload and signed-URL endpoints, GET checks Mensaje.chat_id == chat_id. Backend 648 passed. T7 done (`0e0a29d`): composer attach + preview, inline image via signed URL. Full Playwright 294 passed; unit 86 passed; lint 0; worker build 0.
+- L16 (2026-10-19): V2 independent verifier (scratch worktree): S3.1-S3.5 pass, no blockers. Migration probed on a throwaway local Postgres (upgrade, constraint rejections, downgrade, upgrade, alembic check). Cross-chat attachment read gets 404. Advisories: multipart body not capped before parsing (same as delivery photos; add a proxy body limit); a polyglot with JPEG magic bytes is stored as image/jpeg; downgrade orphans bucket objects; whitespace-only legacy rows would fail VALIDATE (app cannot create them); no upload rate limit; migration not covered by a Postgres-backed CI test.
