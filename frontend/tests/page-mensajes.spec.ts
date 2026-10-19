@@ -381,3 +381,147 @@ test("signed-out pages make no unread-total request", async ({ page }) => {
 
   expect(unreadRequests).toHaveLength(0);
 });
+
+// The first stream connection carries the given frames; reconnects after it closes stay idle.
+// `waitFor` lets the frames arrive only after the chat list has loaded.
+function oneShotStream(frames: string[], waitFor: () => Promise<unknown> = async () => {}) {
+  let sent = false;
+  return async (route: Route) => {
+    if (sent) return idleEventStream(route);
+    sent = true;
+    await waitFor();
+    await route.fulfill({ status: 200, contentType: "text/event-stream", body: frames.join("") });
+  };
+}
+
+const messageFromOther = (chatId: string) =>
+  `event: message.created\ndata: {"kind":"message.created","chatId":"${chatId}","messageId":"message-new","fromMe":false}\n\n`;
+
+test("a message from the other participant shows a toast that opens the chat", async ({ page }) => {
+  let listRequests = 0;
+  await mockChats(page, async (_url, route) => {
+    listRequests += 1;
+    await route.fulfill({
+      json: chatPage([chat({ lastMessage: { content: "¿A qué hora llegan?", sentAt: new Date().toISOString(), fromMe: false } })]),
+    });
+  });
+  await signInToMessages(
+    page,
+    oneShotStream([messageFromOther("chat-1")], () => expect.poll(() => listRequests).toBeGreaterThanOrEqual(1)),
+  );
+
+  const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Nuevo mensaje de Ana Pérez" });
+  await expect(toast).toContainText("¿A qué hora llegan?");
+  await toast.getByRole("button", { name: "Ver" }).click();
+  await expect(page).toHaveURL(/\/mensajes\/chat-1$/);
+});
+
+test("the caller's own message shows no toast", async ({ page }) => {
+  let listRequests = 0;
+  await mockChats(page, async (_url, route) => {
+    listRequests += 1;
+    await route.fulfill({ json: chatPage([chat({ lastMessage: { content: "Llego a las 9", sentAt: new Date().toISOString(), fromMe: true } })]) });
+  });
+  const ownMessage = 'event: message.created\ndata: {"kind":"message.created","chatId":"chat-1","messageId":"message-own","fromMe":true}\n\n';
+  // A later event for another chat marks that the own-message frame was already processed.
+  await signInToMessages(
+    page,
+    oneShotStream([ownMessage, messageFromOther("chat-2")], () => expect.poll(() => listRequests).toBeGreaterThanOrEqual(1)),
+  );
+
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Tienes un mensaje nuevo" })).toHaveCount(1);
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Nuevo mensaje de Ana" })).toHaveCount(0);
+});
+
+test("a message in the open chat, while its tab is visible, shows no toast", async ({ page }) => {
+  await page.route("**/api/chats/chat-1/messages*", async (route) =>
+    route.fulfill({
+      json: {
+        chatId: "chat-1",
+        requestId: "request-1",
+        createdAt: "2026-10-10T00:00:00Z",
+        serviceName: "Mudanzas",
+        originCommuneName: "Santiago",
+        destinationCommuneName: "Valparaíso",
+        counterpart: { name: "Ana Pérez", kind: "customer", providerProfileId: null },
+        viewerRole: "customer",
+        timeline: [],
+        nextBefore: null,
+      },
+    }),
+  );
+  await page.route("**/api/chats/chat-1/read", async (route) => route.fulfill({ json: {} }));
+  // Frames are sent only while the chat page is open; the sign-in page's stream stays idle and reconnects later.
+  await signInToMessages(page, async (route) => {
+    if (!new URL(page.url()).pathname.startsWith("/mensajes/chat-1")) return idleEventStream(route);
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: [messageFromOther("chat-1"), messageFromOther("chat-2")].join(""),
+    });
+  });
+
+  await page.goto("/mensajes/chat-1");
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Tienes un mensaje nuevo" })).toHaveCount(1);
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Nuevo mensaje de" })).toHaveCount(0);
+});
+
+test("two messages from the same chat show one toast, the newer one", async ({ page }) => {
+  let listRequests = 0;
+  await mockChats(page, async (_url, route) => {
+    listRequests += 1;
+    await route.fulfill({ json: chatPage([chat({ lastMessage: { content: "Segundo mensaje", sentAt: new Date().toISOString(), fromMe: false } })]) });
+  });
+  // The chat-2 frame comes last: once its toast shows, both chat-1 frames were processed.
+  await signInToMessages(
+    page,
+    oneShotStream(
+      [messageFromOther("chat-1"), messageFromOther("chat-1"), messageFromOther("chat-2")],
+      () => expect.poll(() => listRequests).toBeGreaterThanOrEqual(1),
+    ),
+  );
+
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Tienes un mensaje nuevo" })).toHaveCount(1);
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Nuevo mensaje de Ana Pérez" })).toHaveCount(1);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(2);
+});
+
+test("a message on a page that never loaded the chat list toasts the fresh preview", async ({ page }) => {
+  await mockChats(page, async (_url, route) => {
+    await route.fulfill({
+      json: chatPage([chat({ lastMessage: { content: "Mensaje fresco", sentAt: new Date().toISOString(), fromMe: false } })]),
+    });
+  });
+  let sent = false;
+  // The sign-in page opens the stream first; frames wait for the landing page, where the chat list is never mounted.
+  await signInToMessages(page, async (route) => {
+    if (sent || new URL(page.url()).pathname !== "/") return idleEventStream(route);
+    sent = true;
+    await route.fulfill({ status: 200, contentType: "text/event-stream", body: messageFromOther("chat-1") });
+  });
+
+  await page.goto("/");
+
+  const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Nuevo mensaje de Ana Pérez" });
+  await expect(toast).toContainText("Mensaje fresco");
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Tienes un mensaje nuevo" })).toHaveCount(0);
+});
+
+test("on /mensajes each chat event costs exactly one chat list request", async ({ page }) => {
+  let listRequests = 0;
+  await mockChats(page, async (_url, route) => {
+    listRequests += 1;
+    await route.fulfill({ json: chatPage([chat({ lastMessage: { content: "Llega en 10", sentAt: new Date().toISOString(), fromMe: false } })]) });
+  });
+  let requestsBeforeEvent = -1;
+  await signInToMessages(
+    page,
+    oneShotStream([messageFromOther("chat-1")], async () => {
+      await expect.poll(() => listRequests).toBeGreaterThanOrEqual(1);
+      requestsBeforeEvent = listRequests;
+    }),
+  );
+
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Nuevo mensaje de Ana Pérez" })).toContainText("Llega en 10");
+  expect(listRequests).toBe(requestsBeforeEvent + 1);
+});

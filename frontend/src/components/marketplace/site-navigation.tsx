@@ -4,6 +4,7 @@ import { ArrowRight, Menu, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { ChatNotifications } from "@/components/marketplace/chat-notifications";
 import { useChatEvents } from "@/components/marketplace/use-chat-events";
 import { CHAT_ROOT_KEY, chatUnreadTotalKey } from "@/lib/chats";
 import { chatRefetchInterval } from "@/lib/chat-quotations";
@@ -122,10 +123,12 @@ function ProviderRequestsLink({ className, onNavigate }: { className?: string; o
 
 export function MarketplaceHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { userId } = useNavUserId();
   useProviderNavAccountScope();
 
   return (
     <header className="site-header">
+      <ChatNotifications userId={userId} />
       <div className="header-inner">
         <Link aria-label="Amira, inicio" className="brand" href="/">
           <span className="brand-mark"><Truck aria-hidden="true" size={20} strokeWidth={2.2} /></span>

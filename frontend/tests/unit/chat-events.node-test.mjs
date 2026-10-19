@@ -65,12 +65,12 @@ test("parser defaults the event name to message and does not dispatch an event w
 
 test("parseChatEvent maps known event frames to typed ids and drops unknown or malformed ones", () => {
   assert.deepEqual(
-    parseChatEvent({ event: "message.created", data: '{"kind":"message.created","chatId":"chat-1","messageId":"m-1"}' }),
-    { kind: "message.created", chatId: "chat-1", messageId: "m-1" },
+    parseChatEvent({ event: "message.created", data: '{"kind":"message.created","chatId":"chat-1","messageId":"m-1","fromMe":true}' }),
+    { kind: "message.created", chatId: "chat-1", messageId: "m-1", fromMe: true },
   );
   assert.deepEqual(
-    parseChatEvent({ event: "quotation.changed", data: '{"kind":"quotation.changed","chatId":"chat-1","quotationId":"q-1"}' }),
-    { kind: "quotation.changed", chatId: "chat-1", quotationId: "q-1" },
+    parseChatEvent({ event: "quotation.changed", data: '{"kind":"quotation.changed","chatId":"chat-1","quotationId":"q-1","fromMe":true}' }),
+    { kind: "quotation.changed", chatId: "chat-1", quotationId: "q-1", fromMe: true },
   );
   assert.equal(parseChatEvent({ event: "payment.updated", data: '{"kind":"payment.updated","chatId":"chat-1"}' }), null);
   assert.equal(parseChatEvent({ event: "message.created", data: "{not json" }), null);
@@ -100,9 +100,33 @@ test("parser and parseChatStreamState report ready and degraded frames and ignor
 test("maps a chat.read frame to the reader's chat id without a message or quotation id", () => {
   const { frames, parser } = collect();
 
-  parser.push('event: chat.read\ndata: {"kind":"chat.read","chatId":"chat-1"}\n\n');
+  parser.push('event: chat.read\ndata: {"kind":"chat.read","chatId":"chat-1","fromMe":true}\n\n');
 
-  assert.deepEqual(parseChatEvent(frames[0]), { kind: "chat.read", chatId: "chat-1" });
+  assert.deepEqual(parseChatEvent(frames[0]), { kind: "chat.read", chatId: "chat-1", fromMe: true });
+});
+
+test("parseChatEvent carries fromMe from the frame, so only the other participant's events notify", () => {
+  assert.equal(
+    parseChatEvent({ event: "message.created", data: '{"kind":"message.created","chatId":"chat-1","messageId":"m-1","fromMe":false}' }).fromMe,
+    false,
+  );
+  assert.equal(
+    parseChatEvent({ event: "quotation.changed", data: '{"kind":"quotation.changed","chatId":"chat-1","quotationId":"q-1","fromMe":false}' }).fromMe,
+    false,
+  );
+});
+
+test("parseChatEvent treats a frame without fromMe as the caller's own event, so an old server never triggers toasts", () => {
+  assert.equal(parseChatEvent({ event: "message.created", data: '{"kind":"message.created","chatId":"chat-1","messageId":"m-1"}' }).fromMe, true);
+  assert.equal(parseChatEvent({ event: "quotation.changed", data: '{"kind":"quotation.changed","chatId":"chat-1","quotationId":"q-1"}' }).fromMe, true);
+  assert.equal(parseChatEvent({ event: "chat.read", data: '{"kind":"chat.read","chatId":"chat-1"}' }).fromMe, true);
+});
+
+test("parseChatEvent treats a non-boolean fromMe as the caller's own event", () => {
+  assert.equal(
+    parseChatEvent({ event: "message.created", data: '{"kind":"message.created","chatId":"chat-1","messageId":"m-1","fromMe":"false"}' }).fromMe,
+    true,
+  );
 });
 
 test("rejects a chat.read frame without a chat id", () => {

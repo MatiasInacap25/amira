@@ -107,7 +107,8 @@ async function runConnection(signal: AbortSignal) {
   }
 }
 
-function subscribeChatEvents(listener: ChatEventListener) {
+// Other subscribers (the in-app notifier) share the same stream and the same tick.
+export function subscribeChatEvents(listener: ChatEventListener) {
   listeners.add(listener);
   if (!connection) {
     const controller = new AbortController();
@@ -126,20 +127,23 @@ function subscribeChatEvents(listener: ChatEventListener) {
 }
 
 // Every subscriber hears the same event in the same tick. Their invalidations are merged so each query refetches once.
-const pendingInvalidations = new Map<QueryClient, Map<string, QueryKey>>();
+type InvalidationBatch = { keys: Map<string, QueryKey>; done: Promise<void> };
+const pendingInvalidations = new Map<QueryClient, InvalidationBatch>();
 
-function invalidateOnce(queryClient: QueryClient, queryKey: QueryKey) {
-  let keys = pendingInvalidations.get(queryClient);
-  if (!keys) {
-    const batch = new Map<string, QueryKey>();
-    keys = batch;
-    pendingInvalidations.set(queryClient, batch);
-    queueMicrotask(() => {
+// Resolves once the merged invalidations have refetched, so a subscriber can read the refreshed cache.
+export function invalidateChatQueriesOnce(queryClient: QueryClient, queryKey: QueryKey): Promise<void> {
+  let batch = pendingInvalidations.get(queryClient);
+  if (!batch) {
+    const keys = new Map<string, QueryKey>();
+    const done = Promise.resolve().then(async () => {
       pendingInvalidations.delete(queryClient);
-      for (const key of batch.values()) void queryClient.invalidateQueries({ queryKey: key });
+      await Promise.all([...keys.values()].map((key) => queryClient.invalidateQueries({ queryKey: key })));
     });
+    batch = { keys, done };
+    pendingInvalidations.set(queryClient, batch);
   }
-  keys.set(JSON.stringify(queryKey), queryKey);
+  batch.keys.set(JSON.stringify(queryKey), queryKey);
+  return batch.done;
 }
 
 // Subscribes the view to chat events for the signed-in user and returns whether the stream is connected.
@@ -151,13 +155,13 @@ export function useChatEvents(userId: string | null | undefined): boolean {
     if (!userId) return;
     // Events published while the stream was down are not replayed, so each transition to ready resyncs every chat query.
     const unsubscribeStatus = subscribeStatus(() => {
-      if (connected) invalidateOnce(queryClient, CHAT_ROOT_KEY);
+      if (connected) invalidateChatQueriesOnce(queryClient,CHAT_ROOT_KEY);
     });
     const unsubscribeEvents = subscribeChatEvents((event) => {
       // chat.read only changes unread state, so the open thread keeps its data.
-      invalidateOnce(queryClient, chatListKey(userId));
-      invalidateOnce(queryClient, chatUnreadTotalKey(userId));
-      if (event.kind !== "chat.read") invalidateOnce(queryClient, chatThreadKey(userId, event.chatId));
+      invalidateChatQueriesOnce(queryClient,chatListKey(userId));
+      invalidateChatQueriesOnce(queryClient,chatUnreadTotalKey(userId));
+      if (event.kind !== "chat.read") invalidateChatQueriesOnce(queryClient,chatThreadKey(userId, event.chatId));
     });
     return () => {
       unsubscribeStatus();

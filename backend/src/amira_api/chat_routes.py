@@ -363,7 +363,9 @@ def send_chat_message(
 
     message = Mensaje(id=uuid4(), chat_id=chat_id, user_id=caller_id, content=payload.content)
     session.add(message)
-    publish_chat_event(session, chat_id=chat_id, kind=ChatEventKind.MESSAGE_CREATED, ref_id=message.id)
+    publish_chat_event(
+        session, chat_id=chat_id, actor_id=caller_id, kind=ChatEventKind.MESSAGE_CREATED, ref_id=message.id
+    )
     session.commit()
     session.refresh(message)
     return ChatMessage(
@@ -432,7 +434,9 @@ def send_chat_attachment(
             attachment_size_bytes=len(data),
         )
         session.add(message)
-        publish_chat_event(session, chat_id=chat_id, kind=ChatEventKind.MESSAGE_CREATED, ref_id=message.id)
+        publish_chat_event(
+            session, chat_id=chat_id, actor_id=caller_id, kind=ChatEventKind.MESSAGE_CREATED, ref_id=message.id
+        )
         session.commit()
     except Exception:
         session.rollback()

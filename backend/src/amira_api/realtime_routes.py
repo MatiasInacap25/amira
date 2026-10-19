@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -45,9 +46,10 @@ Timing = Annotated[StreamTiming, Depends(get_stream_timing)]
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 
-def _event_frame(payload: dict) -> str:
-    # Recipients name the other participant's id; the client only needs the event's ids.
-    data = {key: value for key, value in payload.items() if key != "recipients"}
+def _event_frame(payload: dict, user_id: UUID) -> str:
+    # Recipients and the actor's id stay server-side; the client gets whether the event is its own.
+    data = {key: value for key, value in payload.items() if key not in ("recipients", "actorId")}
+    data["fromMe"] = payload["actorId"] == str(user_id)
     return f"event: {data['kind']}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n"
 
 
@@ -82,7 +84,7 @@ async def _frames(
             if isinstance(payload, ListenerState):
                 yield _state_frame(payload)
                 continue
-            yield _event_frame(payload)
+            yield _event_frame(payload, subscription.user_id)
     finally:
         broker.unsubscribe(subscription)
 

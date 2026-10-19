@@ -27,7 +27,9 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
   - S4.3 `POST /api/chats/{id}/read` sets `Ultima_Lectura` to now, never moving it backwards; participants only (404 otherwise). It publishes `chat.read` `{chatId}` to the reader only, so the reader's other tabs update.
   - S4.4 `GET /api/chats` items gain `unreadCount`; `GET /api/chats/unread` returns `{total}` for the caller.
   - S4.5 Frontend: the thread marks the chat read when it opens and when new messages arrive while the tab is visible; the chat list shows each chat's count; the "Mensajes" navigation link shows the total for signed-in users; all of them refresh from the existing event stream.
-- S5: Notifications. Pending design decision.
+- S5: In-app notifications (user choice: "Toast en la app (Recomendado)"). Approved design:
+  - S5.1 Backend: every published chat event records internally who caused it (`actorId`; for a payment confirmation, the customer who paid). The SSE stream computes `fromMe` per recipient and strips `actorId` before sending, like `recipients`. Additive field; no third-party data.
+  - S5.2 Frontend: on `message.created` or `quotation.changed` with `fromMe: false`, show a Sonner toast on any page, unless the user is on that chat with the tab visible. Copy: "Nuevo mensaje de <name>" with the message preview ("Foto" for an image), and "Actualización de cotización de <name>"; a "Ver" action opens the chat. One toast per chat at a time (a newer one replaces it). No toasts when signed out.
 
 ## Tasks
 
@@ -45,6 +47,8 @@ Delivery: ask-on-risk. Runners: backend `uv run pytest` (from `backend/`), front
 | T8 | S4.1-S4.4 (backend) | delegated (herdr worker, Haiku) | done | `d6f565c` |
 | T9 | S4.5 (frontend) | delegated (herdr worker, Haiku) | done | `603dd03` |
 | V3 | S4 | independent verifier (migration, authorization) | done | see L20 |
+| T10 | S5.1 (backend) | delegated (herdr worker, Haiku) | done | `ca1e784` |
+| T11 | S5.2 (frontend) | delegated (herdr worker, Haiku) | done | `ec0fe70` |
 
 Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchestrator that does not edit code. Workers run one at a time because Playwright uses port 3179.
 
@@ -71,3 +75,8 @@ Route evidence: `HERDR_ENV=1`; the project CLAUDE.md makes the parent an orchest
 - L19 (2026-10-19): T8 done (`d6f565c`): migration 20261019_0002 (single head), unreadCount, /unread, /read with greatest semantics, reader-only chat.read. Backend 671 passed. T9 done (`603dd03`): thread marks read, list counts, nav badge on every page for signed-in users (one shared stream per tab); same-tick invalidations merged so each query refetches once. Full Playwright 299 passed; unit 96; lint 0; worker build 0.
 - L20 (2026-10-19): V3 independent verifier: S4.1-S4.4 pass, including on a throwaway real Postgres (migration backfills existing participants with the migration time; greatest() never moves backwards; chat.read NOTIFY reaches only the reader after commit and nothing after rollback; list uses one GROUP BY). No blockers. Verifier marked "thread POSTs /read on open" unverified, but the parent found the test at frontend/tests/page-chat.spec.ts:835 (exactly one POST with Bearer, badge drops), so S4.5 passes. Advisories: unread aggregate scans Mensajes (27 ms on 500k rows; measure before adding an (ID_Chat, Fecha_Creacion) index); shared stream reopens on client navigation (one resync each); now() is transaction start, so a long message transaction committing after a read could count as read (ms window).
 - L21 (2026-10-19): Full-range review refused again (lens_context_budget_exceeded, 47 files). Reduced to the unread slice (base `b1e5e07`, lenses risk/reliability, consent granted, lineage `review-de556cf0b8f2cf25`): approved and acknowledged. User chose "Toast en la app (Recomendado)" for notifications; S5 plan awaiting approval.
+- L22 (2026-10-19): "si" (approval of the S5 plan). Branch `feat/chat-notifications` on top of `feat/chat-unread`. No independent verifier (no high-risk item).
+- L23 (2026-10-19): T10 done (`ca1e784`): actorId recorded at every publish site (payment: the paying customer), stream emits fromMe and strips actorId/recipients. Backend 677 passed. Full-range review refused again (budget); reduced to S5 spec + T10 (lenses risk/reliability, consent granted, lineage `review-ae56f6ace17c82f9`): approved and acknowledged. Advisories R3-001 (realtime.py:233-234), R3-002, R3-003 for later.
+- L24 (2026-10-19): T11 done (`ec0fe70`): Sonner toasts for message.created/quotation.changed with fromMe false; skipped for the open visible chat; fresh first list page fetched per event (parent review: off-chat pages showed stale previews); shared chatListQueryOptions; notifier also on the landing page; signed-out opens no stream. Full Playwright 306 passed; unit 108; lint 0; build 0. Known gap: the signed-in landing toast case was written after the change (no observed RED on /). S1-S5 done.
+- L25 (2026-10-19): Full-range review refused again (budget, 53 files). Reduced to T11 (base `3b96f8d`, lenses reliability/readability, consent granted, lineage `review-7edbc865e35e2eef`): approved and acknowledged. All chat slices reviewed.
+- L26 (2026-10-19): Delivery: user chose "5 PRs + size:exception (Recomendado)". Stacked PRs to main: #9 fix/chat-thread-contract -> main (175 lines), #10 feat/chat-realtime -> #9 (2025), #11 feat/chat-attachments -> #10 (1108), #12 feat/chat-unread -> #11 (783), #13 feat/chat-notifications -> #12 (685); #10-#13 labeled size:exception. Merge in order and retarget after each merge.
