@@ -902,6 +902,15 @@ h1, h2, h3, p { margin-top: 0; }
 .chat-composer-send { min-height: 40px; padding: 0 18px; }
 .chat-composer-send:disabled { background: #b9c9cd; box-shadow: none; transform: none; cursor: not-allowed; }
 .chat-composer-error { margin: 0; color: #a4381a; font-size: 13px; line-height: 1.45; }
+.chat-composer-tools { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.chat-composer-attach { min-height: 40px; padding: 0 14px; }
+.chat-composer-photo { display: flex; align-items: center; gap: 12px; }
+.chat-composer-thumb { width: 56px; height: 56px; border: 1px solid #d3dfe1; border-radius: 8px; object-fit: cover; }
+.chat-attachment { display: block; width: fit-content; max-width: min(100%, 320px); border-radius: 10px; overflow: hidden; }
+.chat-attachment:focus-visible { outline: 2px solid #df6e3e; outline-offset: 2px; }
+.chat-attachment-image { display: block; width: 100%; height: auto; max-height: 360px; object-fit: contain; background: #f3f6f6; }
+.chat-attachment-placeholder, .chat-attachment-error { display: grid; gap: 8px; width: min(100%, 240px); padding: 16px; border-radius: 10px; background: #f3f6f6; color: #5c7078; font-size: 13px; }
+.chat-attachment-error { color: #a4381a; }
 .chat-quotation-trigger { margin-top: 14px; }
 .quote-dialog-error { margin: 0; padding: 10px 12px; border: 1px solid #efc9bb; border-radius: 8px; background: #fdf3ef; color: #9b3a1c; font-size: 13px; line-height: 1.45; }
 .quotation-field-hint { color: #5c7078; font-size: 12px; font-weight: 500; line-height: 1.4; }

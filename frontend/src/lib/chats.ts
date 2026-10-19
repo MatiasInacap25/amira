@@ -39,12 +39,24 @@ export type ChatListPage = {
   offset: number;
 };
 
+export type ChatAttachment = {
+  contentType: string;
+  sizeBytes: number;
+};
+
+// Signed, short-lived link to a message photo. It is fetched only when the photo is shown.
+export type ChatAttachmentUrl = {
+  url: string;
+  expiresAt: string;
+};
+
 export type ChatMessage = {
   messageId: string;
   content: string;
   sentAt: string;
   fromMe: boolean;
   senderName: string;
+  attachment: ChatAttachment | null;
 };
 
 export type ChatViewerRole = "customer" | "provider";

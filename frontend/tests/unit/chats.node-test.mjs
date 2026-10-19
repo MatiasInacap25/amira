@@ -105,9 +105,19 @@ test("adapts the backend thread page into the header object the views use", () =
   assert.equal(page.chat.destinationCommuneName, "Valparaíso");
   assert.deepEqual(page.chat.counterpart, backendThreadPage.counterpart);
   assert.equal(page.viewerRole, "customer");
-  assert.equal(page.timeline.length, 3);
+  assert.equal(page.timeline.length, 4);
   assert.equal(page.timeline[1].kind, "quotation");
   assert.equal(page.nextBefore, backendThreadPage.nextBefore);
+});
+
+test("passes the image attachment through unchanged and keeps null for text-only messages", () => {
+  const page = adaptChatMessagesPage(backendThreadPage);
+  const imageEntry = backendThreadPage.timeline[2];
+
+  assert.deepEqual(page.timeline[2], imageEntry);
+  assert.deepEqual(page.timeline[2].attachment, { contentType: "image/jpeg", sizeBytes: 183250 });
+  assert.equal(page.timeline[0].attachment, null);
+  assert.equal(page.timeline[3].attachment, null);
 });
 
 test("reports more messages when the backend sends a next cursor", () => {

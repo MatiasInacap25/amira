@@ -264,7 +264,8 @@ def test_timeline_entries_are_flat_message_entries_with_kind(api, scenario):
     entry = api(_messages_path(scenario.chat_a.id), as_auth_id=CUSTOMER_AUTH).json()["timeline"][0]
 
     assert entry["kind"] == "message"
-    assert set(entry) == {"kind", "messageId", "content", "sentAt", "fromMe", "senderName"}
+    assert set(entry) == {"kind", "messageId", "content", "sentAt", "fromMe", "senderName", "attachment"}
+    assert entry["attachment"] is None
 
 
 def test_customer_can_send_a_message_and_it_is_returned_in_the_timeline(api, scenario):

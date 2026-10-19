@@ -126,6 +126,17 @@ The stream sends `event: ready` when the listener is live, and `event: ready` or
 
 A transaction pooler accepts `LISTEN` but never delivers notifications, so its heartbeat never returns and the listener shows as degraded. Clients then poll every 10 s instead of freezing. For live updates, `REALTIME_DATABASE_URL` should still be a session or direct connection.
 
+### Chat attachments (private Supabase Storage bucket)
+
+Chat messages can carry one image (JPEG, PNG or WebP). The bytes are stored in a private bucket and read back only through a signed URL, like delivery photos. Create the bucket once per Supabase project: in the dashboard, open Storage and create a bucket named `chat-attachments` (or the value of `CHAT_ATTACHMENTS_BUCKET`), with **Public** switched off. It uses the same `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as delivery photos; without them the attachment endpoints answer 503.
+
+Optional settings and defaults: `CHAT_ATTACHMENTS_BUCKET` (`chat-attachments`), `CHAT_ATTACHMENT_MAX_BYTES` (5 MiB), `CHAT_ATTACHMENT_URL_TTL_SECONDS` (300).
+
+- `POST /api/chats/{chatId}/messages/attachments`: multipart with a required `photo` and an optional `content`. Participants only; other callers get 404. The type is detected from the bytes, not the declared content type. An oversize photo gets 413, another type 415, and `content` goes through the same contact-details filter as text messages. The object is stored under `chats/{chatId}/{messageId}.{ext}`; if the database write fails, the object is deleted. The response is the created timeline entry, and `message.created` is published in the same transaction.
+- `GET /api/chats/{chatId}/messages/{messageId}/attachment`: returns `{url, expiresAt}` for a signed URL. Participants only; a message without an attachment gets 404.
+
+Timeline message entries carry `attachment: {contentType, sizeBytes} | null`. The chat list shows `Foto` as the preview when the last message has no text and an attachment.
+
 ## Checks
 
 ```powershell
