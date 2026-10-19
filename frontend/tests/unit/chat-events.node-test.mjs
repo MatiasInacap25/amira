@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chatEventsBackoffMs, createChatEventParser, parseChatEvent } from "../../src/lib/chat-events.ts";
+import { chatEventsBackoffMs, createChatEventParser, parseChatEvent, parseChatStreamState } from "../../src/lib/chat-events.ts";
 
 function collect() {
   const frames = [];
@@ -87,4 +87,12 @@ test("backoff doubles from 1 s and caps at 30 s", () => {
 test("backoff applies the injected jitter to the capped delay", () => {
   assert.equal(chatEventsBackoffMs(2, (ms) => ms * 0.5), 2_000);
   assert.equal(chatEventsBackoffMs(9, (ms) => ms * 0.5), 15_000);
+});
+
+test("parser and parseChatStreamState report ready and degraded frames and ignore other events", () => {
+  const { frames, parser } = collect();
+
+  parser.push("event: ready\ndata: {}\n\nevent: degraded\ndata: {}\n\nevent: message.created\ndata: {}\n\n");
+
+  assert.deepEqual(frames.map(parseChatStreamState), ["ready", "degraded", null]);
 });

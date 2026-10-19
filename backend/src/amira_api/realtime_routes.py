@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from amira_api.auth import AuthenticatedUser, authorize_current_user, get_verified_user
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
-from amira_api.realtime import STREAM_CLOSED, ChatBroker, Subscription, TooManyStreams, chat_broker
+from amira_api.realtime import STREAM_CLOSED, ChatBroker, ListenerState, Subscription, TooManyStreams, chat_broker
 from amira_api.settings import Settings, get_settings
 
 KEEPALIVE_FRAME = ": keepalive\n\n"
@@ -51,6 +51,10 @@ def _event_frame(payload: dict) -> str:
     return f"event: {data['kind']}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n"
 
 
+def _state_frame(state: ListenerState) -> str:
+    return f"event: {state.value}\ndata: {{}}\n\n"
+
+
 async def _frames(
     broker: ChatBroker,
     subscription: Subscription,
@@ -60,6 +64,9 @@ async def _frames(
     keepalive_seconds: float,
 ) -> AsyncIterator[str]:
     try:
+        # A stream opened while the listener is live says so; one opened while it is down stays silent until it comes up.
+        if broker.listening:
+            yield _state_frame(ListenerState.READY)
         while True:
             remaining = (expires_at - clock()).total_seconds()
             if remaining <= 0:
@@ -72,6 +79,9 @@ async def _frames(
                 continue
             if payload is STREAM_CLOSED:
                 return
+            if isinstance(payload, ListenerState):
+                yield _state_frame(payload)
+                continue
             yield _event_frame(payload)
     finally:
         broker.unsubscribe(subscription)

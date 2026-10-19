@@ -3,7 +3,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import { resolveApiBaseUrl } from "@/lib/auth/account-api";
-import { chatEventsBackoffMs, createChatEventParser, parseChatEvent, type ChatEvent } from "@/lib/chat-events";
+import {
+  chatEventsBackoffMs,
+  createChatEventParser,
+  parseChatEvent,
+  parseChatStreamState,
+  type ChatEvent,
+} from "@/lib/chat-events";
 import { chatListKey, chatThreadKey } from "@/lib/chats";
 import { currentAccessToken, isSignInRequired } from "@/lib/provider-request-access";
 
@@ -58,9 +64,14 @@ async function readStream(signal: AbortSignal): Promise<boolean> {
     signal,
   });
   if (!response.ok || !response.body) return false;
-  setConnectionStatus(true, signal);
 
   const parser = createChatEventParser((frame) => {
+    // An accepted stream is not proof that events flow: only the server's "ready" frame marks the connection live.
+    const state = parseChatStreamState(frame);
+    if (state) {
+      setConnectionStatus(state === "ready", signal);
+      return;
+    }
     const event = parseChatEvent(frame);
     if (event) listeners.forEach((listener) => listener(event));
   });

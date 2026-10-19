@@ -319,6 +319,68 @@ def test_sixth_stream_for_one_user_gets_429(stream):
     assert response.status_code == 429
 
 
+# Listener state: streams announce ready and degraded.
+
+
+def test_listener_state_changes_are_pushed_only_when_they_change():
+    broker = ChatBroker()
+    alice = broker.subscribe(ALICE)
+
+    broker.set_listening(False)
+    assert alice.queue.empty()
+
+    broker.set_listening(True)
+    broker.set_listening(True)
+    assert alice.queue.get_nowait() == "ready"
+    assert alice.queue.empty()
+
+
+def test_stream_without_a_listening_listener_sends_no_ready(stream):
+    _broker, clock = stream
+
+    async def during() -> None:
+        clock.now = T0 + timedelta(hours=1)
+
+    response = open_stream(ALICE, expires_at=T0 + timedelta(minutes=1), during=during)
+
+    assert "event: ready" not in response.text
+
+
+def test_stream_sends_ready_when_the_listener_is_listening(stream):
+    broker, clock = stream
+    broker.set_listening(True)
+
+    async def during() -> None:
+        await wait_for_subscriber(broker, ALICE)
+        await asyncio.sleep(0.05)
+        clock.now = T0 + timedelta(hours=1)
+
+    response = open_stream(ALICE, expires_at=T0 + timedelta(minutes=1), during=during)
+
+    assert "event: ready\ndata: {}\n\n" in response.text
+
+
+def test_listener_state_change_pushes_degraded_then_ready_to_open_streams(stream):
+    broker, clock = stream
+
+    async def during() -> None:
+        await wait_for_subscriber(broker, ALICE)
+        broker.set_listening(True)
+        broker.set_listening(False)
+        broker.set_listening(True)
+        await asyncio.sleep(0.05)
+        clock.now = T0 + timedelta(hours=1)
+
+    response = open_stream(ALICE, expires_at=T0 + timedelta(minutes=1), during=during)
+
+    states = [
+        block.split("\n")[0]
+        for block in response.text.split("\n\n")
+        if block.startswith(("event: ready", "event: degraded"))
+    ]
+    assert states[-2:] == ["event: degraded", "event: ready"]
+
+
 def test_keepalive_defaults_to_twenty_seconds():
     assert StreamTiming().keepalive_seconds == 20
 

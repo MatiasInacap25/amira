@@ -42,6 +42,13 @@ class ChatEventKind(StrEnum):
     QUOTATION_CHANGED = "quotation.changed"
 
 
+class ListenerState(StrEnum):
+    """Queued for open streams when the LISTEN connection comes up (READY) or drops (DEGRADED)."""
+
+    READY = "ready"
+    DEGRADED = "degraded"
+
+
 @dataclass(frozen=True)
 class ChatEvent:
     kind: ChatEventKind
@@ -102,6 +109,21 @@ class ChatBroker:
         self._max_streams_per_user = max_streams_per_user
         self._queue_size = queue_size
         self._subscribers: dict[UUID, set[Subscription]] = {}
+        self._listening = False
+
+    @property
+    def listening(self) -> bool:
+        return self._listening
+
+    def set_listening(self, listening: bool) -> None:
+        """Record whether the LISTEN connection is up, and tell every open stream when that changes."""
+        if self._listening == listening:
+            return
+        self._listening = listening
+        state = ListenerState.READY if listening else ListenerState.DEGRADED
+        for subscribers in tuple(self._subscribers.values()):
+            for subscription in tuple(subscribers):
+                self._deliver(subscription, state)
 
     def subscriber_count(self, user_id: UUID) -> int:
         return len(self._subscribers.get(user_id, ()))
@@ -128,7 +150,7 @@ class ChatBroker:
             for subscription in tuple(self._subscribers.get(recipient, ())):
                 self._deliver(subscription, payload)
 
-    def _deliver(self, subscription: Subscription, payload: dict) -> None:
+    def _deliver(self, subscription: Subscription, payload: dict | ListenerState) -> None:
         if subscription.closed:
             return
         try:
@@ -211,12 +233,15 @@ async def run_chat_listener(
         try:
             async with await AsyncConnection.connect(database_url, autocommit=True, sslmode="require") as connection:
                 await connection.execute(sql.SQL("LISTEN {}").format(sql.Identifier(CHAT_EVENTS_CHANNEL)))
+                broker.set_listening(True)
                 delay = base_delay
                 async for notification in connection.notifies():
                     handle_notify(notification.payload, broker)
         except Exception as exc:
             # Only the exception type is logged: driver messages can echo connection details.
             logger.warning("Chat listener lost its connection (%s); retrying in %.0f s.", type(exc).__name__, delay)
+        finally:
+            broker.set_listening(False)
         await asyncio.sleep(delay)
         delay = min(delay * 2, max_delay)
 

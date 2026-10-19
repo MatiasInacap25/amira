@@ -8,7 +8,7 @@ export function chatRefetchInterval(streamConnected: boolean): number | false {
   return streamConnected ? false : CHAT_POLL_INTERVAL_MS;
 }
 // Polling only backs up the real-time stream: while it is disconnected, chat views refetch at this interval.
-export const CHAT_POLL_INTERVAL_MS = 30_000;
+export const CHAT_POLL_INTERVAL_MS = 10_000;
 export const QUOTATION_MIN_VALIDITY_HOURS = 1;
 export const QUOTATION_MAX_VALIDITY_HOURS = 168;
 export const QUOTATION_DEFAULT_VALIDITY_HOURS = 48;

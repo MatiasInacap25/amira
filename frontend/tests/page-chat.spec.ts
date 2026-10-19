@@ -180,6 +180,39 @@ test("a message.created event refetches the open thread and shows the new messag
   expect(streamAuthorization[0]).toBe(`Bearer ${accessToken("aal2", "verified-aal2-token")}`);
 });
 
+test("a keepalive-only stream keeps the thread polling every 10 s", async ({ page }) => {
+  test.setTimeout(90_000);
+  let threadRequests = 0;
+  await mockThread(page, async (route) => {
+    threadRequests += 1;
+    await route.fulfill({ json: threadPage({ timeline: [messageEntry("message-1", "Hola", false, "Ana Pérez")] }) });
+  });
+  await signInToChat(page, "customer", "chat-1", idleEventStream);
+
+  await expect.poll(() => threadRequests).toBeGreaterThanOrEqual(1);
+  const afterOpen = threadRequests;
+  // The stream was accepted but never reported ready, so the fallback poll must keep running.
+  await expect.poll(() => threadRequests, { timeout: 30_000 }).toBeGreaterThanOrEqual(afterOpen + 2);
+});
+
+test("a ready event stops the 10 s fallback poll", async ({ page }) => {
+  test.setTimeout(90_000);
+  let threadRequests = 0;
+  await mockThread(page, async (route) => {
+    threadRequests += 1;
+    await route.fulfill({ json: threadPage({ timeline: [messageEntry("message-1", "Hola", false, "Ana Pérez")] }) });
+  });
+  await signInToChat(page, "customer", "chat-1", async (route) =>
+    route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: ready\ndata: {}\n\n" }),
+  );
+
+  await expect.poll(() => threadRequests).toBeGreaterThanOrEqual(1);
+  const afterReady = threadRequests;
+  // A fulfilled route ends the body, so the client reconnects; while it reports ready, no interval poll fires.
+  await page.waitForTimeout(11_000);
+  expect(threadRequests).toBe(afterReady);
+});
+
 test("signed-in customer opens the thread with counterpart, route and messages oldest first", async ({ page }) => {
   await mockThread(page, async (route) =>
     route.fulfill({

@@ -120,6 +120,8 @@ Writers announce changes with `pg_notify` inside their own transaction, so a rol
 
 LISTEN needs a session connection: the Supabase transaction pooler does not deliver notifications. Set `REALTIME_DATABASE_URL` to a direct or session-mode connection string. When it is unset, the listener uses `DATABASE_URL`. When neither is set, the listener does not start, the API still boots, and the stream stays silent. Like `DATABASE_URL`, the URL is forced to TLS (`sslmode=require`).
 
+The stream sends `event: ready` when the listener is live, and `event: ready` or `event: degraded` to open streams when that changes. The client polls every 10 s until it sees `ready`. A pooler that accepts `LISTEN` but never delivers notifications cannot be detected this way, so `REALTIME_DATABASE_URL` must be a session or direct connection.
+
 ## Checks
 
 ```powershell

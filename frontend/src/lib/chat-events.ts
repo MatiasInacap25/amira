@@ -70,6 +70,11 @@ export function parseChatEvent(frame: ChatStreamFrame): ChatEvent | null {
   return null;
 }
 
+// "ready" means the server's LISTEN connection is live, so events can flow; "degraded" means they cannot.
+export function parseChatStreamState(frame: ChatStreamFrame): "ready" | "degraded" | null {
+  return frame.event === "ready" || frame.event === "degraded" ? frame.event : null;
+}
+
 // Capped exponential backoff: 1 s, 2 s, 4 s ... 30 s. The jitter maps the capped delay to the delay used.
 export function chatEventsBackoffMs(attempt: number, jitter: (ms: number) => number = (ms) => ms): number {
   const capped = Math.min(CHAT_EVENTS_MAX_BACKOFF_MS, CHAT_EVENTS_INITIAL_BACKOFF_MS * 2 ** Math.max(0, attempt));
