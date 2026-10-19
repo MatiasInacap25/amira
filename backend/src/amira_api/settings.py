@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     frontend_base_url: str | None = None
     cors_origins: str = "http://localhost:3000"
     database_url: str | None = None
+    # Session connection (not the transaction pooler) for LISTEN. Falls back to DATABASE_URL when unset.
+    realtime_database_url: str | None = None
     supabase_jwt_issuer: str | None = None
     supabase_jwt_audience: str = "authenticated"
     supabase_publishable_key: SecretStr | None = None

@@ -9,6 +9,7 @@
 # https://supabase.com/docs/reference/python/auth-signup
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from functools import lru_cache
 import hashlib
 import hmac
@@ -35,6 +36,8 @@ class AuthenticatedUser:
     session_id: UUID
     assurance: str
     authentication_methods: frozenset[str]
+    # The verified token's exp claim; set by get_verified_user and kept by get_current_user.
+    expires_at: datetime | None = None
 
 
 @lru_cache(maxsize=8)
@@ -158,6 +161,7 @@ def get_verified_user(
         session_id=session_id,
         assurance=claims["aal"],
         authentication_methods=methods,
+        expires_at=datetime.fromtimestamp(claims["exp"], UTC),
     )
 
 
@@ -167,6 +171,16 @@ def get_current_user(
     session: Annotated[Session, Depends(get_db_session)],
     fallback_proof: str | None = Header(default=None, alias="X-Amira-Email-Fallback-Proof"),
 ) -> AuthenticatedUser:
+    return authorize_current_user(current_user, settings, session, fallback_proof)
+
+
+def authorize_current_user(
+    current_user: AuthenticatedUser,
+    settings: Settings,
+    session: Session,
+    fallback_proof: str | None,
+) -> AuthenticatedUser:
+    """Apply the assurance boundary to a verified token. Endpoints that must close their session early call this directly."""
     if current_user.assurance == "aal2":
         return current_user
     if (
@@ -181,6 +195,7 @@ def get_current_user(
             session_id=current_user.session_id,
             assurance="dev_password_bypass",
             authentication_methods=current_user.authentication_methods,
+            expires_at=current_user.expires_at,
         )
     if current_user.assurance == "aal1" and "password" in current_user.authentication_methods and verify_email_fallback_proof(
         {"sub": str(current_user.id), "session_id": str(current_user.session_id), "aal": "aal1", "amr": [{"method": method} for method in current_user.authentication_methods]},
@@ -194,6 +209,7 @@ def get_current_user(
             session_id=current_user.session_id,
             assurance="email_fallback",
             authentication_methods=current_user.authentication_methods,
+            expires_at=current_user.expires_at,
         )
     else:
         raise HTTPException(status_code=403, detail="Additional authentication assurance is required.")
