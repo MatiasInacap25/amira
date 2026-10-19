@@ -2,10 +2,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { acceptsAssuranceLevel, isDevSkipSmsMfaEnabled } from "../../src/lib/auth/dev-mfa.ts";
 
-test("enables the SMS skip only when the flag is exactly 'true' outside production", () => {
+test("enables the SMS skip when the flag is 'true' and the app environment is development, local or test", () => {
   assert.equal(isDevSkipSmsMfaEnabled("true", "development"), true);
+  assert.equal(isDevSkipSmsMfaEnabled("true", "local"), true);
   assert.equal(isDevSkipSmsMfaEnabled("true", "test"), true);
-  assert.equal(isDevSkipSmsMfaEnabled("true", undefined), true);
+});
+
+test("trims and ignores case when reading the app environment", () => {
+  assert.equal(isDevSkipSmsMfaEnabled("true", " Development "), true);
+  assert.equal(isDevSkipSmsMfaEnabled("true", "LOCAL"), true);
+});
+
+test("fails closed when the app environment is unset, empty, or not an allowlisted value", () => {
+  assert.equal(isDevSkipSmsMfaEnabled("true", undefined), false);
+  assert.equal(isDevSkipSmsMfaEnabled("true", ""), false);
+  assert.equal(isDevSkipSmsMfaEnabled("true", "production"), false);
+  assert.equal(isDevSkipSmsMfaEnabled("true", "prod"), false);
+  assert.equal(isDevSkipSmsMfaEnabled("true", "staging"), false);
+  assert.equal(isDevSkipSmsMfaEnabled("true", "preview"), false);
+  assert.equal(isDevSkipSmsMfaEnabled("true", "developmnet"), false);
 });
 
 test("keeps SMS MFA when the flag is missing, false or not exactly 'true'", () => {
@@ -16,8 +31,9 @@ test("keeps SMS MFA when the flag is missing, false or not exactly 'true'", () =
   assert.equal(isDevSkipSmsMfaEnabled(" true", "development"), false);
 });
 
-test("never enables the SMS skip in production, even with the flag set", () => {
-  assert.equal(isDevSkipSmsMfaEnabled("true", "production"), false);
+test("uses the app environment rather than NODE_ENV, so a production build can run the bypass in development", () => {
+  // Vercel builds with NODE_ENV=production; the explicit app environment is what decides.
+  assert.equal(isDevSkipSmsMfaEnabled("true", "development"), true);
 });
 
 test("accepts aal2 sessions regardless of the development switch", () => {
