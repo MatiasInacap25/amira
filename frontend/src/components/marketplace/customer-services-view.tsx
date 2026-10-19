@@ -75,6 +75,8 @@ export function CustomerServicesView() {
     if (sessionExpired) router.replace(SIGN_IN_HREF);
   }, [router, sessionExpired]);
 
+  // Lives here, not in RatingForm, so the notice survives the refetch that unmounts the form.
+  const [alreadyRatedIds, setAlreadyRatedIds] = useState<ReadonlySet<string>>(() => new Set());
   const services = servicesQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const needsSignIn = sessionQuery.isError || servicesQuery.error instanceof CustomerSessionError;
   const servicesFailed = servicesQuery.isError && !(servicesQuery.error instanceof CustomerSessionError);
@@ -114,7 +116,11 @@ export function CustomerServicesView() {
             <ul className="customer-service-list">
               {services.map((service) => (
                 <li className="customer-service-row" key={service.serviceId}>
-                  <ServiceRatingRow service={service} />
+                  <ServiceRatingRow
+                    alreadyRated={alreadyRatedIds.has(service.serviceId)}
+                    onAlreadyRated={() => setAlreadyRatedIds((current) => new Set(current).add(service.serviceId))}
+                    service={service}
+                  />
                 </li>
               ))}
             </ul>
@@ -133,7 +139,7 @@ export function CustomerServicesView() {
   );
 }
 
-function ServiceRatingRow({ service }: { service: CustomerService }) {
+function ServiceRatingRow({ alreadyRated, onAlreadyRated, service }: { alreadyRated: boolean; onAlreadyRated: () => void; service: CustomerService }) {
   return (
     <article aria-labelledby={`service-${service.serviceId}-title`} className="customer-service-card">
       <header>
@@ -148,9 +154,14 @@ function ServiceRatingRow({ service }: { service: CustomerService }) {
           <time dateTime={service.rating.createdAt}>Valorado el {formatDate(service.rating.createdAt)}</time>
         </div>
       ) : service.completedAt ? (
-        <RatingForm serviceId={service.serviceId} />
+        <RatingForm serviceId={service.serviceId} onAlreadyRated={onAlreadyRated} />
       ) : (
         <p className="customer-service-pending">Podrás valorar este servicio cuando esté completado.</p>
+      )}
+      {alreadyRated && (
+        <div className="customer-submit-error" role="alert">
+          <p>Este servicio ya fue valorado.</p>
+        </div>
       )}
     </article>
   );
@@ -166,7 +177,7 @@ function StarDisplay({ value }: { value: number }) {
   );
 }
 
-function RatingForm({ serviceId }: { serviceId: string }) {
+function RatingForm({ onAlreadyRated, serviceId }: { onAlreadyRated: () => void; serviceId: string }) {
   const queryClient = useQueryClient();
   const [rating, setRating] = useState<number | null>(null);
   const [comment, setComment] = useState("");
@@ -201,7 +212,7 @@ function RatingForm({ serviceId }: { serviceId: string }) {
       }
       else if (response.status === 404) setSubmitError("No encontramos este servicio en tu cuenta. Actualiza la página e inténtalo nuevamente.");
       else if (response.status === 409) {
-        setSubmitError("Este servicio ya fue valorado.");
+        onAlreadyRated();
         await queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY });
       } else if (response.status === 422) {
         const rejection = mapRatingRejection(await response.json().catch(() => null));

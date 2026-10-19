@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { SignInPrompt } from "@/components/marketplace/chat-error-state";
 import { ChatRequestError } from "@/lib/chats";
 import { completeSimulatedPayment } from "@/lib/marketplace-api";
-import { currentAccessToken } from "@/lib/provider-request-access";
+import { currentAccessToken, paymentAccessMessage, ProviderRequestAccessError } from "@/lib/provider-request-access";
 
 type Props = {
   paymentId: string;
@@ -22,6 +23,7 @@ export function SimulatedCheckoutView({ paymentId, token }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState("");
+  const [accessError, setAccessError] = useState<ProviderRequestAccessError | null>(null);
 
   if (!paymentId || !token) {
     return (
@@ -36,15 +38,19 @@ export function SimulatedCheckoutView({ paymentId, token }: Props) {
   async function decide(approve: boolean) {
     setBusy(approve ? "approve" : "reject");
     setError("");
+    setAccessError(null);
     try {
       await completeSimulatedPayment(await currentAccessToken(), paymentId, token, approve);
       const status = approve ? "approved" : "rejected";
       router.replace(`/pagos/resultado?paymentId=${encodeURIComponent(paymentId)}&status=${status}`);
     } catch (cause) {
-      setError(completeErrorMessage(cause));
+      if (cause instanceof ProviderRequestAccessError) setAccessError(cause);
+      else setError(completeErrorMessage(cause));
       setBusy(null);
     }
   }
+
+  const checkoutPath = `/pagos/simulado?${new URLSearchParams({ paymentId, token })}`;
 
   return (
     <article className="marketplace-state chat-result chat-simulated-checkout" aria-labelledby="simulated-checkout-title">
@@ -60,6 +66,7 @@ export function SimulatedCheckoutView({ paymentId, token }: Props) {
         </button>
       </div>
       {error && <p className="chat-quotation-error" role="alert">{error}</p>}
+      {accessError && <SignInPrompt message={paymentAccessMessage(accessError.reason)} nextPath={checkoutPath} />}
     </article>
   );
 }

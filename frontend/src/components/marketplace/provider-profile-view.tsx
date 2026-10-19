@@ -106,8 +106,10 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
 
                 <section aria-labelledby="provider-ratings-title" className="provider-profile-section" id="valoraciones">
                   <h2 id="provider-ratings-title">Valoraciones</h2>
-                  {!ratings || ratings.ratingCount === 0 ? (
-                    <div className="provider-profile-empty"><Star aria-hidden="true" size={19} /><p>Aún no hay valoraciones</p></div>
+                  {!ratings ? (
+                    <div className="provider-profile-empty"><Star aria-hidden="true" size={19} /><p>Las valoraciones no están disponibles en este momento.</p></div>
+                  ) : ratings.ratingCount === 0 ? (
+                    <div className="provider-profile-empty"><Star aria-hidden="true" size={19} /><p>Este prestador aún no tiene valoraciones.</p></div>
                   ) : (
                     <>
                       <div className="provider-rating-summary">
@@ -175,13 +177,25 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
 }
 
 function RatingLine({ ratings }: { ratings: ProviderProfile["ratings"] }) {
-  if (!ratings || ratings.ratingCount === 0 || ratings.averageRating === null) {
+  if (!ratings) {
+    return null;
+  }
+  if (ratings.ratingCount === 0) {
     return <p className="provider-profile-rating-line provider-profile-rating-empty">Aún no hay valoraciones</p>;
+  }
+  const countLabel = `${ratings.ratingCount} ${ratings.ratingCount === 1 ? "valoración" : "valoraciones"}`;
+  if (ratings.averageRating === null) {
+    return (
+      <p className="provider-profile-rating-line">
+        <Star aria-hidden="true" fill="currentColor" size={15} />
+        <span>Promedio no disponible · {countLabel}</span>
+      </p>
+    );
   }
   return (
     <p className="provider-profile-rating-line">
       <Star aria-hidden="true" fill="currentColor" size={15} />
-      <span><strong>{formatRating(ratings.averageRating)}</strong> de 5 · {ratings.ratingCount} {ratings.ratingCount === 1 ? "valoración" : "valoraciones"}</span>
+      <span><strong>{formatRating(ratings.averageRating)}</strong> de 5 · {countLabel}</span>
     </p>
   );
 }

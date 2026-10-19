@@ -10,10 +10,22 @@ import { createClient } from "@/lib/supabase/client";
 
 type Invitation = { id: string; email: string; created_at: string; expires_at: string; status: "pending" | "expired" | "revoked" | "accepted" };
 
+const statusLabels: Record<Invitation["status"], string> = {
+  pending: "Pendiente",
+  revoked: "Revocada",
+  expired: "Expirada",
+  accepted: "Aceptada",
+};
+
+function statusLabel(status: string) {
+  return statusLabels[status as Invitation["status"]] ?? status;
+}
+
 export default function CompanyInvitationsPage() {
   const router = useRouter();
   const [token, setToken] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [invitationsLoaded, setInvitationsLoaded] = useState(false);
   const [email, setEmail] = useState("");
   const [companyTaxId, setCompanyTaxId] = useState("");
   const [companyTaxIdError, setCompanyTaxIdError] = useState("");
@@ -30,6 +42,7 @@ export default function CompanyInvitationsPage() {
     if (!response.ok) throw new Error("No pudimos cargar las invitaciones.");
     const body = await response.json() as { invitations: Invitation[] };
     setInvitations(body.invitations);
+    setInvitationsLoaded(true);
   }, [api, token]);
 
   useEffect(() => {
@@ -118,9 +131,10 @@ export default function CompanyInvitationsPage() {
             <button className="auth-submit" disabled={busy || !token} type="submit">{busy ? "Procesando…" : "Enviar invitación"}</button>
           </form>
           <h2>Invitaciones</h2>
-          {invitations.length === 0 ? <p>No hay invitaciones todavía.</p> : <ul>
+          {invitationsLoaded && invitations.length === 0 && <p>No hay invitaciones todavía.</p>}
+          {invitations.length > 0 && <ul>
             {invitations.map((invitation) => <li key={invitation.id}>
-              <strong>{invitation.email}</strong> · {invitation.status} · vence {new Date(invitation.expires_at).toLocaleDateString("es-CL")}
+              <strong className="invitation-email">{invitation.email}</strong> · {statusLabel(invitation.status)} · vence {new Date(invitation.expires_at).toLocaleDateString("es-CL")}
               {invitation.status === "pending" && <>
                 <button className="auth-secondary-action" disabled={busy} onClick={() => void act(invitation, "reissue")} type="button">Reenviar</button>
                 <button className="auth-secondary-action" disabled={busy} onClick={() => void act(invitation, "revoke")} type="button">Revocar</button>

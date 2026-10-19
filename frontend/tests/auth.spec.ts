@@ -436,7 +436,7 @@ test("verified client can submit a quote request with the current MFA access tok
   await page.getByLabel("Código de verificación").fill("246810");
   await page.getByRole("button", { name: "Verificar teléfono" }).click();
   await expect(page).toHaveURL(/\/prestadores\/profile-test-1$/);
-  await page.locator(".provider-profile-hero").getByRole("button", { name: "Solicitar cotización", exact: true }).click();
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
   const serviceSelect = page.getByRole("dialog").getByLabel("Servicio");
   await expect(serviceSelect).toHaveValue("");
   await expect(page.getByRole("button", { name: "Enviar solicitud" })).toBeDisabled();
@@ -450,7 +450,7 @@ test("verified client can submit a quote request with the current MFA access tok
   await page.getByLabel("Detalles de la solicitud").fill("Retiro de muebles.");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Solicitud enviada");
+  await expect(page.getByRole("status").filter({ hasText: "Solicitud enviada" })).toBeVisible();
   expect(sentRequest.authorization).toBe(`Bearer ${accessToken("aal2", "refreshed-aal2-token")}`);
   expect(sentRequest.body).toMatchObject({
     profileId: "profile-test-1",
@@ -481,7 +481,10 @@ const pendingProviderRequest = {
   requestId: "request-provider-1",
   status: "pending",
   origin: "Santiago",
-  destination: "ValparaÃ­so",
+  destination: "Valparaíso",
+  // Required by the ProviderRequest contract; the inbox crashes without it.
+  customerFirstName: "Camila",
+  customerLastName: null,
   requestedAt: "2026-10-12T12:00:00Z",
   createdAt: "2026-10-01T12:00:00Z",
   estimatedWeight: "250.5",
@@ -492,7 +495,7 @@ const pendingProviderRequest = {
   chatId: null,
 };
 
-test("provider inbox accepts owned request with the verified token and opens its request chat", async ({ page }) => {
+test("provider inbox opens an owned request, accepts it with the verified token and opens its request chat", async ({ page }) => {
   let status = "pending";
   const apiEvents: Array<{ method: string; path: string; authorization?: string }> = [];
   await page.route("**/api/provider/requests**", async (route) => {
@@ -500,7 +503,10 @@ test("provider inbox accepts owned request with the verified token and opens its
     const url = new URL(request.url());
     apiEvents.push({ method: request.method(), path: url.pathname, authorization: request.headers()["authorization"] });
     if (request.method() === "GET") {
-      await route.fulfill({ json: { items: [{ ...pendingProviderRequest, status, chatId: status === "accepted" ? "chat-provider-1" : null }], total: 1, limit: 20, offset: 0 } });
+      const item = { ...pendingProviderRequest, status, chatId: status === "accepted" ? "chat-provider-1" : null };
+      // The inbox lists requests; the detail page reads one request and owns the accept action.
+      if (url.pathname === "/api/provider/requests") await route.fulfill({ json: { items: [item], total: 1, limit: 20, offset: 0, counts: { pending: 1, accepted: 0, rejected: 0 } } });
+      else await route.fulfill({ json: item });
       return;
     }
     status = "accepted";
@@ -510,23 +516,45 @@ test("provider inbox accepts owned request with the verified token and opens its
 
   await expect(page.getByRole("heading", { name: "Solicitudes recibidas" })).toBeVisible();
   await expect(page.getByText("Santiago")).toBeVisible();
+  await page.locator(".provider-request-card-link").click();
+  await expect(page).toHaveURL(/\/solicitudes\/request-provider-1$/);
   await page.getByRole("button", { name: "Aceptar y abrir chat" }).click();
   await expect(page.getByRole("link", { name: "Abrir chat" })).toHaveAttribute("href", "/mensajes/chat-provider-1");
   expect(apiEvents.filter((event) => event.method === "POST")[0]).toMatchObject({
     path: "/api/provider/requests/request-provider-1/accept",
     authorization: `Bearer ${accessToken("aal2", "verified-aal2-token")}`,
   });
+  await page.route(/\/api\/chats\/chat-provider-1(\/|$)/, async (route) => route.fulfill({
+    json: {
+      chat: {
+        chatId: "chat-provider-1",
+        requestId: pendingProviderRequest.requestId,
+        createdAt: "2026-10-12T12:00:00Z",
+        serviceName: "Mudanzas",
+        originCommuneName: "Santiago",
+        destinationCommuneName: "Valparaíso",
+        counterpart: { name: "Camila Rojas", kind: "customer", providerProfileId: null },
+      },
+      timeline: [],
+      hasMore: false,
+      nextBefore: null,
+      viewerRole: "provider",
+    },
+  }));
   await page.getByRole("link", { name: "Abrir chat" }).click();
   await expect(page).toHaveURL(/\/mensajes\/chat-provider-1$/);
-  await expect(page.getByRole("heading", { name: "El chat está listo para continuar" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Camila Rojas" })).toBeVisible();
 });
 
-test("provider can reject a request and an API failure is shown without closing it", async ({ page }) => {
+test("provider can reject a request from its detail and an API failure is shown without closing it", async ({ page }) => {
   let attempts = 0;
   let rejected = false;
   await page.route("**/api/provider/requests**", async (route) => {
+    const url = new URL(route.request().url());
     if (route.request().method() === "GET") {
-      await route.fulfill({ json: { items: [{ ...pendingProviderRequest, status: rejected ? "rejected" : "pending" }], total: 1, limit: 20, offset: 0 } });
+      const item = { ...pendingProviderRequest, status: rejected ? "rejected" : "pending" };
+      if (url.pathname === "/api/provider/requests") await route.fulfill({ json: { items: [item], total: 1, limit: 20, offset: 0, counts: { pending: rejected ? 0 : 1, accepted: 0, rejected: rejected ? 1 : 0 } } });
+      else await route.fulfill({ json: item });
       return;
     }
     attempts += 1;
@@ -537,6 +565,8 @@ test("provider can reject a request and an API failure is shown without closing 
     }
   });
   await signInAsSmsVerifiedProvider(page);
+  await page.locator(".provider-request-card-link").click();
+  await expect(page).toHaveURL(/\/solicitudes\/request-provider-1$/);
   await expect(page.getByRole("button", { name: "Rechazar" })).toBeVisible();
   await page.getByRole("button", { name: "Rechazar" }).click();
   await expect(page.locator(".provider-inbox-error")).toContainText("No pudimos responder la solicitud");
@@ -555,13 +585,14 @@ test("home and desktop/mobile marketplace navigation expose real auth routes", a
   await page.goto("/servicios");
   await expect(page.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "Crear cuenta" })).toHaveAttribute("href", "/registro");
-  await expect(page.getByRole("link", { name: "Mis solicitudes" })).toHaveAttribute("href", "/solicitudes");
+  // "Mis solicitudes" is provider-only (0af748d), so a signed-out visitor must not see it.
+  await expect(page.getByRole("link", { name: "Mis solicitudes" })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Abrir menú" }).click();
   const mobileNav = page.getByRole("navigation", { name: "Navegación móvil" });
   await expect(mobileNav.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
   await expect(mobileNav.getByRole("link", { name: "Crear cuenta" })).toHaveAttribute("href", "/registro");
-  await expect(mobileNav.getByRole("link", { name: "Mis solicitudes" })).toHaveAttribute("href", "/solicitudes");
+  await expect(mobileNav.getByRole("link", { name: "Mis solicitudes" })).toHaveCount(0);
   await mobileNav.getByRole("link", { name: "Iniciar sesión" }).click();
   await expect(page).toHaveURL(/\/login$/);
 });

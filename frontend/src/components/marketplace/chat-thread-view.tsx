@@ -22,7 +22,7 @@ import {
 } from "@/lib/chats";
 import { CHAT_POLL_INTERVAL_MS } from "@/lib/chat-quotations";
 import { getChatMessages } from "@/lib/marketplace-api";
-import { currentAccessToken } from "@/lib/provider-request-access";
+import { currentAccessToken, ProviderRequestAccessError } from "@/lib/provider-request-access";
 
 const timeFormatter = new Intl.DateTimeFormat("es-CL", { hour: "2-digit", minute: "2-digit", timeZone: "America/Santiago" });
 
@@ -57,10 +57,15 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
 
   const notFound = threadQuery.error instanceof ChatRequestError && threadQuery.error.status === 404;
   const loading = sessionPending || (Boolean(userId) && threadQuery.isPending);
+  const signedOut = !userId && !sessionPending;
 
   return (
     <article aria-labelledby="chat-thread-title" className="chat-wrap">
       <Link className="chat-back" href="/mensajes"><ArrowLeft aria-hidden="true" size={16} /> Volver a mensajes</Link>
+
+      {signedOut && (
+        <ChatErrorState error={new ProviderRequestAccessError("sign-in")} nextPath={chatHref(chatId)} onRetry={() => void threadQuery.refetch()} />
+      )}
 
       {notFound && (
         <div className="marketplace-state marketplace-empty" role="status">
@@ -73,7 +78,7 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
         <ChatErrorState error={threadQuery.error} nextPath={chatHref(chatId)} onRetry={() => void threadQuery.refetch()} />
       )}
 
-      {!notFound && !threadQuery.isError && (
+      {!signedOut && !notFound && !threadQuery.isError && (
         <MarketplaceSkeleton label="Cargando la conversación…" layout={CHAT_THREAD_LAYOUT} loading={loading} name="chat-thread">
           {chat && (
             <header className="chat-thread-header">
