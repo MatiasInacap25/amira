@@ -46,9 +46,8 @@ function chatHeader(overrides: Record<string, unknown> = {}) {
 
 function threadPage(overrides: Record<string, unknown> = {}) {
   return {
-    chat: chatHeader(),
+    ...chatHeader(),
     timeline: [],
-    hasMore: false,
     nextBefore: null,
     viewerRole: "customer",
     ...overrides,
@@ -238,7 +237,6 @@ test("load older messages prepends the previous page and hides the button when n
       await route.fulfill({
         json: threadPage({
           timeline: [messageEntry("message-2", "Segundo mensaje", false, "Ana Pérez")],
-          hasMore: true,
           nextBefore: "cursor-older",
         }),
       });
@@ -580,7 +578,7 @@ test("conversation fits a phone-width viewport without horizontal scrolling", as
   await mockThread(page, async (route) =>
     route.fulfill({
       json: threadPage({
-        chat: chatHeader({ counterpart: { name: "Ana Pérez con un nombre bastante largo para forzar el ajuste", kind: "customer", providerProfileId: null } }),
+        ...chatHeader({ counterpart: { name: "Ana Pérez con un nombre bastante largo para forzar el ajuste", kind: "customer", providerProfileId: null } }),
         timeline: [
           messageEntry(
             "message-1",

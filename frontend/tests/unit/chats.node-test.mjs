@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+  adaptChatMessagesPage,
   CHAT_ROOT_KEY,
   chatHref,
   chatListKey,
@@ -90,6 +92,33 @@ test("uses the server nextBefore cursor of the last fetched page", () => {
 test("has no before cursor once the server reports no more messages", () => {
   const oldest = { chat: {}, hasMore: false, nextBefore: null, viewerRole: "customer", timeline: [messageEntry("m1", "2026-10-10T09:00:00.000Z")] };
   assert.equal(nextMessagesBefore([oldest]), undefined);
+});
+
+const backendThreadPage = JSON.parse(readFileSync(new URL("../fixtures/chat-messages-page.json", import.meta.url), "utf8"));
+
+test("adapts the backend thread page into the header object the views use", () => {
+  const page = adaptChatMessagesPage(backendThreadPage);
+
+  assert.equal(page.chat.chatId, backendThreadPage.chatId);
+  assert.equal(page.chat.serviceName, "Mudanzas");
+  assert.equal(page.chat.originCommuneName, "Santiago");
+  assert.equal(page.chat.destinationCommuneName, "Valparaíso");
+  assert.deepEqual(page.chat.counterpart, backendThreadPage.counterpart);
+  assert.equal(page.viewerRole, "customer");
+  assert.equal(page.timeline.length, 3);
+  assert.equal(page.timeline[1].kind, "quotation");
+  assert.equal(page.nextBefore, backendThreadPage.nextBefore);
+});
+
+test("reports more messages when the backend sends a next cursor", () => {
+  assert.equal(adaptChatMessagesPage(backendThreadPage).hasMore, true);
+});
+
+test("reports no more messages when the backend nextBefore is null", () => {
+  const page = adaptChatMessagesPage({ ...backendThreadPage, nextBefore: null });
+
+  assert.equal(page.hasMore, false);
+  assert.equal(page.nextBefore, null);
 });
 
 test("orders fetched timeline entries oldest first while keeping each page's order", () => {
