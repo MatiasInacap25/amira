@@ -373,6 +373,15 @@ class Mensaje(Base):
             name="fk_message_sender_is_chat_member",
             ondelete="RESTRICT",
         ),
+        CheckConstraint(
+            "btrim(\"Contenido\") <> '' OR \"Adjunto_Clave\" IS NOT NULL",
+            name="ck_message_text_or_attachment",
+        ),
+        CheckConstraint(
+            '("Adjunto_Clave" IS NULL AND "Adjunto_Tipo" IS NULL AND "Adjunto_Bytes" IS NULL) '
+            'OR ("Adjunto_Clave" IS NOT NULL AND "Adjunto_Tipo" IS NOT NULL AND "Adjunto_Bytes" IS NOT NULL)',
+            name="ck_message_attachment_all_or_none",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -380,6 +389,10 @@ class Mensaje(Base):
     user_id: Mapped[UUID] = mapped_column("ID_Usuario", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False, index=True)
     content: Mapped[str] = mapped_column("Contenido", Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False, server_default=func.now())
+    # Storage key, MIME type and size of an optional image. All three are null for a text-only message.
+    attachment_key: Mapped[str | None] = mapped_column("Adjunto_Clave", String(300), nullable=True)
+    attachment_content_type: Mapped[str | None] = mapped_column("Adjunto_Tipo", String(40), nullable=True)
+    attachment_size_bytes: Mapped[int | None] = mapped_column("Adjunto_Bytes", Integer, nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages", foreign_keys=[chat_id])
     sender: Mapped[Usuario] = relationship(back_populates="messages", foreign_keys=[user_id])

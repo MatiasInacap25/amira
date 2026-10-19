@@ -59,8 +59,19 @@ class ChatMessage(PublicResponse):
     sender_name: str
 
 
+class ChatAttachment(PublicResponse):
+    content_type: str
+    size_bytes: int
+
+
+class ChatAttachmentUrl(PublicResponse):
+    url: str
+    expires_at: datetime
+
+
 class ChatTimelineMessage(ChatMessage):
     kind: Literal["message"] = "message"
+    attachment: ChatAttachment | None = None
 
 
 class ChatTimelineQuotation(PublicResponse):

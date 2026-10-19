@@ -1,10 +1,12 @@
 """Chat list and chat message endpoints shared by customers and providers."""
 
-from datetime import datetime
+import logging
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import and_, func, literal_column, or_, select, union_all
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,8 @@ from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.chat_access import caller_account, caller_chats
 from amira_api.clock import as_utc, utc_now
 from amira_api.chat_schemas import (
+    ChatAttachment,
+    ChatAttachmentUrl,
     ChatCounterpart,
     ChatHeader,
     ChatLastMessage,
@@ -22,19 +26,36 @@ from amira_api.chat_schemas import (
     ChatPage,
     ChatTimelineMessage,
     ChatTimelineQuotation,
+    MESSAGE_MAX_LENGTH,
 )
 from amira_api.contact_filter import CONTACT_KIND_LABELS, find_contact_detail
 from amira_api.db import get_db_session
+from amira_api.evidence_storage import (
+    EvidenceStorage,
+    EvidenceStorageError,
+    detect_photo_type,
+    get_chat_attachment_storage_resolver,
+    read_capped,
+)
 from amira_api.realtime import ChatEventKind, publish_chat_event
 from amira_api.models import Chat, Cotizacion, Mensaje
 from amira_api.public_routes import MAX_OFFSET, MAX_PAGE_SIZE
 from amira_api.quotation_service import quotation_view
+from amira_api.settings import Settings, get_settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
+AppSettings = Annotated[Settings, Depends(get_settings)]
+ResolveChatStorage = Annotated[Callable[[], EvidenceStorage], Depends(get_chat_attachment_storage_resolver)]
 LAST_MESSAGE_PREVIEW_LENGTH = 140
+IMAGE_PREVIEW_TEXT = "Foto"
 MAX_MESSAGE_PAGE_SIZE = 100
+ATTACHMENT_MAX_SIZE_MESSAGE = "The chat photo is larger than the allowed size."
+ATTACHMENT_TYPE_MESSAGE = "The chat photo must be a JPEG, PNG or WebP image."
+ATTACHMENT_STORAGE_MESSAGE = "The chat photo could not be stored. Try again."
+ATTACHMENT_LINK_MESSAGE = "The chat photo link could not be created. Try again."
 
 
 def _last_message_per_chat():
@@ -42,6 +63,7 @@ def _last_message_per_chat():
     ranked = select(
         Mensaje.chat_id.label("chat_id"),
         Mensaje.content.label("content"),
+        Mensaje.attachment_key.label("attachment_key"),
         Mensaje.created_at.label("sent_at"),
         Mensaje.user_id.label("sender_id"),
         func.row_number()
@@ -68,8 +90,10 @@ def _counterpart(row, caller_id: UUID) -> ChatCounterpart:
 def _list_item(row, caller_id: UUID) -> ChatListItem:
     last_message = None
     if row["last_content"] is not None:
+        # An image-only message has empty text, so the list shows a short label instead of a blank line.
+        preview = row["last_content"] or (IMAGE_PREVIEW_TEXT if row["last_attachment_key"] is not None else "")
         last_message = ChatLastMessage(
-            content=row["last_content"][:LAST_MESSAGE_PREVIEW_LENGTH],
+            content=preview[:LAST_MESSAGE_PREVIEW_LENGTH],
             sent_at=row["last_sent_at"],
             from_me=row["last_sender_id"] == caller_id,
         )
@@ -104,6 +128,7 @@ def list_chats(
     rows = session.execute(
         relation.add_columns(
             last.c.content.label("last_content"),
+            last.c.attachment_key.label("last_attachment_key"),
             last.c.sent_at.label("last_sent_at"),
             last.c.sender_id.label("last_sender_id"),
         )
@@ -166,6 +191,29 @@ def _sender_name(sender_id: UUID, caller_id: UUID, caller_name: str, counterpart
     return caller_name if sender_id == caller_id else counterpart_name
 
 
+def _attachment_view(message: Mensaje) -> ChatAttachment | None:
+    # The storage key never leaves the server; the client reads the photo through the signed URL endpoint.
+    if message.attachment_key is None:
+        return None
+    return ChatAttachment(content_type=message.attachment_content_type, size_bytes=message.attachment_size_bytes)
+
+
+def _reject_contact_details(content: str) -> None:
+    blocked_kind = find_contact_detail(content)
+    if blocked_kind is not None:
+        # The message text is not echoed back or logged, because it is the content that was blocked.
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "type": "contact_details_blocked",
+                    "loc": ["body", "content"],
+                    "msg": f"No se permite compartir {CONTACT_KIND_LABELS[blocked_kind]} en el chat.",
+                }
+            ],
+        )
+
+
 @router.get("/{chat_id}/messages", response_model=ChatMessagesPage)
 def list_chat_messages(
     chat_id: UUID,
@@ -226,6 +274,7 @@ def list_chat_messages(
                     sent_at=message.created_at,
                     from_me=message.user_id == caller_id,
                     sender_name=_sender_name(message.user_id, caller_id, caller_name, counterpart_name),
+                    attachment=_attachment_view(message),
                 )
             )
         else:
@@ -254,19 +303,7 @@ def send_chat_message(
     if session.execute(caller_chats(caller_id).where(Chat.id == chat_id)).one_or_none() is None:
         raise HTTPException(status_code=404, detail="Chat not found.")
 
-    blocked_kind = find_contact_detail(payload.content)
-    if blocked_kind is not None:
-        # The message text is not echoed back or logged, because it is the content that was blocked.
-        raise HTTPException(
-            status_code=422,
-            detail=[
-                {
-                    "type": "contact_details_blocked",
-                    "loc": ["body", "content"],
-                    "msg": f"No se permite compartir {CONTACT_KIND_LABELS[blocked_kind]} en el chat.",
-                }
-            ],
-        )
+    _reject_contact_details(payload.content)
 
     message = Mensaje(id=uuid4(), chat_id=chat_id, user_id=caller_id, content=payload.content)
     session.add(message)
@@ -280,3 +317,107 @@ def send_chat_message(
         from_me=True,
         sender_name=f"{account.first_name} {account.last_name}",
     )
+
+
+def _discard_attachment(storage: EvidenceStorage, key: str) -> None:
+    """Best effort: a failed delete leaves a stored but unreferenced photo, so it is logged and never raised."""
+    try:
+        storage.delete(key)
+    except EvidenceStorageError:
+        logger.warning("Could not delete the unreferenced chat photo %s.", key, exc_info=True)
+
+
+@router.post("/{chat_id}/messages/attachments", response_model=ChatTimelineMessage, status_code=201)
+def send_chat_attachment(
+    chat_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+    resolve_storage: ResolveChatStorage,
+    settings: AppSettings,
+    photo: Annotated[UploadFile, File()],
+    content: Annotated[str, Form(max_length=MESSAGE_MAX_LENGTH)] = "",
+) -> ChatTimelineMessage:
+    account = caller_account(session, current_user)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    caller_id = account.id
+    if session.execute(caller_chats(caller_id).where(Chat.id == chat_id)).one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+
+    # Storage is resolved first, so an unconfigured deployment answers 503 before any upload is attempted.
+    storage = resolve_storage()
+    text = content.strip()
+    if text:
+        _reject_contact_details(text)
+
+    data = read_capped(photo, settings.chat_attachment_max_bytes)
+    if data is None:
+        raise HTTPException(status_code=413, detail=ATTACHMENT_MAX_SIZE_MESSAGE)
+    photo_type = detect_photo_type(data[:12])
+    if photo_type is None:
+        raise HTTPException(status_code=415, detail=ATTACHMENT_TYPE_MESSAGE)
+
+    # The upload happens before the row is written. If the row cannot be written, the uploaded object is removed.
+    message_id = uuid4()
+    key = f"chats/{chat_id}/{message_id}.{photo_type.extension}"
+    try:
+        storage.upload(key, data, photo_type.content_type)
+    except EvidenceStorageError as error:
+        raise HTTPException(status_code=502, detail=ATTACHMENT_STORAGE_MESSAGE) from error
+
+    try:
+        message = Mensaje(
+            id=message_id,
+            chat_id=chat_id,
+            user_id=caller_id,
+            content=text,
+            attachment_key=key,
+            attachment_content_type=photo_type.content_type,
+            attachment_size_bytes=len(data),
+        )
+        session.add(message)
+        publish_chat_event(session, chat_id=chat_id, kind=ChatEventKind.MESSAGE_CREATED, ref_id=message.id)
+        session.commit()
+    except Exception:
+        session.rollback()
+        _discard_attachment(storage, key)
+        raise
+    session.refresh(message)
+    return ChatTimelineMessage(
+        message_id=message.id,
+        content=message.content,
+        sent_at=message.created_at,
+        from_me=True,
+        sender_name=f"{account.first_name} {account.last_name}",
+        attachment=_attachment_view(message),
+    )
+
+
+@router.get("/{chat_id}/messages/{message_id}/attachment", response_model=ChatAttachmentUrl)
+def get_chat_attachment_url(
+    chat_id: UUID,
+    message_id: UUID,
+    current_user: CurrentUser,
+    session: Database,
+    resolve_storage: ResolveChatStorage,
+    settings: AppSettings,
+) -> ChatAttachmentUrl:
+    account = caller_account(session, current_user)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    if session.execute(caller_chats(account.id).where(Chat.id == chat_id)).one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+
+    key = session.execute(
+        select(Mensaje.attachment_key).where(Mensaje.id == message_id, Mensaje.chat_id == chat_id)
+    ).scalar_one_or_none()
+    if key is None:
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+
+    storage = resolve_storage()
+    ttl_seconds = settings.chat_attachment_url_ttl_seconds
+    try:
+        url = storage.create_signed_url(key, ttl_seconds)
+    except EvidenceStorageError as error:
+        raise HTTPException(status_code=502, detail=ATTACHMENT_LINK_MESSAGE) from error
+    return ChatAttachmentUrl(url=url, expires_at=utc_now() + timedelta(seconds=ttl_seconds))

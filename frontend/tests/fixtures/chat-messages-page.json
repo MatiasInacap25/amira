@@ -18,7 +18,8 @@
       "content": "¿A qué hora llegan?",
       "sentAt": "2026-10-10T12:00:00Z",
       "fromMe": true,
-      "senderName": "Tú"
+      "senderName": "Tú",
+      "attachment": null
     },
     {
       "kind": "quotation",
@@ -36,11 +37,24 @@
     },
     {
       "kind": "message",
+      "messageId": "c4d3e2f1-0a9b-4c8d-8e7f-6a5b4c3d2e1f",
+      "content": "",
+      "sentAt": "2026-10-10T12:08:00Z",
+      "fromMe": false,
+      "senderName": "Transportes Norte",
+      "attachment": {
+        "contentType": "image/jpeg",
+        "sizeBytes": 183250
+      }
+    },
+    {
+      "kind": "message",
       "messageId": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
       "content": "Llegamos a las 9",
       "sentAt": "2026-10-10T12:10:00Z",
       "fromMe": false,
-      "senderName": "Transportes Norte"
+      "senderName": "Transportes Norte",
+      "attachment": null
     }
   ],
   "nextBefore": "2026-10-10T12:00:00.000000Z|3f2a8c10-1b2c-4d5e-8f90-a1b2c3d4e5f6"
