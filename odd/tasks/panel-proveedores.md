@@ -26,8 +26,8 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
 
 | ID | Specs | Route | Status | Evidence |
 |----|-------|-------|--------|----------|
-| T1 | S1 | delegated (herdr worker-1, parallel with T2) | pending | |
-| T2 | S2 | delegated (herdr worker-2, parallel with T1) | pending | |
+| T1 | S1 | delegated (herdr worker-1, parallel with T2) | done | `03dc60e`; unit RED→GREEN 10/10; independent verifier PASS, no blockers |
+| T2 | S2 | delegated (herdr worker-2, parallel with T1) | done | `d7713b7`; page-panel.spec 5/5, cuenta/servicios specs green |
 | T3 | S3 | not started (user asked to plan only) | planned | |
 
 ## Log
@@ -37,3 +37,8 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
 - L3 Evidence: public search (`public_routes.py:567`) needs `Perfil.public_activated_at` set and at least one `ServicioDisponible`; no endpoint writes them today. `GET /api/provider/services` already scopes company drivers to their assigned services.
 - L4 Earlier unrelated work committed on this branch: `c71be81` (RUT mask), `2cad0c2` (profile menu and page).
 - L5 Next: T1 and T2 in parallel via herdr workers; parent runs the e2e seam check once.
+- L6 (2026-10-30) User chose option 1: extract a chrome-less ProviderServicesBody from provider-services-view.tsx for the driver panel. User approved making lib/auth/safe-next-path.ts a re-export so safeNextPath has one implementation (post-login-path.ts).
+- L7 Seam check: node unit 122/122, Playwright 106/106 (auth, login, registro, panel, cuenta/servicios, header, invitaciones), lint and tsc clean.
+- L8 Verifier advisory (pre-existing at baseline, reproduced): safeNextPath("/..//evil.example") returns "//evil.example", which resolves to https://evil.example/ (open redirect in /auth/callback and now in the post-login redirect). Fix pending user decision.
+- L9 Advisory: /panel and /cuenta/perfil show the "Inicia sesión" message when the session is AAL1 (SMS pending); requestErrorMessage could distinguish it.
+- L10 Next: decide the open-redirect fix; T3 (S3) stays planned only.
