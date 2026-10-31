@@ -20,14 +20,14 @@ const user = {
 };
 
 // The panel is a protected page, so the fake session must be AAL2 (SMS-verified), as on the other private pages.
-function accessToken() {
-  const payload = Buffer.from(JSON.stringify({ aal: "aal2", exp: 2000000000, sub: user.id })).toString("base64url");
+function accessToken(aal: "aal1" | "aal2" = "aal2") {
+  const payload = Buffer.from(JSON.stringify({ aal, exp: 2000000000, sub: user.id })).toString("base64url");
   return `eyJhbGciOiJub25lIn0.${payload}.panel-access-token`;
 }
 
-function session() {
+function session(aal: "aal1" | "aal2" = "aal2") {
   return {
-    access_token: accessToken(),
+    access_token: accessToken(aal),
     token_type: "bearer",
     expires_in: 3600,
     expires_at: Math.floor(Date.now() / 1000) + 3600,
@@ -37,7 +37,7 @@ function session() {
 }
 
 // Fake Supabase Auth, the account role for the given role, and an empty provider services list.
-async function installPanelMocks(page: Page, role: string | null) {
+async function installPanelMocks(page: Page, role: string | null, aal: "aal1" | "aal2" = "aal2") {
   await page.route("**/auth/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -49,7 +49,7 @@ async function installPanelMocks(page: Page, role: string | null) {
       return;
     }
     if (path === "/token" && url.searchParams.get("grant_type") === "password") {
-      await route.fulfill({ headers: corsHeaders, json: session() });
+      await route.fulfill({ headers: corsHeaders, json: session(aal) });
       return;
     }
     if (path === "/user" && method === "GET") {
@@ -117,6 +117,15 @@ test("client is redirected to /servicios", async ({ page }) => {
   await page.goto("/panel");
 
   await expect(page).toHaveURL(/\/servicios$/);
+});
+
+test("AAL1 session with SMS still pending sees the SMS prompt, not the sign-in prompt", async ({ page }) => {
+  await installPanelMocks(page, "independent_driver", "aal1");
+  await signIn(page);
+  await page.goto("/panel");
+
+  await expect(panel(page).getByRole("alert")).toHaveText("Verifica tu teléfono por SMS para ver tu panel.");
+  await expect(panel(page).getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fpanel");
 });
 
 test("signed-out visitor sees the sign-in prompt that returns to /panel", async ({ page }) => {

@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ProviderServicesBody } from "@/components/marketplace/provider-services-view";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { accountApiFetch } from "@/lib/auth/account-api";
-import { currentAccessToken, isSignInRequired } from "@/lib/provider-request-access";
+import { accountAccessMessage, currentAccessToken, ProviderRequestAccessError } from "@/lib/provider-request-access";
 
 const SIGN_IN_HREF = `/login?next=${encodeURIComponent("/panel")}`;
 
@@ -54,11 +54,11 @@ export default function PanelPage() {
     return <PanelShell><p role="status">Cargando tu panel…</p></PanelShell>;
   }
 
-  if (roleQuery.isError && isSignInRequired(roleQuery.error)) {
+  if (roleQuery.error instanceof ProviderRequestAccessError) {
     return (
       <PanelShell>
         <div className="marketplace-state">
-          <p role="alert">Inicia sesión con tu correo confirmado para ver tu panel.</p>
+          <p role="alert">{accountAccessMessage(roleQuery.error.reason, "panel")}</p>
           <Link className="button button-primary" href={SIGN_IN_HREF}>Iniciar sesión</Link>
         </div>
       </PanelShell>

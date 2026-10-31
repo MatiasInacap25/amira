@@ -4,8 +4,11 @@ import { createClient } from "@/lib/supabase/client";
 export type ProviderAccessReason = "sign-in" | "aal2" | "session";
 
 export class ProviderRequestAccessError extends Error {
-  constructor(readonly reason: ProviderAccessReason) {
+  readonly reason: ProviderAccessReason;
+
+  constructor(reason: ProviderAccessReason) {
     super(reason);
+    this.reason = reason;
     this.name = "ProviderRequestAccessError";
   }
 }
@@ -30,6 +33,15 @@ export function isSignInRequired(cause: unknown): boolean {
 export function paymentAccessMessage(reason: ProviderAccessReason): string {
   if (reason === "sign-in") return "Inicia sesión con tu correo confirmado para ver tu pago.";
   if (reason === "aal2") return "Verifica tu teléfono por SMS para ver tu pago.";
+  return "Tu sesión expiró. Inicia sesión nuevamente para continuar.";
+}
+
+const ACCOUNT_SUBJECT_LABEL = { panel: "panel", profile: "perfil" } as const;
+
+export function accountAccessMessage(reason: ProviderAccessReason, subject: keyof typeof ACCOUNT_SUBJECT_LABEL): string {
+  const label = ACCOUNT_SUBJECT_LABEL[subject];
+  if (reason === "sign-in") return `Inicia sesión con tu correo confirmado para ver tu ${label}.`;
+  if (reason === "aal2") return `Verifica tu teléfono por SMS para ver tu ${label}.`;
   return "Tu sesión expiró. Inicia sesión nuevamente para continuar.";
 }
 

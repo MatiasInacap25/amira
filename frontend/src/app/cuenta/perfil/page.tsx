@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { accountApiFetch } from "@/lib/auth/account-api";
 import { accountRoleLabel } from "@/lib/account-role-labels";
-import { currentAccessToken, isSignInRequired } from "@/lib/provider-request-access";
+import { accountAccessMessage, currentAccessToken, ProviderRequestAccessError } from "@/lib/provider-request-access";
 import { createClient } from "@/lib/supabase/client";
 
 const SIGN_IN_HREF = `/login?next=${encodeURIComponent("/cuenta/perfil")}`;
@@ -41,13 +41,13 @@ export default function ProfileSettingsPage() {
         <div className="customer-services-wrap">
           <h1>Configuración del perfil</h1>
           {profileQuery.isPending && <p role="status">Cargando tu perfil…</p>}
-          {profileQuery.isError && isSignInRequired(profileQuery.error) && (
+          {profileQuery.error instanceof ProviderRequestAccessError && (
             <div className="marketplace-state">
-              <p role="alert">Inicia sesión con tu correo confirmado para ver tu perfil.</p>
+              <p role="alert">{accountAccessMessage(profileQuery.error.reason, "profile")}</p>
               <Link className="button button-primary" href={SIGN_IN_HREF}>Iniciar sesión</Link>
             </div>
           )}
-          {profileQuery.isError && !isSignInRequired(profileQuery.error) && (
+          {profileQuery.isError && !(profileQuery.error instanceof ProviderRequestAccessError) && (
             <div className="marketplace-state marketplace-error" role="alert">
               <p>No pudimos cargar tu perfil. Inténtalo nuevamente.</p>
               <button className="button button-secondary" onClick={() => void profileQuery.refetch()} type="button">Reintentar</button>
