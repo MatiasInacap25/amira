@@ -238,7 +238,7 @@ test("sending an invitation without a company tax ID posts only the email, then 
   ]);
 });
 
-test("first invitation sends the company RUT normalized after the field is formatted on blur", async ({ page }) => {
+test("first invitation sends the company RUT normalized after the field is masked while typing", async ({ page }) => {
   await signInToInvitations(page);
   const invitations: Invitation[] = [];
   const requests = await mockInvitationsApi(page, serveInvitations(invitations));
@@ -247,9 +247,8 @@ test("first invitation sends the company RUT normalized after the field is forma
   const panel = page.getByRole("region", { name: "Invitar conductores" });
   await panel.getByLabel("Correo de la persona invitada").fill("primer@example.test");
   const taxId = panel.getByLabel("RUT de empresa (requerido solo para el primer conductor)");
-  await taxId.fill("12345678-5");
-  await taxId.blur();
-  await expect(taxId).toHaveValue("12.345.678-5");
+  await taxId.pressSequentially("123456785");
+  await expect(taxId).toHaveValue("12345678-5");
   await panel.getByRole("button", { name: "Enviar invitación" }).click();
 
   await expect(panel.getByRole("status")).toContainText("Invitación enviada");

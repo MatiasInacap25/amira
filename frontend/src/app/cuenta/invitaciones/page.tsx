@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authenticatedApiFetch } from "@/lib/auth/account-api";
 import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
-import { formatRut, normalizeRut } from "@/lib/validation/rut";
+import { normalizeRut } from "@/lib/validation/rut";
+import { maskRutWithCaret, restoreRutCaret } from "@/lib/validation/rut-caret";
 import { createClient } from "@/lib/supabase/client";
 
 type Invitation = { id: string; email: string; created_at: string; expires_at: string; status: "pending" | "expired" | "revoked" | "accepted" };
@@ -125,7 +126,7 @@ export default function CompanyInvitationsPage() {
               <input id="driver-invitation-email" autoComplete="email" type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
             <label className="auth-field" htmlFor="driver-invitation-company-tax-id">RUT de empresa (requerido solo para el primer conductor)
-              <input aria-describedby={companyTaxIdError ? "driver-invitation-company-tax-id-error" : undefined} aria-invalid={companyTaxIdError ? true : undefined} id="driver-invitation-company-tax-id" autoComplete="off" maxLength={16} onBlur={() => setCompanyTaxId((current) => formatRut(current) ?? current)} onChange={(event) => { setCompanyTaxId(event.target.value); setCompanyTaxIdError(""); }} value={companyTaxId} />
+              <input aria-describedby={companyTaxIdError ? "driver-invitation-company-tax-id-error" : undefined} aria-invalid={companyTaxIdError ? true : undefined} id="driver-invitation-company-tax-id" autoComplete="off" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setCompanyTaxId(masked); setCompanyTaxIdError(""); restoreRutCaret(event.currentTarget, caret); }} value={companyTaxId} />
               {companyTaxIdError && <span className="auth-field-error" id="driver-invitation-company-tax-id-error">{companyTaxIdError}</span>}
             </label>
             <button className="auth-submit" disabled={busy || !token} type="submit">{busy ? "Procesando…" : "Enviar invitación"}</button>

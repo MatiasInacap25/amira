@@ -9,7 +9,8 @@ import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marke
 import { accountApiFetch, authenticatedApiFetch } from "@/lib/auth/account-api";
 import { acceptsAssuranceLevel, devSkipSmsMfa } from "@/lib/auth/dev-mfa";
 import { safeNextPath } from "@/lib/auth/safe-next-path";
-import { formatRut, normalizeRut } from "@/lib/validation/rut";
+import { normalizeRut } from "@/lib/validation/rut";
+import { maskRutWithCaret, restoreRutCaret } from "@/lib/validation/rut-caret";
 import { createClient } from "@/lib/supabase/client";
 
 type AuthMode = "login" | "register";
@@ -535,7 +536,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                   <FieldError id="auth-phone-error" message={fieldErrors.phone} />
                 </label>
                 <label className="auth-field" htmlFor="auth-national-id">RUT personal
-                  <input aria-describedby={fieldErrors.nationalId ? "auth-national-id-error" : undefined} aria-invalid={fieldErrors.nationalId ? true : undefined} autoComplete="off" id="auth-national-id" maxLength={16} onBlur={() => setNationalId((current) => formatRut(current) ?? current)} onChange={(event) => setNationalId(event.target.value)} placeholder="12.345.678-5" required value={nationalId} />
+                  <input aria-describedby={fieldErrors.nationalId ? "auth-national-id-error" : undefined} aria-invalid={fieldErrors.nationalId ? true : undefined} autoComplete="off" id="auth-national-id" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setNationalId(masked); restoreRutCaret(event.currentTarget, caret); }} placeholder="12345678-5" required value={nationalId} />
                   <FieldError id="auth-national-id-error" message={fieldErrors.nationalId} />
                 </label>
                 <label className="auth-field" htmlFor="auth-birth-date">Fecha de nacimiento
@@ -550,7 +551,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                   </label>
                   {role === "company_owner" && <>
                     <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa
-                      <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={16} onBlur={() => setCompanyTaxId((current) => formatRut(current) ?? current)} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} />
+                      <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setCompanyTaxId(masked); restoreRutCaret(event.currentTarget, caret); }} required value={companyTaxId} />
                       <FieldError id="auth-company-tax-id-error" message={fieldErrors.companyTaxId} />
                     </label>
                     <label className="auth-checkbox" htmlFor="auth-also-driver">
@@ -626,7 +627,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                 <span className="auth-help">Este es el número que acabas de verificar por SMS.</span>
               </label>
               <label className="auth-field" htmlFor="auth-account-national-id">RUT personal
-                <input aria-describedby={fieldErrors.nationalId ? "auth-account-national-id-error" : undefined} aria-invalid={fieldErrors.nationalId ? true : undefined} autoComplete="off" id="auth-account-national-id" maxLength={16} onBlur={() => setNationalId((current) => formatRut(current) ?? current)} onChange={(event) => setNationalId(event.target.value)} required value={nationalId} />
+                <input aria-describedby={fieldErrors.nationalId ? "auth-account-national-id-error" : undefined} aria-invalid={fieldErrors.nationalId ? true : undefined} autoComplete="off" id="auth-account-national-id" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setNationalId(masked); restoreRutCaret(event.currentTarget, caret); }} required value={nationalId} />
                 <FieldError id="auth-account-national-id-error" message={fieldErrors.nationalId} />
               </label>
               <label className="auth-field" htmlFor="auth-account-birth-date">Fecha de nacimiento
@@ -636,7 +637,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
               {!invitationIntent && role !== "client" && <RegionCommuneSelect idPrefix="auth-account" onChange={setRegionCommune} required value={regionCommune} />}
               {role === "company_owner" && <>
                 <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa
-                  <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={16} onBlur={() => setCompanyTaxId((current) => formatRut(current) ?? current)} onChange={(event) => setCompanyTaxId(event.target.value)} required value={companyTaxId} />
+                  <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setCompanyTaxId(masked); restoreRutCaret(event.currentTarget, caret); }} required value={companyTaxId} />
                   <FieldError id="auth-company-tax-id-error" message={fieldErrors.companyTaxId} />
                 </label>
                 <label className="auth-checkbox" htmlFor="auth-account-also-driver">

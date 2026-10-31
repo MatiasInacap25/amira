@@ -101,11 +101,14 @@ test("registration fields expose autocomplete hints for password managers and ph
   await expect(page.locator("#auth-national-id")).toHaveAttribute("autocomplete", "off");
 });
 
-test("RUT is reformatted with dots and check digit when the field loses focus", async ({ page }) => {
+test("RUT field inserts the dash while typing and accepts only digits and a k", async ({ page }) => {
   await page.goto("/registro");
-  await page.locator("#auth-national-id").fill("123456785");
-  await page.locator("#auth-national-id").press("Tab");
-  await expect(page.locator("#auth-national-id")).toHaveValue("12.345.678-5");
+  const nationalId = page.locator("#auth-national-id");
+  await nationalId.pressSequentially("12.345.678-5");
+  await expect(nationalId).toHaveValue("12345678-5");
+  await nationalId.fill("");
+  await nationalId.pressSequentially("5a5b0c0000k");
+  await expect(nationalId).toHaveValue("5500000-K");
 });
 
 test("password reveal toggles both password fields together", async ({ page }) => {

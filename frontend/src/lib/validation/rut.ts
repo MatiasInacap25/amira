@@ -38,6 +38,20 @@ export function normalizeRut(value: string) {
   return parsed ? `${parsed.body}-${parsed.verifier}` : null;
 }
 
+// Maximum significant characters kept by the mask. Generous on purpose: it only bounds unbounded input.
+const RUT_MASK_MAX_LENGTH = 12;
+
+// Live input mask: keeps digits and a K (any case) only as the check digit, and inserts the dash before
+// the last character, so "123456785" reads "12345678-5" while typing. Extra digits are NOT dropped, so a
+// mistyped number such as "1234567855" reads "123456785-5" and stays invalid instead of looking valid.
+export function maskRutInput(value: string) {
+  const clean = cleanRut(value).slice(0, RUT_MASK_MAX_LENGTH);
+  const endsWithK = clean.endsWith("K");
+  const digits = clean.replace(/K/g, "");
+  const chars = endsWithK ? `${digits}K` : digits;
+  return chars.length < 2 ? chars : `${chars.slice(0, -1)}-${chars.slice(-1)}`;
+}
+
 // Returns the display form "12.345.678-5" for a valid RUT, or null otherwise.
 export function formatRut(value: string) {
   const parsed = parseRut(value);
