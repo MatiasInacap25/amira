@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ChatNotifications } from "@/components/marketplace/chat-notifications";
+import { ProfileMenu, useSignOut } from "@/components/marketplace/profile-menu";
 import { useChatEvents } from "@/components/marketplace/use-chat-events";
 import { CHAT_ROOT_KEY, chatUnreadTotalKey } from "@/lib/chats";
 import { chatRefetchInterval } from "@/lib/chat-quotations";
@@ -26,7 +27,7 @@ import { createClient } from "@/lib/supabase/client";
 type NavAccount = { userId: string | null };
 
 // Drops the header's per-account data (provider and chat queries) on sign-out or account change, and re-reads the session user.
-function useProviderNavAccountScope() {
+export function useProviderNavAccountScope() {
   const queryClient = useQueryClient();
   useEffect(() => {
     const { data } = createClient().auth.onAuthStateChange((event, session) => {
@@ -123,7 +124,8 @@ function ProviderRequestsLink({ className, onNavigate }: { className?: string; o
 
 export function MarketplaceHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { userId } = useNavUserId();
+  const { userId, pending } = useNavUserId();
+  const { signOut, signingOut, error: signOutError } = useSignOut(() => setMenuOpen(false));
   useProviderNavAccountScope();
 
   return (
@@ -143,10 +145,14 @@ export function MarketplaceHeader() {
           <Link href="/#como-funciona">Cómo funciona</Link>
         </nav>
         <div className="header-actions">
-          <div className="header-auth-links">
-            <Link className="login-link" href="/login">Iniciar sesión</Link>
-            <Link className="button button-secondary header-nav-button" href="/registro">Crear cuenta</Link>
-          </div>
+          {!pending && (userId ? (
+            <ProfileMenu />
+          ) : (
+            <div className="header-auth-links">
+              <Link className="login-link" href="/login">Iniciar sesión</Link>
+              <Link className="button button-secondary header-nav-button" href="/registro">Crear cuenta</Link>
+            </div>
+          ))}
           <Link className="button button-primary header-cta" href="/servicios">Buscar un servicio <ArrowRight aria-hidden="true" size={16} /></Link>
           <button
             aria-controls="marketplace-mobile-navigation"
@@ -167,8 +173,20 @@ export function MarketplaceHeader() {
           <ChatsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <ProviderRequestsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Mis servicios</Link>
-          <Link className="header-nav-button" href="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
-          <Link className="header-nav-button" href="/registro" onClick={() => setMenuOpen(false)}>Crear cuenta</Link>
+          {!pending && (userId ? (
+            <>
+              <Link className="header-nav-button" href="/cuenta/perfil" onClick={() => setMenuOpen(false)}>Configuración del perfil</Link>
+              <button className="header-nav-button" disabled={signingOut} onClick={signOut} type="button">
+                {signingOut ? "Cerrando sesión…" : "Cerrar sesión"}
+              </button>
+              {signOutError && <p className="profile-menu-error" role="alert">{signOutError}</p>}
+            </>
+          ) : (
+            <>
+              <Link className="header-nav-button" href="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
+              <Link className="header-nav-button" href="/registro" onClick={() => setMenuOpen(false)}>Crear cuenta</Link>
+            </>
+          ))}
           <Link href="/#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</Link>
         </nav>
       )}

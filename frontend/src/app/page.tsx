@@ -25,7 +25,8 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
 import { ChatNotifications } from "@/components/marketplace/chat-notifications";
-import { useNavUserId } from "@/components/marketplace/site-navigation";
+import { ProfileMenu, useSignOut } from "@/components/marketplace/profile-menu";
+import { useNavUserId, useProviderNavAccountScope } from "@/components/marketplace/site-navigation";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { getServiceTypes } from "@/lib/marketplace-api";
 
@@ -185,8 +186,11 @@ function Brand() {
 export default function HomePage() {
   const router = useRouter();
   // The landing page has no chat nav, but signed-in visitors still get the in-app chat toasts.
-  const { userId } = useNavUserId();
+  const { userId, pending } = useNavUserId();
+  // The landing page does not mount MarketplaceHeader, so it needs the same account-scope listener here.
+  useProviderNavAccountScope();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { signOut, signingOut, error: signOutError } = useSignOut(() => setMobileMenuOpen(false));
   const [service, setService] = useState("");
   const [location, setLocation] = useState<RegionCommuneValue>({ regionCode: "", communeCode: "" });
   const [searchError, setSearchError] = useState("");
@@ -239,8 +243,14 @@ export default function HomePage() {
             <a href="#transportistas">Para transportistas</a>
           </nav>
           <div className="header-actions">
-            <Link className="login-link" href="/login">Iniciar sesión</Link>
-            <Link className="login-link home-register-link" href="/registro">Crear cuenta</Link>
+            {!pending && (userId ? (
+              <ProfileMenu />
+            ) : (
+              <>
+                <Link className="login-link" href="/login">Iniciar sesión</Link>
+                <Link className="login-link home-register-link" href="/registro">Crear cuenta</Link>
+              </>
+            ))}
             <Link className="button button-primary header-cta" href="/registro?intent=provider">Ofrecer mis servicios <ArrowUpRight aria-hidden="true" size={16} /></Link>
             <button
               aria-label={mobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
@@ -261,8 +271,20 @@ export default function HomePage() {
             <a href="#como-funciona" onClick={() => setMobileMenuOpen(false)}>Cómo funciona</a>
             <a href="#empresas" onClick={() => setMobileMenuOpen(false)}>Empresas</a>
             <a href="#transportistas" onClick={() => setMobileMenuOpen(false)}>Para transportistas</a>
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)}>Iniciar sesión</Link>
-            <Link href="/registro" onClick={() => setMobileMenuOpen(false)}>Crear cuenta</Link>
+            {!pending && (userId ? (
+              <>
+                <Link href="/cuenta/perfil" onClick={() => setMobileMenuOpen(false)}>Configuración del perfil</Link>
+                <button disabled={signingOut} onClick={signOut} type="button">
+                  {signingOut ? "Cerrando sesión…" : "Cerrar sesión"}
+                </button>
+                {signOutError && <p className="profile-menu-error" role="alert">{signOutError}</p>}
+              </>
+            ) : (
+              <>
+                <Link href="/login" onClick={() => setMobileMenuOpen(false)}>Iniciar sesión</Link>
+                <Link href="/registro" onClick={() => setMobileMenuOpen(false)}>Crear cuenta</Link>
+              </>
+            ))}
             <a href="#buscar" onClick={() => setMobileMenuOpen(false)}>Solicitar un servicio</a>
             <Link href="/registro?intent=provider" onClick={() => setMobileMenuOpen(false)}>Registrar mi vehículo</Link>
           </nav>

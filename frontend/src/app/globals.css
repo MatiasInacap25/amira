@@ -772,6 +772,17 @@ h1, h2, h3, p { margin-top: 0; }
 /* Account access */
 .header-auth-links { display: flex; align-items: center; gap: 14px; }
 .header-auth-links .header-nav-button { min-height: 39px; padding-inline: 13px; }
+.profile-menu { position: relative; display: flex; }
+.profile-menu-toggle { display: grid; width: 40px; height: 40px; place-items: center; padding: 0; border: 1px solid #dbe4e5; border-radius: 50%; background: white; color: var(--primary); cursor: pointer; transition: background-color .18s ease, border-color .18s ease; }
+.profile-menu-toggle:hover, .profile-menu-toggle[aria-expanded="true"] { border-color: #b9cad0; background: #edf3f4; }
+.profile-menu-dropdown { position: absolute; top: calc(100% + 10px); right: 0; z-index: 40; display: grid; min-width: 232px; padding: 6px; border: 1px solid #dbe4e5; border-radius: 12px; background: white; box-shadow: 0 14px 32px rgba(23, 63, 85, .14); }
+.profile-menu-item { display: flex; min-height: 44px; width: 100%; align-items: center; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: #355260; font: inherit; font-size: 14px; font-weight: 650; text-align: left; text-decoration: none; cursor: pointer; }
+.profile-menu-item:hover, .profile-menu-item:focus-visible { background: #edf3f4; color: var(--primary); }
+.profile-menu-item:disabled { opacity: .6; cursor: progress; }
+.profile-menu-error { margin: 4px 12px 8px; color: #a04f31; font-size: 12px; line-height: 1.4; }
+.mobile-nav button.header-nav-button { display: flex; min-height: 44px; width: 100%; margin-block: 4px; padding-inline: 13px; border: 0; border-radius: 8px; background: #edf3f4; color: var(--primary); font: inherit; font-size: 14px; font-weight: 650; text-align: left; cursor: pointer; }
+.mobile-nav button.header-nav-button:disabled { opacity: .6; cursor: progress; }
+.mobile-nav .profile-menu-error { margin: 0 0 6px; }
 .home-register-link { display: inline-flex; }
 .auth-shell { display: grid; min-height: 100svh; grid-template-columns: minmax(300px, .83fr) minmax(500px, 1.17fr); background: #fff; }
 .auth-brand-panel { position: relative; display: flex; min-height: 100%; flex-direction: column; justify-content: space-between; overflow: hidden; padding: clamp(30px, 5vw, 68px); background: #173f55; color: #fff; }
