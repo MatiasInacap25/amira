@@ -8,7 +8,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { accountApiFetch, authenticatedApiFetch } from "@/lib/auth/account-api";
 import { acceptsAssuranceLevel, devSkipSmsMfa } from "@/lib/auth/dev-mfa";
-import { safeNextPath } from "@/lib/auth/safe-next-path";
+import { postLoginPath, safeNextPath } from "@/lib/post-login-path";
 import { normalizeRut } from "@/lib/validation/rut";
 import { maskRutWithCaret, restoreRutCaret } from "@/lib/validation/rut-caret";
 import { createClient } from "@/lib/supabase/client";
@@ -89,6 +89,19 @@ function isEmailConfirmed(user: User | null | undefined): user is User {
 function getSafeNext() {
   if (typeof window === "undefined") return "/servicios";
   return safeNextPath(new URLSearchParams(window.location.search).get("next"));
+}
+
+function getExplicitNext() {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("next");
+}
+
+function destinationForRole(role: unknown) {
+  return postLoginPath({
+    role: typeof role === "string" ? role : null,
+    explicitNext: getExplicitNext(),
+    fallback: getSafeNext(),
+  });
 }
 
 export function AuthPanel({ mode, providerIntent = false, invitationIntent = false }: { mode: AuthMode; providerIntent?: boolean; invitationIntent?: boolean }) {
@@ -331,6 +344,18 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     return accountApiFetch("/api/account/me", accessToken, process.env.NEXT_PUBLIC_API_URL);
   }
 
+  // Any failure resolves to null so the caller falls back to the current destination.
+  async function fetchAccountRole(accessToken: string): Promise<unknown> {
+    try {
+      const response = await fetchAccount(accessToken);
+      if (!response.ok) return null;
+      const account = await response.json() as { role?: unknown };
+      return account.role;
+    } catch {
+      return null;
+    }
+  }
+
   async function completeAuthentication(supabase: SupabaseClient) {
     const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (assuranceError) throw assuranceError;
@@ -351,7 +376,8 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
         : "La API todavía no reconoce la verificación SMS. Vuelve a iniciar sesión e intenta otra vez.");
       throw new Error("No pudimos comprobar tu cuenta. Intenta nuevamente en unos minutos.");
     }
-    router.replace(getSafeNext());
+    const account = await accountResponse.json().catch(() => null) as { role?: unknown } | null;
+    router.replace(destinationForRole(account?.role));
   }
 
   async function handleVerify(event: FormEvent<HTMLFormElement>) {
@@ -450,7 +476,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
         window.sessionStorage.removeItem(DRIVER_INVITATION_KEY);
         router.replace("/servicios");
       } else {
-        router.replace(getSafeNext());
+        router.replace(destinationForRole(await fetchAccountRole(sessionData.session.access_token)));
       }
     } catch (cause) {
       setError(messageFor(cause));
