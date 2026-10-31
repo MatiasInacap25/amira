@@ -37,8 +37,8 @@ function filterLabel(filter: StatusFilter) {
   return filter === "all" ? "Todos" : serviceStatusLabel(filter);
 }
 
-/** Provider view of "Mis servicios": paginated list with a status filter. */
-export function ProviderServicesView() {
+/** Chrome-less provider services list: intro, status filter, states and pagination. The caller supplies the page chrome. */
+export function ProviderServicesBody() {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const servicesQuery = useInfiniteQuery({
     queryKey: [...PROVIDER_SERVICES_KEY, filter],
@@ -68,72 +68,81 @@ export function ProviderServicesView() {
 
   return (
     <>
+      <p className="customer-services-intro">Revisa los servicios que tienes contratados como prestador.</p>
+
+      <div aria-label="Filtrar servicios por estado" className="account-service-filters" role="group">
+        {FILTERS.map((option) => (
+          <button
+            aria-pressed={filter === option}
+            className="account-service-filter"
+            key={option}
+            onClick={() => setFilter(option)}
+            type="button"
+          >
+            {filterLabel(option)}
+          </button>
+        ))}
+      </div>
+
+      {needsSignIn && (
+        <div className="marketplace-state marketplace-error" role="alert">
+          <h2>No pudimos verificar tu sesión</h2>
+          <p>Inicia sesión de nuevo para ver tus servicios.</p>
+          <Link className="button button-secondary" href={SIGN_IN_HREF}>Iniciar sesión</Link>
+        </div>
+      )}
+      {forbidden && (
+        <div className="marketplace-state marketplace-error" role="alert">
+          <h2>Esta cuenta no tiene servicios de prestador</h2>
+          <p>Los servicios como prestador solo están disponibles para conductores y empresas de transporte.</p>
+        </div>
+      )}
+      {failed && !forbidden && (
+        <div className="marketplace-state marketplace-error" role="alert">
+          <h2>No pudimos cargar tus servicios</h2>
+          <p>Inténtalo nuevamente en unos minutos.</p>
+          <button className="button button-secondary" onClick={() => void servicesQuery.refetch()} type="button">Reintentar</button>
+        </div>
+      )}
+
+      {!servicesQuery.isError && (
+        <MarketplaceSkeleton label="Cargando tus servicios…" layout={PROVIDER_SERVICES_LAYOUT} loading={servicesQuery.isPending} name="provider-services">
+          {servicesQuery.isSuccess && services.length === 0 && (
+            <div className="marketplace-state marketplace-empty" role="status">
+              <h2>{filter === "all" ? "Aún no tienes servicios" : `No tienes servicios ${EMPTY_FILTER_LABEL[filter]}`}</h2>
+              <p>Cuando un cliente confirme un servicio contigo, aparecerá aquí.</p>
+            </div>
+          )}
+          {services.length > 0 && (
+            <ul className="account-service-list">
+              {services.map((service) => (
+                <li key={service.serviceId}>
+                  <ServiceCard counterpartLabel="Cliente" service={service} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </MarketplaceSkeleton>
+      )}
+
+      {servicesQuery.hasNextPage && (
+        <button className="button button-secondary customer-services-more" disabled={servicesQuery.isFetchingNextPage} onClick={() => void servicesQuery.fetchNextPage()} type="button">
+          {servicesQuery.isFetchingNextPage ? "Cargando…" : "Cargar más servicios"}
+        </button>
+      )}
+    </>
+  );
+}
+
+/** Provider view of "Mis servicios" at /cuenta/servicios: page chrome around the shared list body. */
+export function ProviderServicesView() {
+  return (
+    <>
       <MarketplaceHeader />
       <main className="marketplace-main customer-services-page" id="contenido">
         <div className="customer-services-wrap">
           <h1>Mis servicios</h1>
-          <p className="customer-services-intro">Revisa los servicios que tienes contratados como prestador.</p>
-
-          <div aria-label="Filtrar servicios por estado" className="account-service-filters" role="group">
-            {FILTERS.map((option) => (
-              <button
-                aria-pressed={filter === option}
-                className="account-service-filter"
-                key={option}
-                onClick={() => setFilter(option)}
-                type="button"
-              >
-                {filterLabel(option)}
-              </button>
-            ))}
-          </div>
-
-          {needsSignIn && (
-            <div className="marketplace-state marketplace-error" role="alert">
-              <h2>No pudimos verificar tu sesión</h2>
-              <p>Inicia sesión de nuevo para ver tus servicios.</p>
-              <Link className="button button-secondary" href={SIGN_IN_HREF}>Iniciar sesión</Link>
-            </div>
-          )}
-          {forbidden && (
-            <div className="marketplace-state marketplace-error" role="alert">
-              <h2>Esta cuenta no tiene servicios de prestador</h2>
-              <p>Los servicios como prestador solo están disponibles para conductores y empresas de transporte.</p>
-            </div>
-          )}
-          {failed && !forbidden && (
-            <div className="marketplace-state marketplace-error" role="alert">
-              <h2>No pudimos cargar tus servicios</h2>
-              <p>Inténtalo nuevamente en unos minutos.</p>
-              <button className="button button-secondary" onClick={() => void servicesQuery.refetch()} type="button">Reintentar</button>
-            </div>
-          )}
-
-          {!servicesQuery.isError && (
-            <MarketplaceSkeleton label="Cargando tus servicios…" layout={PROVIDER_SERVICES_LAYOUT} loading={servicesQuery.isPending} name="provider-services">
-              {servicesQuery.isSuccess && services.length === 0 && (
-                <div className="marketplace-state marketplace-empty" role="status">
-                  <h2>{filter === "all" ? "Aún no tienes servicios" : `No tienes servicios ${EMPTY_FILTER_LABEL[filter]}`}</h2>
-                  <p>Cuando un cliente confirme un servicio contigo, aparecerá aquí.</p>
-                </div>
-              )}
-              {services.length > 0 && (
-                <ul className="account-service-list">
-                  {services.map((service) => (
-                    <li key={service.serviceId}>
-                      <ServiceCard counterpartLabel="Cliente" service={service} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </MarketplaceSkeleton>
-          )}
-
-          {servicesQuery.hasNextPage && (
-            <button className="button button-secondary customer-services-more" disabled={servicesQuery.isFetchingNextPage} onClick={() => void servicesQuery.fetchNextPage()} type="button">
-              {servicesQuery.isFetchingNextPage ? "Cargando…" : "Cargar más servicios"}
-            </button>
-          )}
+          <ProviderServicesBody />
         </div>
       </main>
       <MarketplaceFooter />
