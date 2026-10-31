@@ -42,3 +42,5 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
 - L8 Verifier advisory (pre-existing at baseline, reproduced): safeNextPath("/..//evil.example") returns "//evil.example", which resolves to https://evil.example/ (open redirect in /auth/callback and now in the post-login redirect). Fix pending user decision.
 - L9 Advisory: /panel and /cuenta/perfil show the "Inicia sesión" message when the session is AAL1 (SMS pending); requestErrorMessage could distinguish it.
 - L10 Next: decide the open-redirect fix; T3 (S3) stays planned only.
+- L11 (2026-10-30) user: "si y despues sube todo a una rama de develop". Open redirect fixed in `4f34406` (reject normalized paths starting with "//" or containing "\"); unit RED→GREEN 12/12, auth and login e2e 28/28. Branch review of the whole feature approved and acknowledged (no blockers). Assessment of `4f34406`: medium, under_budget.
+- L12 Pushed to a new `develop` branch on origin at the user's request. T3 (S3) remains planned only.
