@@ -11,6 +11,19 @@ test("safeNextPath rejects protocol-relative and absolute external URLs", () => 
   assert.equal(safeNextPath(null), FALLBACK);
 });
 
+test("safeNextPath rejects paths that normalize to protocol-relative URLs", () => {
+  assert.equal(safeNextPath("/..//evil.example"), FALLBACK);
+  assert.equal(safeNextPath("/./\\/evil"), FALLBACK);
+  assert.equal(safeNextPath("/%2e%2e//evil.example"), FALLBACK);
+  assert.equal(safeNextPath("/a/..//evil.example"), FALLBACK);
+});
+
+test("safeNextPath keeps same-origin paths that normalize to a safe path", () => {
+  assert.equal(safeNextPath("/cuenta/perfil"), "/cuenta/perfil");
+  assert.equal(safeNextPath("/a?b=1#c"), "/a?b=1#c");
+  assert.equal(safeNextPath("/../../x"), "/x");
+});
+
 test("safeNextPath keeps same-origin absolute paths with search and hash", () => {
   assert.equal(safeNextPath("/cuenta/perfil"), "/cuenta/perfil");
   assert.equal(safeNextPath("/servicios?q=grua#resultados"), "/servicios?q=grua#resultados");

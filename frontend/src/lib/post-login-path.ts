@@ -9,6 +9,8 @@ function parseSafeNextPath(value: string | null | undefined): string | null {
   try {
     const parsed = new URL(value, ORIGIN);
     if (parsed.origin !== ORIGIN) return null;
+    // Normalization can collapse dot segments into a protocol-relative path, e.g. "/..//evil.example".
+    if (parsed.pathname.startsWith("//") || parsed.pathname.includes("\\")) return null;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
     return null;
