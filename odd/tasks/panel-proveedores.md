@@ -16,10 +16,18 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
   - `company_driver`: list of assigned services (from `GET /api/provider/services`, reusing the existing services view) and a Mi perfil button (`/cuenta/perfil`).
   - `client`: redirected to `/servicios`. Signed out: the sign-in prompt used by other private pages.
   - Checks: e2e spec covering provider, company owner, driver, client and signed out; lint and tsc clean.
-- **S3 Provider profile publication (PLANNED, not implemented).** User: "agrega todo lo que necesita configurar los proveedores para que su perfil quede publico y aparezca cuando un usuario busca un servicio".
-  - Backend `/api/provider/profile`: `GET` (data, offered service types, publication state); `PUT` (description, commune, company display name, service types); `POST /publish` (requires at least one service type and a commune, 422 listing what is missing); `POST /unpublish`. Owner-only, via `invitation_routes._owned_provider`.
-  - Frontend `/cuenta/perfil` for providers: form for description, commune and service types, a checklist of missing items, and publish/unpublish. Clients keep the read-only view.
-  - Out of scope (assumption, to confirm): vehicles (DB requires an image upload) and logo (no public asset mechanism).
+- **S3 Provider profile publication.** User: "agrega todo lo que necesita configurar los proveedores para que su perfil quede publico y aparezca cuando un usuario busca un servicio".
+  - Backend contract (owner-only via `invitation_routes._owned_provider`: `company_owner` and `independent_driver`; client and `company_driver` get 403):
+    - `GET /api/provider/profile` → `{name, kind, description, commune_code, service_type_ids, published, missing}`; `missing` lists `"service_types"` and/or `"commune"`.
+    - `PUT /api/provider/profile` body `{description, commune_code, service_type_ids, name?}`; `name` only accepted for `kind == "company"`; unknown commune or service type → 422; replaces `ServicioDisponible` rows for the profile; returns the GET shape.
+    - `POST /api/provider/profile/publish` → sets `public_activated_at` if unset; 422 with `missing` when there is no service type or no commune; returns the GET shape.
+    - `POST /api/provider/profile/unpublish` → clears `public_activated_at`; returns the GET shape.
+    - A published profile with a service type appears in the public provider search; after unpublish it does not.
+    - User (2026-10-31): "haz que cuando se relelnen los campos para publicar sea necesario rellenar todo". Publishing requires every profile field: a non-blank description, a commune, at least one service type (and the existing non-blank name for companies). `missing` keys: `"description"`, `"commune"`, `"service_types"`, in that order.
+    - User chose option A: a `PUT` that leaves a published profile incomplete unpublishes it automatically (clears `public_activated_at`) and returns `published: false` with `missing`.
+  - Frontend fixes (user: "mejora los 3 puntos"): a `null` description from the backend renders as an empty controlled textarea; "Publicar perfil" saves unsaved form edits first and then publishes; publishing is disabled until every field is filled, and the checklist includes "Escribe una descripción". When a save unpublishes the profile, the page says so.
+  - Frontend `/cuenta/perfil` for providers: form for description, commune and service types (company also name), a checklist of missing items, and publish/unpublish. Clients and company drivers keep the read-only view.
+  - Out of scope (user confirmed 2026-10-31): vehicles (DB requires an image upload) and logo (no public asset mechanism).
   - Risk: high (data writes, authorization); needs an independent verifier.
 
 ## Tasks
@@ -28,7 +36,8 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
 |----|-------|-------|--------|----------|
 | T1 | S1 | delegated (herdr worker-1, parallel with T2) | done | `03dc60e`; unit RED→GREEN 10/10; independent verifier PASS, no blockers |
 | T2 | S2 | delegated (herdr worker-2, parallel with T1) | done | `d7713b7`; page-panel.spec 5/5, cuenta/servicios specs green |
-| T3 | S3 | not started (user asked to plan only) | planned | |
+| T3a | S3 backend | delegated (herdr worker-1, parallel with T3b) | done | `5691a55`; profile routes 39/39, backend 716/716, uv lock clean |
+| T3b | S3 frontend | delegated (herdr worker-2, parallel with T3a) | done | `2dce87f`; unit 145/145, e2e 57/57, lint and tsc clean |
 
 ## Log
 
@@ -45,3 +54,6 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
 - L11 (2026-10-30) user: "si y despues sube todo a una rama de develop". Open redirect fixed in `4f34406` (reject normalized paths starting with "//" or containing "\"); unit RED→GREEN 12/12, auth and login e2e 28/28. Branch review of the whole feature approved and acknowledged (no blockers). Assessment of `4f34406`: medium, under_budget.
 - L12 Pushed to a new `develop` branch on origin at the user's request. T3 (S3) remains planned only.
 - L13 (2026-10-31) user: "sigue con el mensaje confuso". Fixed in `5d2ad40`: accountAccessMessage(reason, subject) in provider-request-access.ts; /panel and /cuenta/perfil show "Verifica tu teléfono por SMS para ver tu panel/perfil." for AAL1 sessions. /login does not resume SMS for an AAL1 session, so the button stays "Iniciar sesión". User chose option 2: explicit field instead of the constructor parameter property, plus tests/support/alias-loader.mjs registered from the unit test so node can import modules with "@/" imports. Unit 129/129, e2e 20/20, lint and tsc clean. Assessment: medium, under_budget.
+- L14 (2026-10-31) user: "sigue con el punto 3"; plan approved ("si") with vehicles and logo out of scope. Contract fixed in S3 so T3a (backend) and T3b (frontend) run in parallel with disjoint files.
+- L15 (2026-10-31) Verifier: no blockers; advisories: null description in textarea, published profile can be saved incomplete, Publish ignores unsaved edits. User: "A, mejora los 3 puntos y haz que cuando se relelnen los campos para publicar sea necesario rellenar todo". S3 updated; T3a/T3b reopened for the correction.
+- L16 (2026-10-31) Corrections done; verifier recheck PASS, no blockers, three advisories resolved. Public-search visibility checked by reasoning over the SQL only (Postgres-only query). User approved the extra "Escribe el nombre de la empresa" label and asked: "si, y despues sube todo a develop". Commits `5691a55` (backend), `2dce87f` (frontend).
