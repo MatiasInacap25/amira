@@ -73,6 +73,10 @@ test("'Only company profiles have a name.' maps to its Spanish copy", () => {
   );
 });
 
+test("'Company profiles require a name.' maps to the Spanish name message", () => {
+  assert.equal(profileRejectionMessage({ detail: "Company profiles require a name." }), "Escribe el nombre de la empresa.");
+});
+
 test("'Unknown commune.' maps to its Spanish copy", () => {
   assert.equal(profileRejectionMessage({ detail: "Unknown commune." }), "La comuna elegida no existe.");
 });
@@ -132,8 +136,11 @@ test("an API 401 on a save shows the session message", () => {
   assert.equal(profileMutationErrorMessage(new ProviderProfileError(401, { detail: "Not authenticated" })), SESSION);
 });
 
-test("an API 403 on a save shows the session message", () => {
-  assert.equal(profileMutationErrorMessage(new ProviderProfileError(403, { detail: "Forbidden" })), SESSION);
+test("an API 403 on a save shows the permission message, not the session message", () => {
+  assert.equal(
+    profileMutationErrorMessage(new ProviderProfileError(403, { detail: "Forbidden" })),
+    "No tienes permiso para modificar este perfil.",
+  );
 });
 
 test("an API 422 on a save keeps the rejection mapping", () => {

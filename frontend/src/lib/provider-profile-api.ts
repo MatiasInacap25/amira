@@ -37,6 +37,7 @@ const PROFILE_PATH = "/api/provider/profile";
 const GENERIC_REJECTION_MESSAGE = "No pudimos guardar tu perfil. Revisa los datos e inténtalo nuevamente.";
 const NETWORK_ERROR_MESSAGE = "No pudimos conectar con el servidor. Inténtalo nuevamente.";
 const SESSION_EXPIRED_MESSAGE = accountAccessMessage("session", "profile");
+const FORBIDDEN_MESSAGE = "No tienes permiso para modificar este perfil.";
 const MISSING_LABELS: Record<ProviderProfileMissingItem, string> = {
   description: "Escribe una descripción",
   commune: "Elige tu comuna",
@@ -94,6 +95,7 @@ export function missingProfileLabels(missing: readonly string[]): string[] {
 // Backend detail strings are English, so the UI maps the known ones to Spanish and never renders the raw text.
 const KNOWN_REJECTION_MESSAGES: Record<string, string> = {
   "Only company profiles have a name.": "Solo las empresas pueden cambiar el nombre.",
+  "Company profiles require a name.": "Escribe el nombre de la empresa.",
   "Unknown commune.": "La comuna elegida no existe.",
   "Unknown service type.": "Uno de los tipos de servicio no existe.",
 };
@@ -113,12 +115,13 @@ function fieldRejectionMessage(error: unknown): string | null {
   return known ? known.message : null;
 }
 
-// Classifies a failed save, publish or unpublish. Access errors reuse the shared session copy, API 401/403 mean the session
-// is no longer accepted, 422s keep their mapping, and anything that never reached the API is a connection failure.
+// Classifies a failed save, publish or unpublish. Access errors reuse the shared copy, API 401 means the session is no longer
+// accepted, API 403 means the user lacks permission, 422s keep their mapping, and anything that never reached the API is a connection failure.
 export function profileMutationErrorMessage(error: unknown): string {
   if (error instanceof ProviderRequestAccessError) return accountAccessMessage(error.reason, "profile");
   if (error instanceof ProviderProfileError) {
-    if (error.status === 401 || error.status === 403) return SESSION_EXPIRED_MESSAGE;
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
+    if (error.status === 403) return FORBIDDEN_MESSAGE;
     return profileRejectionMessage(error.body);
   }
   return NETWORK_ERROR_MESSAGE;

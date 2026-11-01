@@ -84,8 +84,8 @@ type MockOptions = {
   profile?: ProfileBody;
   saveRejection?: { detail: unknown };
   publishRejection?: { detail: unknown };
-  // "unauthorized" answers the PUT with 401; "network" aborts it before any response.
-  saveFailure?: "unauthorized" | "network";
+  // "unauthorized" answers the PUT with 401, "forbidden" with 403; "network" aborts it before any response.
+  saveFailure?: "unauthorized" | "forbidden" | "network";
 };
 
 // Fake Supabase Auth, account role, catalogs, and a stateful provider profile API. Returns the request log the tests assert on.
@@ -147,6 +147,9 @@ async function installProfileMocks(page: Page, options: MockOptions) {
       if (options.saveFailure === "network") return route.abort("failed");
       if (options.saveFailure === "unauthorized") {
         return route.fulfill({ status: 401, headers: corsHeaders, json: { detail: "Not authenticated" } });
+      }
+      if (options.saveFailure === "forbidden") {
+        return route.fulfill({ status: 403, headers: corsHeaders, json: { detail: "Forbidden" } });
       }
       if (options.saveRejection) {
         return route.fulfill({ status: 422, headers: corsHeaders, json: options.saveRejection });
@@ -291,6 +294,17 @@ test("a save rejected with 401 shows the session message, not the connection mes
 
   await expect(main(page).getByRole("alert")).toHaveText("Tu sesión expiró. Inicia sesión nuevamente para continuar.");
   await expect(main(page).getByText("No pudimos conectar con el servidor. Inténtalo nuevamente.")).toHaveCount(0);
+});
+
+test("a save rejected with 403 shows the permission message, not the session message", async ({ page }) => {
+  await installProfileMocks(page, { role: "independent_driver", profile: completeProfile, saveFailure: "forbidden" });
+  await signIn(page);
+  await page.goto("/cuenta/perfil");
+
+  await main(page).getByRole("button", { name: "Guardar" }).click();
+
+  await expect(main(page).getByRole("alert")).toHaveText("No tienes permiso para modificar este perfil.");
+  await expect(main(page).getByText("Tu sesión expiró. Inicia sesión nuevamente para continuar.")).toHaveCount(0);
 });
 
 test("a save that never reaches the server keeps the connection message", async ({ page }) => {
