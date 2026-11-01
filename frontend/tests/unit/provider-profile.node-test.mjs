@@ -3,7 +3,10 @@ import { register } from "node:module";
 import { test } from "node:test";
 
 register("../support/alias-loader.mjs", import.meta.url);
-const { missingProfileLabels, profileRejectionMessage } = await import("../../src/lib/provider-profile-api.ts");
+const { missingProfileLabels, profileRejectionMessage, profileMutationErrorMessage, ProviderProfileError } = await import(
+  "../../src/lib/provider-profile-api.ts"
+);
+const { ProviderRequestAccessError } = await import("../../src/lib/provider-request-access.ts");
 
 test("missing service types and commune map to their Spanish checklist labels", () => {
   assert.deepEqual(missingProfileLabels(["service_types", "commune"]), [
@@ -105,6 +108,40 @@ test("a name that is too long is not reported as a blank name", () => {
 
 test("a field error on an unmapped field gets the generic message and never its raw text", () => {
   assert.equal(profileRejectionMessage({ detail: [{ type: "value_error", loc: ["body", "commune_code"], msg: "Raw English text" }] }), GENERIC);
+});
+
+const NETWORK = "No pudimos conectar con el servidor. Inténtalo nuevamente.";
+const SESSION = "Tu sesión expiró. Inicia sesión nuevamente para continuar.";
+
+test("an MFA-pending session on a save shows the SMS message for the profile", () => {
+  assert.equal(profileMutationErrorMessage(new ProviderRequestAccessError("aal2")), "Verifica tu teléfono por SMS para ver tu perfil.");
+});
+
+test("an unconfirmed sign-in on a save shows the sign-in message for the profile", () => {
+  assert.equal(
+    profileMutationErrorMessage(new ProviderRequestAccessError("sign-in")),
+    "Inicia sesión con tu correo confirmado para ver tu perfil.",
+  );
+});
+
+test("an expired session on a save shows the session message", () => {
+  assert.equal(profileMutationErrorMessage(new ProviderRequestAccessError("session")), SESSION);
+});
+
+test("an API 401 on a save shows the session message", () => {
+  assert.equal(profileMutationErrorMessage(new ProviderProfileError(401, { detail: "Not authenticated" })), SESSION);
+});
+
+test("an API 403 on a save shows the session message", () => {
+  assert.equal(profileMutationErrorMessage(new ProviderProfileError(403, { detail: "Forbidden" })), SESSION);
+});
+
+test("an API 422 on a save keeps the rejection mapping", () => {
+  assert.equal(profileMutationErrorMessage(new ProviderProfileError(422, { detail: "Unknown commune." })), "La comuna elegida no existe.");
+});
+
+test("a failure that never reached the API shows the network message", () => {
+  assert.equal(profileMutationErrorMessage(new TypeError("fetch failed")), NETWORK);
 });
 
 test("a missing body or an absent detail gets the generic message", () => {

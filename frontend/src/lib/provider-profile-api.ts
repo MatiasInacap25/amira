@@ -1,4 +1,5 @@
 import { authenticatedApiFetch } from "@/lib/auth/account-api";
+import { accountAccessMessage, ProviderRequestAccessError } from "@/lib/provider-request-access";
 
 // "name" is not a backend missing key; the form adds it for companies so the publish gate and checklist cover it.
 export type ProviderProfileMissingItem = "description" | "commune" | "service_types" | "name";
@@ -34,6 +35,8 @@ export class ProviderProfileError extends Error {
 
 const PROFILE_PATH = "/api/provider/profile";
 const GENERIC_REJECTION_MESSAGE = "No pudimos guardar tu perfil. Revisa los datos e inténtalo nuevamente.";
+const NETWORK_ERROR_MESSAGE = "No pudimos conectar con el servidor. Inténtalo nuevamente.";
+const SESSION_EXPIRED_MESSAGE = accountAccessMessage("session", "profile");
 const MISSING_LABELS: Record<ProviderProfileMissingItem, string> = {
   description: "Escribe una descripción",
   commune: "Elige tu comuna",
@@ -108,6 +111,17 @@ function fieldRejectionMessage(error: unknown): string | null {
   const field = loc.at(-1);
   const known = FIELD_REJECTION_MESSAGES.find((entry) => entry.field === field && entry.type === type);
   return known ? known.message : null;
+}
+
+// Classifies a failed save, publish or unpublish. Access errors reuse the shared session copy, API 401/403 mean the session
+// is no longer accepted, 422s keep their mapping, and anything that never reached the API is a connection failure.
+export function profileMutationErrorMessage(error: unknown): string {
+  if (error instanceof ProviderRequestAccessError) return accountAccessMessage(error.reason, "profile");
+  if (error instanceof ProviderProfileError) {
+    if (error.status === 401 || error.status === 403) return SESSION_EXPIRED_MESSAGE;
+    return profileRejectionMessage(error.body);
+  }
+  return NETWORK_ERROR_MESSAGE;
 }
 
 // Maps a 422 body from the provider profile routes to Spanish copy. Unknown shapes and strings get the generic message.

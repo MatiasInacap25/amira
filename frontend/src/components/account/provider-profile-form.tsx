@@ -5,8 +5,7 @@ import { useState, type FormEvent } from "react";
 import { getLocations, getServiceTypes } from "@/lib/marketplace-api";
 import {
   missingProfileLabels,
-  ProviderProfileError,
-  profileRejectionMessage,
+  profileMutationErrorMessage,
   publishProviderProfile,
   requestProviderProfile,
   saveProviderProfile,
@@ -20,7 +19,6 @@ import { accountAccessMessage, currentAccessToken, ProviderRequestAccessError } 
 export const PROVIDER_PROFILE_QUERY_KEY = ["provider-profile"];
 
 const CATALOG_STALE_TIME = 60 * 60 * 1000;
-const NETWORK_ERROR_MESSAGE = "No pudimos conectar con el servidor. Inténtalo nuevamente.";
 const AUTO_UNPUBLISHED_MESSAGE = "Tu perfil dejó de ser público porque le faltan datos.";
 
 type Props = {
@@ -252,7 +250,7 @@ function ProviderProfileFields({ isCompany, profile }: FieldsProps) {
       {saveMutation.isSuccess && !pendingAction && <p role="status">Cambios guardados.</p>}
       {actionError && (
         <p className="marketplace-field-error" role="alert">
-          {actionError instanceof ProviderProfileError ? profileRejectionMessage(actionError.body) : NETWORK_ERROR_MESSAGE}
+          {profileMutationErrorMessage(actionError)}
         </p>
       )}
     </section>

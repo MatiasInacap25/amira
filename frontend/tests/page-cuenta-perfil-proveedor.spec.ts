@@ -84,6 +84,8 @@ type MockOptions = {
   profile?: ProfileBody;
   saveRejection?: { detail: unknown };
   publishRejection?: { detail: unknown };
+  // "unauthorized" answers the PUT with 401; "network" aborts it before any response.
+  saveFailure?: "unauthorized" | "network";
 };
 
 // Fake Supabase Auth, account role, catalogs, and a stateful provider profile API. Returns the request log the tests assert on.
@@ -142,6 +144,10 @@ async function installProfileMocks(page: Page, options: MockOptions) {
     if (method === "PUT") {
       const body = request.postDataJSON() as Record<string, unknown>;
       state.putBodies.push(body);
+      if (options.saveFailure === "network") return route.abort("failed");
+      if (options.saveFailure === "unauthorized") {
+        return route.fulfill({ status: 401, headers: corsHeaders, json: { detail: "Not authenticated" } });
+      }
       if (options.saveRejection) {
         return route.fulfill({ status: 422, headers: corsHeaders, json: options.saveRejection });
       }
@@ -274,6 +280,27 @@ test("a publish that fails after the save still refetches the saved profile and 
   expect(state.calls).toEqual(["PUT /api/provider/profile", "POST /api/provider/profile/publish"]);
   expect(state.getCalls).toBeGreaterThan(readsBeforePublish);
   await expect(main(page).getByText("Tu perfil no está publicado.")).toBeVisible();
+});
+
+test("a save rejected with 401 shows the session message, not the connection message", async ({ page }) => {
+  await installProfileMocks(page, { role: "independent_driver", profile: completeProfile, saveFailure: "unauthorized" });
+  await signIn(page);
+  await page.goto("/cuenta/perfil");
+
+  await main(page).getByRole("button", { name: "Guardar" }).click();
+
+  await expect(main(page).getByRole("alert")).toHaveText("Tu sesión expiró. Inicia sesión nuevamente para continuar.");
+  await expect(main(page).getByText("No pudimos conectar con el servidor. Inténtalo nuevamente.")).toHaveCount(0);
+});
+
+test("a save that never reaches the server keeps the connection message", async ({ page }) => {
+  await installProfileMocks(page, { role: "independent_driver", profile: completeProfile, saveFailure: "network" });
+  await signIn(page);
+  await page.goto("/cuenta/perfil");
+
+  await main(page).getByRole("button", { name: "Guardar" }).click();
+
+  await expect(main(page).getByRole("alert")).toHaveText("No pudimos conectar con el servidor. Inténtalo nuevamente.");
 });
 
 test("a failed save does not publish and shows the save error", async ({ page }) => {
