@@ -36,8 +36,8 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
 |----|-------|-------|--------|----------|
 | T1 | S1 | delegated (herdr worker-1, parallel with T2) | done | `03dc60e`; unit RED→GREEN 10/10; independent verifier PASS, no blockers |
 | T2 | S2 | delegated (herdr worker-2, parallel with T1) | done | `d7713b7`; page-panel.spec 5/5, cuenta/servicios specs green |
-| T3a | S3 backend | delegated (herdr worker-1, parallel with T3b) | done | `5691a55`; profile routes 39/39, backend 716/716, uv lock clean |
-| T3b | S3 frontend | delegated (herdr worker-2, parallel with T3a) | done | `2dce87f`; unit 145/145, e2e 57/57, lint and tsc clean |
+| T3a | S3 backend | delegated (herdr worker-1, parallel with T3b) | done | `5691a55`; profile routes 39/39, backend 716/716, uv lock clean |; follow-ups `677d890`, `a90fe98`, `f69da77`, `45540f5`, `b4cda2f`, review fixes through L25 |
+| T3b | S3 frontend | delegated (herdr worker-2, parallel with T3a) | done | `2dce87f`; unit 145/145, e2e 57/57, lint and tsc clean |; follow-ups `76b8524`, `11023f7`, `1d9db6a`, review fixes through L25 |
 
 ## Log
 
@@ -64,3 +64,5 @@ Branch: `feat/panel-proveedores` · Delivery: ask-on-risk · Runners: `node --te
 - L21 (2026-11-01) Fourth review approved and acknowledged; advisories R3-empty-host-pghost-bypass and R3-mutation-auth-error-shown-as-network. User: "si, corrígelas y súbelo a develop".
 - L22 (2026-11-01) Fifth review approved and acknowledged; advisories R3-db-guard-ignores-service-redirection, R3-mutation-403-shown-as-session-expired, R3-company-name-required-detail-unmapped. User: "si, corrígelas y súbelo a develop" (allowlist guard: explicit localhost/127.0.0.1/::1 host only, no service, unix sockets no longer allowed).
 - L23 (2026-11-01) Allowlist guard done (worker-1 wrote guard before tests; parent mutation check: disabling the guard fails 15 tests). 403 now "No tienes permiso para modificar este perfil.", company-name detail mapped. Unit 156/156, e2e 33/33, backend 747 passed 1 skipped, lint and tsc clean.
+- L24 (2026-11-01) Sixth review approved and acknowledged; advisories R3-profile-refetch-error-discards-form, R3-description-length-checked-before-strip. User: "si cuando lo subas a develop cierralo" (fix both, push, close the feature; later advisories become follow-ups).
+- L25 (2026-11-01) Last two advisories fixed (description stripped before length check; refetch error keeps unsaved edits). Unit 156/156, e2e 34/34, backend 750 passed 1 skipped, lint and tsc clean. Feature closed at the user request. Follow-ups: run the Postgres public-search test with AMIRA_TEST_DATABASE_URL on a local database; later review advisories go to a new feature; no PR opened.
