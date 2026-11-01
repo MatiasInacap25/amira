@@ -31,22 +31,52 @@ PUBLIC_SEARCH_TABLES = (
 )
 
 
+def _split_hosts(values: list[str]) -> list[str]:
+    return [host for value in values for host in value.split(",")]
+
+
+def _environment_value(name: str) -> str:
+    return os.environ.get(name, "").strip()
+
+
+def _is_local_host(host: str) -> bool:
+    return host == "" or host.startswith("/") or host in LOCAL_DATABASE_HOSTS
+
+
 def _is_local_database_url(database_url: str) -> bool:
-    """True only when every host libpq would try is localhost, a loopback address, or a unix socket."""
+    """True only when every host libpq would connect to is localhost, a loopback address, or a unix socket.
+
+    libpq fills an empty URL host from PGHOST, and PGHOSTADDR overrides any host name unless the URL sets hostaddr.
+    Only a host that stays empty with no PGHOST counts as the default local socket.
+    """
     try:
         url = make_url(database_url)
     except ArgumentError:
         return False
 
-    candidates = [url.host or ""]
-    for key in ("host", "hostaddr"):
+    host_values = [url.host or ""]
+    address_values: list[str] = []
+    for key, values in (("host", host_values), ("hostaddr", address_values)):
         value = url.query.get(key)
-        if value is None:
-            continue
-        candidates.extend(value if isinstance(value, tuple) else [value])
+        if value is not None:
+            values.extend(value if isinstance(value, tuple) else [value])
 
-    hosts = [host for candidate in candidates for host in candidate.split(",")]
-    return all(host == "" or host.startswith("/") or host in LOCAL_DATABASE_HOSTS for host in hosts)
+    hosts: list[str] = []
+    for host in _split_hosts(host_values):
+        env_host = _environment_value("PGHOST")
+        if host == "" and env_host:
+            hosts.extend(_split_hosts([env_host]))
+        else:
+            hosts.append(host)
+
+    if address_values:
+        addresses = _split_hosts(address_values)
+    elif _environment_value("PGHOSTADDR"):
+        addresses = _split_hosts([_environment_value("PGHOSTADDR")])
+    else:
+        addresses = []
+
+    return all(_is_local_host(host) for host in hosts + addresses)
 
 
 def _disposable_test_database_url() -> str:
@@ -308,7 +338,10 @@ def test_published_profile_appears_in_public_search_until_unpublished_or_left_in
     "postgresql://amira@/amira_test?host=/var/run/postgresql",
     "postgresql:///amira_test",
 ])
-def test_destructive_test_database_guard_accepts_local_hosts_and_unix_sockets(database_url) -> None:
+def test_destructive_test_database_guard_accepts_local_hosts_and_unix_sockets(monkeypatch, database_url) -> None:
+    monkeypatch.delenv("PGHOST", raising=False)
+    monkeypatch.delenv("PGHOSTADDR", raising=False)
+
     assert _is_local_database_url(database_url)
 
 
@@ -321,6 +354,44 @@ def test_destructive_test_database_guard_accepts_local_hosts_and_unix_sockets(da
 ])
 def test_destructive_test_database_guard_rejects_remote_hosts_and_unparseable_urls(database_url) -> None:
     assert not _is_local_database_url(database_url)
+
+
+@pytest.mark.parametrize(("env_name", "env_value"), [
+    ("PGHOST", "remote.example"),
+    ("PGHOSTADDR", "10.0.0.5"),
+    ("PGHOST", "localhost,remote.example"),
+])
+def test_destructive_test_database_guard_rejects_empty_host_resolved_to_a_remote_address(
+    monkeypatch, env_name, env_value
+) -> None:
+    monkeypatch.delenv("PGHOST", raising=False)
+    monkeypatch.delenv("PGHOSTADDR", raising=False)
+    monkeypatch.setenv(env_name, env_value)
+
+    assert not _is_local_database_url("postgresql:///amira_test")
+
+
+def test_destructive_test_database_guard_rejects_localhost_url_overridden_by_remote_pghostaddr(monkeypatch) -> None:
+    # libpq uses PGHOSTADDR over any host name, so a localhost URL is not local when PGHOSTADDR is remote.
+    monkeypatch.delenv("PGHOST", raising=False)
+    monkeypatch.setenv("PGHOSTADDR", "10.0.0.5")
+
+    assert not _is_local_database_url("postgresql://amira@localhost/amira_test")
+
+
+@pytest.mark.parametrize("env_value", ["localhost", "127.0.0.1", "/var/run/postgresql"])
+def test_destructive_test_database_guard_accepts_empty_host_resolved_to_a_local_pghost(monkeypatch, env_value) -> None:
+    monkeypatch.delenv("PGHOSTADDR", raising=False)
+    monkeypatch.setenv("PGHOST", env_value)
+
+    assert _is_local_database_url("postgresql:///amira_test")
+
+
+def test_destructive_test_database_guard_accepts_fully_empty_host_as_default_socket(monkeypatch) -> None:
+    monkeypatch.delenv("PGHOST", raising=False)
+    monkeypatch.delenv("PGHOSTADDR", raising=False)
+
+    assert _is_local_database_url("postgresql:///amira_test")
 
 
 def test_destructive_test_is_skipped_for_remote_database_before_any_engine_is_created(monkeypatch) -> None:
