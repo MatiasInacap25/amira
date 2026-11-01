@@ -36,11 +36,12 @@ export function ProviderProfileForm({ isCompany }: Props) {
 
   if (profileQuery.isPending) return <p role="status">Cargando tu perfil de proveedor…</p>;
 
-  if (profileQuery.error instanceof ProviderRequestAccessError) {
-    return <p role="alert">{accountAccessMessage(profileQuery.error.reason, "profile")}</p>;
-  }
+  // Full error screens only when no profile is loaded yet; a failed background refetch must not discard unsaved edits.
+  if (!profileQuery.data) {
+    if (profileQuery.error instanceof ProviderRequestAccessError) {
+      return <p role="alert">{accountAccessMessage(profileQuery.error.reason, "profile")}</p>;
+    }
 
-  if (profileQuery.isError) {
     return (
       <div className="marketplace-state marketplace-error" role="alert">
         <p>No pudimos cargar tu perfil de proveedor. Inténtalo nuevamente.</p>
@@ -49,7 +50,14 @@ export function ProviderProfileForm({ isCompany }: Props) {
     );
   }
 
-  return <ProviderProfileFields isCompany={isCompany} profile={profileQuery.data} />;
+  return (
+    <>
+      {profileQuery.isError && (
+        <p className="marketplace-field-error" role="alert">No pudimos actualizar tu perfil. Tus cambios sin guardar se mantienen.</p>
+      )}
+      <ProviderProfileFields isCompany={isCompany} profile={profileQuery.data} />
+    </>
+  );
 }
 
 type FieldsProps = {

@@ -99,6 +99,8 @@ async function installProfileMocks(page: Page, options: MockOptions) {
     unpublishCalls: 0,
     // Counts profile reads, so tests can assert that the page refetched the saved profile.
     getCalls: 0,
+    // When true, profile reads answer 500, so a test can fail a background refetch after the page loaded.
+    failReads: false,
   };
 
   await page.route("**/auth/v1/**", async (route) => {
@@ -137,6 +139,7 @@ async function installProfileMocks(page: Page, options: MockOptions) {
     if (method === "OPTIONS") return route.fulfill({ status: 204, headers: corsHeaders });
     if (method === "GET") {
       state.getCalls += 1;
+      if (state.failReads) return route.fulfill({ status: 500, headers: corsHeaders, json: { detail: "Internal error" } });
       return route.fulfill({ headers: corsHeaders, json: state.profile });
     }
     state.calls.push(`${method} ${path}`);
@@ -283,6 +286,21 @@ test("a publish that fails after the save still refetches the saved profile and 
   expect(state.calls).toEqual(["PUT /api/provider/profile", "POST /api/provider/profile/publish"]);
   expect(state.getCalls).toBeGreaterThan(readsBeforePublish);
   await expect(main(page).getByText("Tu perfil no está publicado.")).toBeVisible();
+});
+
+test("a failed background refetch keeps unsaved edits and shows a non-blocking alert", async ({ page }) => {
+  const state = await installProfileMocks(page, { role: "independent_driver", profile: completeProfile });
+  await signIn(page);
+  await page.goto("/cuenta/perfil");
+
+  await expect(main(page).getByRole("heading", { name: "Perfil público" })).toBeVisible();
+  await main(page).getByLabel("Descripción").fill("Mudanzas con camioneta y ayudantes.");
+  state.failReads = true;
+  await main(page).getByRole("button", { name: "Guardar" }).click();
+
+  await expect(main(page).getByRole("alert")).toHaveText("No pudimos actualizar tu perfil. Tus cambios sin guardar se mantienen.");
+  await expect(main(page).getByLabel("Descripción")).toHaveValue("Mudanzas con camioneta y ayudantes.");
+  await expect(main(page).getByRole("heading", { name: "Perfil público" })).toBeVisible();
 });
 
 test("a save rejected with 401 shows the session message, not the connection message", async ({ page }) => {
