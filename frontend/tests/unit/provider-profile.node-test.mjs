@@ -82,8 +82,29 @@ test("an unknown English detail string never reaches the UI and gets the generic
   assert.equal(profileRejectionMessage({ detail: "Some new backend sentence." }), GENERIC);
 });
 
-test("a Pydantic field-list 422 gets the generic message", () => {
-  assert.equal(profileRejectionMessage({ detail: [{ loc: ["body", "description"], msg: "String too long" }] }), GENERIC);
+test("a blank company name field error gets the Spanish name message", () => {
+  assert.equal(
+    profileRejectionMessage({ detail: [{ type: "value_error", loc: ["body", "name"], msg: "Value error, name must not be blank" }] }),
+    "Escribe el nombre de la empresa.",
+  );
+});
+
+test("a description over the backend limit gets the Spanish length message", () => {
+  assert.equal(
+    profileRejectionMessage({ detail: [{ type: "string_too_long", loc: ["body", "description"], msg: "String should have at most 2000 characters" }] }),
+    "La descripción no puede tener más de 2000 caracteres.",
+  );
+});
+
+test("a name that is too long is not reported as a blank name", () => {
+  assert.equal(
+    profileRejectionMessage({ detail: [{ type: "string_too_long", loc: ["body", "name"], msg: "String should have at most 160 characters" }] }),
+    GENERIC,
+  );
+});
+
+test("a field error on an unmapped field gets the generic message and never its raw text", () => {
+  assert.equal(profileRejectionMessage({ detail: [{ type: "value_error", loc: ["body", "commune_code"], msg: "Raw English text" }] }), GENERIC);
 });
 
 test("a missing body or an absent detail gets the generic message", () => {

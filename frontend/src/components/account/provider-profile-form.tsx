@@ -108,9 +108,13 @@ function ProviderProfileFields({ isCompany, profile }: FieldsProps) {
     mutationFn: async (input: ProviderProfileInput) => {
       const token = await currentAccessToken();
       await saveProviderProfile(token, input);
-      return publishProviderProfile(token);
+      // The save already stored the profile, so refresh it even when the publish below fails.
+      try {
+        return await publishProviderProfile(token);
+      } finally {
+        void refreshProfile();
+      }
     },
-    onSuccess: refreshProfile,
   });
   const unpublishMutation = useMutation({
     mutationFn: async () => unpublishProviderProfile(await currentAccessToken()),

@@ -49,13 +49,16 @@ function session() {
 
 const completeProfile: ProfileBody = {
   name: "Conductor Demo",
-  kind: "independent",
+  kind: "independent_driver",
   description: "Mudanzas en Santiago con camioneta.",
   commune_code: "13101",
   service_type_ids: ["service-type-1"],
   published: false,
   missing: [],
 };
+
+// Company owners are stored with kind "company"; only they can set a name.
+const companyProfile: ProfileBody = { ...completeProfile, kind: "company" };
 
 // The backend returns a null description for a profile that never saved one.
 const incompleteProfile: ProfileBody = {
@@ -92,6 +95,8 @@ async function installProfileMocks(page: Page, options: MockOptions) {
     calls: [] as string[],
     publishCalls: 0,
     unpublishCalls: 0,
+    // Counts profile reads, so tests can assert that the page refetched the saved profile.
+    getCalls: 0,
   };
 
   await page.route("**/auth/v1/**", async (route) => {
@@ -128,7 +133,10 @@ async function installProfileMocks(page: Page, options: MockOptions) {
     const path = new URL(request.url()).pathname;
 
     if (method === "OPTIONS") return route.fulfill({ status: 204, headers: corsHeaders });
-    if (method === "GET") return route.fulfill({ headers: corsHeaders, json: state.profile });
+    if (method === "GET") {
+      state.getCalls += 1;
+      return route.fulfill({ headers: corsHeaders, json: state.profile });
+    }
     state.calls.push(`${method} ${path}`);
 
     if (method === "PUT") {
@@ -247,6 +255,27 @@ test("publish saves unsaved edits first (PUT) and then publishes (POST), with th
   });
 });
 
+test("a publish that fails after the save still refetches the saved profile and shows the publish error", async ({ page }) => {
+  const state = await installProfileMocks(page, {
+    role: "independent_driver",
+    profile: incompleteProfile,
+    publishRejection: { detail: { message: "Profile is incomplete.", missing: ["service_types"] } },
+  });
+  await signIn(page);
+  await page.goto("/cuenta/perfil");
+
+  await main(page).getByLabel("Descripción").fill("Mudanzas con camioneta y ayudantes.");
+  await main(page).getByLabel("Comuna").selectOption("13101");
+  await main(page).getByRole("checkbox", { name: "Mudanzas", exact: true }).check();
+  const readsBeforePublish = state.getCalls;
+  await main(page).getByRole("button", { name: "Publicar perfil" }).click();
+
+  await expect(main(page).getByRole("alert")).toHaveText("Para publicar tu perfil falta: Elige al menos un tipo de servicio.");
+  expect(state.calls).toEqual(["PUT /api/provider/profile", "POST /api/provider/profile/publish"]);
+  expect(state.getCalls).toBeGreaterThan(readsBeforePublish);
+  await expect(main(page).getByText("Tu perfil no está publicado.")).toBeVisible();
+});
+
 test("a failed save does not publish and shows the save error", async ({ page }) => {
   const state = await installProfileMocks(page, { role: "independent_driver", profile: completeProfile, saveRejection: { detail: "Unknown commune." } });
   await signIn(page);
@@ -285,7 +314,7 @@ test("the checklist follows the form, not the saved profile", async ({ page }) =
 });
 
 test("company owner cannot publish with a blank company name", async ({ page }) => {
-  await installProfileMocks(page, { role: "company_owner", profile: { ...completeProfile, name: "" } });
+  await installProfileMocks(page, { role: "company_owner", profile: { ...companyProfile, name: "" } });
   await signIn(page);
   await page.goto("/cuenta/perfil");
 
@@ -350,7 +379,7 @@ test("a 422 on save maps the backend's unknown commune to Spanish copy", async (
 });
 
 test("unpublish sends POST unpublish and the status changes to unpublished", async ({ page }) => {
-  const state = await installProfileMocks(page, { role: "company_owner", profile: { ...completeProfile, published: true } });
+  const state = await installProfileMocks(page, { role: "company_owner", profile: { ...companyProfile, published: true } });
   await signIn(page);
   await page.goto("/cuenta/perfil");
 
@@ -365,7 +394,7 @@ test("unpublish sends POST unpublish and the status changes to unpublished", asy
 });
 
 test("company owner sees the company name field and saves it", async ({ page }) => {
-  const state = await installProfileMocks(page, { role: "company_owner", profile: completeProfile });
+  const state = await installProfileMocks(page, { role: "company_owner", profile: companyProfile });
   await signIn(page);
   await page.goto("/cuenta/perfil");
 
@@ -388,7 +417,7 @@ test("independent driver does not see the company name field", async ({ page }) 
   await expect(main(page).getByLabel("Nombre de la empresa")).toHaveCount(0);
 });
 
-test("client and company driver keep the read-only view without the provider form", async ({ page }) => {
+test("client keeps the read-only view without the provider form", async ({ page }) => {
   await installProfileMocks(page, { role: "client" });
   await signIn(page);
   await page.goto("/cuenta/perfil");

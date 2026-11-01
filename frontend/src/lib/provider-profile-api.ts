@@ -95,6 +95,21 @@ const KNOWN_REJECTION_MESSAGES: Record<string, string> = {
   "Unknown service type.": "Uno de los tipos de servicio no existe.",
 };
 
+// Pydantic field errors name the field as the last `loc` segment. Only the known field and error type get Spanish copy.
+const FIELD_REJECTION_MESSAGES: Array<{ field: string; type: string; message: string }> = [
+  { field: "name", type: "value_error", message: "Escribe el nombre de la empresa." },
+  { field: "description", type: "string_too_long", message: "La descripción no puede tener más de 2000 caracteres." },
+];
+
+function fieldRejectionMessage(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("loc" in error) || !("type" in error)) return null;
+  const { loc, type } = error as { loc: unknown; type: unknown };
+  if (!Array.isArray(loc) || typeof type !== "string") return null;
+  const field = loc.at(-1);
+  const known = FIELD_REJECTION_MESSAGES.find((entry) => entry.field === field && entry.type === type);
+  return known ? known.message : null;
+}
+
 // Maps a 422 body from the provider profile routes to Spanish copy. Unknown shapes and strings get the generic message.
 export function profileRejectionMessage(body: unknown): string {
   if (typeof body !== "object" || body === null || !("detail" in body)) return GENERIC_REJECTION_MESSAGE;
@@ -102,6 +117,14 @@ export function profileRejectionMessage(body: unknown): string {
 
   if (typeof detail === "string") {
     return Object.hasOwn(KNOWN_REJECTION_MESSAGES, detail) ? KNOWN_REJECTION_MESSAGES[detail] : GENERIC_REJECTION_MESSAGE;
+  }
+
+  if (Array.isArray(detail)) {
+    for (const error of detail) {
+      const message = fieldRejectionMessage(error);
+      if (message) return message;
+    }
+    return GENERIC_REJECTION_MESSAGE;
   }
 
   if (typeof detail === "object" && detail !== null && "missing" in detail && Array.isArray(detail.missing)) {
