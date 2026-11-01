@@ -16,13 +16,14 @@ COMMUNE_CODE_PATTERN = r"^[0-9]{5}$"
 class ProviderProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    description: str | None = Field(default=None, max_length=DESCRIPTION_MAX_LENGTH)
+    # description, commune_code and service_type_ids have no defaults: an omitted field is a 422, never an implicit clear.
+    # Explicit null (description, commune_code) and [] (service_type_ids) remain valid draft saves.
+    description: str | None = Field(max_length=DESCRIPTION_MAX_LENGTH)
     commune_code: str | None = Field(
-        default=None,
         max_length=COMMUNE_CODE_LENGTH,
         pattern=COMMUNE_CODE_PATTERN,
     )
-    service_type_ids: list[UUID] = Field(default_factory=list, max_length=SERVICE_TYPE_IDS_MAX_LENGTH)
+    service_type_ids: list[UUID] = Field(max_length=SERVICE_TYPE_IDS_MAX_LENGTH)
     name: str | None = Field(default=None, max_length=NAME_MAX_LENGTH)
 
     @field_validator("description")

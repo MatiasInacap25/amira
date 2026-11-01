@@ -403,7 +403,12 @@ test("company owner sees the company name field and saves it", async ({ page }) 
   const saveRequest = page.waitForRequest((request: Request) => request.url().includes("/api/provider/profile") && request.method() === "PUT");
   await main(page).getByRole("button", { name: "Guardar" }).click();
 
-  expect((await saveRequest).postDataJSON()).toMatchObject({ name: "Mudanzas Demo SpA" });
+  const body = (await saveRequest).postDataJSON();
+  expect(body).toMatchObject({ name: "Mudanzas Demo SpA" });
+  // The backend rejects a PUT that omits any of these fields, so the form must always send every one of them.
+  expect(body).toHaveProperty("description");
+  expect(body).toHaveProperty("commune_code");
+  expect(body).toHaveProperty("service_type_ids");
   await expect(main(page).getByText("Cambios guardados.")).toBeVisible();
   expect(state.putBodies).toHaveLength(1);
 });

@@ -68,6 +68,9 @@ def update_provider_profile(
 
     if payload.name is not None and profile.kind != "company":
         raise HTTPException(status_code=422, detail="Only company profiles have a name.")
+    # name is optional in the schema because independent drivers never send it; companies must always send it.
+    if profile.kind == "company" and "name" not in payload.model_fields_set:
+        raise HTTPException(status_code=422, detail="Company profiles require a name.")
     if payload.commune_code is not None and session.get(Commune, payload.commune_code) is None:
         raise HTTPException(status_code=422, detail="Unknown commune.")
 

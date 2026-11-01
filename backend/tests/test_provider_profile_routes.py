@@ -109,13 +109,24 @@ def _service_ids(db: Session, profile: Perfil) -> set[UUID]:
 
 
 def _profile_body(**overrides) -> dict:
+    # Every field is sent explicitly, as the form does; name is only valid for company profiles.
     body = {
+        "name": "Transportes Norte",
         "description": "Fletes en Santiago",
         "commune_code": COMMUNE_SANTIAGO,
         "service_type_ids": [str(SERVICE_MOVING)],
     }
     body.update(overrides)
     return body
+
+
+def _without(body: dict, *fields: str) -> dict:
+    return {key: value for key, value in body.items() if key not in fields}
+
+
+def _save_and_publish_company(call):
+    assert call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_profile_body()).status_code == 200
+    assert call("POST", "/api/provider/profile/publish", as_auth_id=OWNER_AUTH).status_code == 200
 
 
 @pytest.mark.parametrize("auth_id", [CLIENT_AUTH, COMPANY_DRIVER_AUTH, UNKNOWN_AUTH])
@@ -169,6 +180,54 @@ def test_put_profile_saves_fields_and_replaces_service_rows(call, db, scenario):
 
     assert response.status_code == 200
     assert _service_ids(db, company) == {SERVICE_FLATBED}
+
+
+@pytest.mark.parametrize("omitted", ["description", "commune_code", "service_type_ids", "name"])
+def test_put_profile_rejects_an_omitted_field_without_clearing_saved_data(call, db, scenario, omitted):
+    company = scenario["company"]
+    _save_and_publish_company(call)
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_without(_profile_body(), omitted))
+
+    assert response.status_code == 422
+    db.refresh(company)
+    assert company.name == "Transportes Norte"
+    assert company.description == "Fletes en Santiago"
+    assert company.commune_code == COMMUNE_SANTIAGO
+    assert _service_ids(db, company) == {SERVICE_MOVING}
+    assert company.public_activated_at is not None
+
+
+def test_put_profile_saves_an_independent_driver_without_a_name(call, db, scenario):
+    solo = scenario["solo"]
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=INDEPENDENT_AUTH,
+                    json=_without(_profile_body(), "name"))
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Dana Fletes"
+    db.refresh(solo)
+    assert solo.description == "Fletes en Santiago"
+
+
+def test_explicit_nulls_and_empty_service_list_still_save_as_a_draft(call, db, scenario):
+    company = scenario["company"]
+    _save_and_publish_company(call)
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_profile_body(
+        description=None,
+        commune_code=None,
+        service_type_ids=[],
+    ))
+
+    assert response.status_code == 200
+    assert response.json()["published"] is False
+    assert response.json()["missing"] == ["description", "commune", "service_types"]
+    db.refresh(company)
+    assert company.name == "Transportes Norte"
+    assert company.description is None
+    assert company.commune_code is None
+    assert _service_ids(db, company) == set()
 
 
 def test_put_profile_rejects_unknown_commune_without_writing(call, db, scenario):
