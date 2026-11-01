@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { ProviderProfileForm } from "@/components/account/provider-profile-form";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { accountApiFetch } from "@/lib/auth/account-api";
 import { accountRoleLabel } from "@/lib/account-role-labels";
@@ -10,6 +11,8 @@ import { createClient } from "@/lib/supabase/client";
 
 const SIGN_IN_HREF = `/login?next=${encodeURIComponent("/cuenta/perfil")}`;
 const MISSING_VALUE = "No registrado";
+// Clients and company drivers keep the read-only view; only these roles own a public profile.
+const PROVIDER_ROLES = new Set(["independent_driver", "company_owner"]);
 
 type ProfileData = { email: string; phone: string; role: string | null };
 
@@ -62,6 +65,9 @@ export default function ProfileSettingsPage() {
               <dt>Tipo de cuenta</dt>
               <dd>{accountRoleLabel(profileQuery.data.role)}</dd>
             </dl>
+          )}
+          {profileQuery.isSuccess && PROVIDER_ROLES.has(profileQuery.data.role ?? "") && (
+            <ProviderProfileForm isCompany={profileQuery.data.role === "company_owner"} />
           )}
         </div>
       </main>
