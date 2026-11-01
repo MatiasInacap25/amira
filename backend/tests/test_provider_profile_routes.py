@@ -317,6 +317,40 @@ def test_put_profile_rejects_oversized_description(call, scenario):
     assert response.status_code == 422
 
 
+def test_put_profile_rejects_2001_useful_description_characters_even_with_surrounding_spaces(call, db, scenario):
+    company = scenario["company"]
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH,
+                    json=_profile_body(description=" " + "d" * 2001 + "  "))
+
+    assert response.status_code == 422
+    db.refresh(company)
+    assert company.description is None
+
+
+def test_put_profile_accepts_2000_useful_description_characters_and_stores_them_stripped(call, db, scenario):
+    company = scenario["company"]
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH,
+                    json=_profile_body(description="  " + "d" * 2000 + "\n "))
+
+    assert response.status_code == 200
+    assert response.json()["description"] == "d" * 2000
+    db.refresh(company)
+    assert company.description == "d" * 2000
+
+
+def test_put_profile_accepts_160_useful_name_characters_and_stores_them_stripped(call, db, scenario):
+    company = scenario["company"]
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH,
+                    json=_profile_body(name="  " + "n" * 160 + " "))
+
+    assert response.status_code == 200
+    db.refresh(company)
+    assert company.name == "n" * 160
+
+
 def test_publish_reports_every_missing_item_in_order(call, db, scenario):
     response = call("POST", "/api/provider/profile/publish", as_auth_id=OWNER_AUTH)
 

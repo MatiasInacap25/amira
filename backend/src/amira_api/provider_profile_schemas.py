@@ -26,18 +26,19 @@ class ProviderProfileUpdate(BaseModel):
     service_type_ids: list[UUID] = Field(max_length=SERVICE_TYPE_IDS_MAX_LENGTH)
     name: str | None = Field(default=None, max_length=NAME_MAX_LENGTH)
 
-    @field_validator("description")
+    # mode="before" strips first, so the length bounds in Field measure the stored text, not the padded input.
+    @field_validator("description", mode="before")
     @classmethod
-    def _blank_description_is_absent(cls, value: str | None) -> str | None:
-        if value is None or not value.strip():
-            return None
-        return value.strip()
+    def _blank_description_is_absent(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
+        return value.strip() or None
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
-    def _name_must_not_be_blank(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def _name_must_not_be_blank(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
         if not value.strip():
             raise ValueError("name must not be blank")
         return value.strip()
