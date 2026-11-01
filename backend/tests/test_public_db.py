@@ -18,7 +18,11 @@ from amira_api.models import Base, Commune, Perfil, Region, RolPerfil, RolUsuari
 # It drops and recreates PUBLIC_SEARCH_TABLES, so AMIRA_TEST_DATABASE_URL must point at a disposable local database.
 # DATABASE_URL is deliberately not used: it may point at a real project.
 PUBLIC_SEARCH_TEST_DATABASE_ENV = "AMIRA_TEST_DATABASE_URL"
-LOCAL_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# Allowlist: the only URL hosts the destructive test accepts. Anything else is skipped, never connected to.
+ALLOWED_TEST_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# Connection settings that can redirect libpq away from the URL host (URL query keys and environment variables).
+REDIRECTING_QUERY_KEYS = ("host", "hostaddr", "service", "servicefile")
+REDIRECTING_ENVIRONMENT_VARIABLES = ("PGHOST", "PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE")
 PUBLIC_SEARCH_TABLES = (
     "Regiones",
     "Comunas",
@@ -31,62 +35,39 @@ PUBLIC_SEARCH_TABLES = (
 )
 
 
-def _split_hosts(values: list[str]) -> list[str]:
-    return [host for value in values for host in value.split(",")]
+def _destructive_test_skip_reason(database_url: str) -> str | None:
+    """Why the destructive test must not run against this URL, or None when it may run.
 
-
-def _environment_value(name: str) -> str:
-    return os.environ.get(name, "").strip()
-
-
-def _is_local_host(host: str) -> bool:
-    return host == "" or host.startswith("/") or host in LOCAL_DATABASE_HOSTS
-
-
-def _is_local_database_url(database_url: str) -> bool:
-    """True only when every host libpq would connect to is localhost, a loopback address, or a unix socket.
-
-    libpq fills an empty URL host from PGHOST, and PGHOSTADDR overrides any host name unless the URL sets hostaddr.
-    Only a host that stays empty with no PGHOST counts as the default local socket.
+    Allowlist only: an explicit TCP host of exactly localhost, 127.0.0.1 or ::1, and no libpq setting that could
+    redirect the connection (URL query keys or PG* environment variables). Nothing here opens a connection.
     """
     try:
         url = make_url(database_url)
     except ArgumentError:
-        return False
-
-    host_values = [url.host or ""]
-    address_values: list[str] = []
-    for key, values in (("host", host_values), ("hostaddr", address_values)):
-        value = url.query.get(key)
-        if value is not None:
-            values.extend(value if isinstance(value, tuple) else [value])
-
-    hosts: list[str] = []
-    for host in _split_hosts(host_values):
-        env_host = _environment_value("PGHOST")
-        if host == "" and env_host:
-            hosts.extend(_split_hosts([env_host]))
-        else:
-            hosts.append(host)
-
-    if address_values:
-        addresses = _split_hosts(address_values)
-    elif _environment_value("PGHOSTADDR"):
-        addresses = _split_hosts([_environment_value("PGHOSTADDR")])
-    else:
-        addresses = []
-
-    return all(_is_local_host(host) for host in hosts + addresses)
+        return "is not a parseable database URL"
+    if url.host not in ALLOWED_TEST_DATABASE_HOSTS:
+        return (
+            "must name an explicit host of localhost, 127.0.0.1 or ::1 "
+            f"(found {url.host or 'an empty host'!r}; unix sockets and host lists are not supported)"
+        )
+    for key in REDIRECTING_QUERY_KEYS:
+        if key in url.query:
+            return f"must not use the URL query parameter {key!r}"
+    for name in REDIRECTING_ENVIRONMENT_VARIABLES:
+        if name in os.environ:
+            return f"must not be combined with the environment variable {name}"
+    return None
 
 
 def _disposable_test_database_url() -> str:
     database_url = os.environ.get(PUBLIC_SEARCH_TEST_DATABASE_ENV, "").strip()
     if not database_url:
         pytest.skip(f"{PUBLIC_SEARCH_TEST_DATABASE_ENV} is not set; the Postgres public search test was skipped")
-    if not _is_local_database_url(database_url):
+    reason = _destructive_test_skip_reason(database_url)
+    if reason is not None:
         pytest.skip(
-            f"{PUBLIC_SEARCH_TEST_DATABASE_ENV} must point at a local host (localhost, 127.0.0.1, ::1 or a unix socket); "
-            "refusing to drop and recreate tables on a non-local database"
+            f"{PUBLIC_SEARCH_TEST_DATABASE_ENV} {reason}; refusing to drop and recreate tables "
+            "(the Postgres public search test was skipped without connecting)"
         )
     return database_url
 
@@ -331,67 +312,50 @@ def test_published_profile_appears_in_public_search_until_unpublished_or_left_in
         engine.dispose()
 
 
+@pytest.fixture
+def clean_pg_environment(monkeypatch):
+    for name in REDIRECTING_ENVIRONMENT_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    return monkeypatch
+
+
 @pytest.mark.parametrize("database_url", [
     "postgresql://amira:secret@localhost:5432/amira_test",
     "postgresql+psycopg://amira:secret@127.0.0.1/amira_test",
     "postgresql://amira:secret@[::1]:5432/amira_test",
-    "postgresql://amira@/amira_test?host=/var/run/postgresql",
-    "postgresql:///amira_test",
 ])
-def test_destructive_test_database_guard_accepts_local_hosts_and_unix_sockets(monkeypatch, database_url) -> None:
-    monkeypatch.delenv("PGHOST", raising=False)
-    monkeypatch.delenv("PGHOSTADDR", raising=False)
-
-    assert _is_local_database_url(database_url)
+def test_destructive_test_guard_accepts_the_three_allowlisted_hosts(clean_pg_environment, database_url) -> None:
+    assert _destructive_test_skip_reason(database_url) is None
 
 
 @pytest.mark.parametrize("database_url", [
+    "postgresql:///amira_test",
+    "postgresql://amira@/amira_test?host=/var/run/postgresql",
+    "postgresql://amira@localhost,127.0.0.1/amira_test",
     "postgresql://amira:secret@db.example.test:5432/amira",
-    "postgresql://amira:secret@localhost,db.example.test/amira_test",
-    "postgresql://amira@/amira_test?host=localhost,db.example.test",
-    "postgresql://amira@localhost/amira_test?hostaddr=10.0.0.5",
+    "postgresql://amira@127.0.0.2/amira_test",
     "not a database url",
 ])
-def test_destructive_test_database_guard_rejects_remote_hosts_and_unparseable_urls(database_url) -> None:
-    assert not _is_local_database_url(database_url)
+def test_destructive_test_guard_rejects_hosts_outside_the_allowlist(clean_pg_environment, database_url) -> None:
+    assert _destructive_test_skip_reason(database_url) is not None
 
 
-@pytest.mark.parametrize(("env_name", "env_value"), [
-    ("PGHOST", "remote.example"),
-    ("PGHOSTADDR", "10.0.0.5"),
-    ("PGHOST", "localhost,remote.example"),
-])
-def test_destructive_test_database_guard_rejects_empty_host_resolved_to_a_remote_address(
-    monkeypatch, env_name, env_value
-) -> None:
-    monkeypatch.delenv("PGHOST", raising=False)
-    monkeypatch.delenv("PGHOSTADDR", raising=False)
-    monkeypatch.setenv(env_name, env_value)
+@pytest.mark.parametrize("key", REDIRECTING_QUERY_KEYS)
+def test_destructive_test_guard_rejects_redirecting_url_query_keys(clean_pg_environment, key) -> None:
+    reason = _destructive_test_skip_reason(f"postgresql://amira@localhost/amira_test?{key}=value")
 
-    assert not _is_local_database_url("postgresql:///amira_test")
+    assert reason is not None
+    assert key in reason
 
 
-def test_destructive_test_database_guard_rejects_localhost_url_overridden_by_remote_pghostaddr(monkeypatch) -> None:
-    # libpq uses PGHOSTADDR over any host name, so a localhost URL is not local when PGHOSTADDR is remote.
-    monkeypatch.delenv("PGHOST", raising=False)
-    monkeypatch.setenv("PGHOSTADDR", "10.0.0.5")
+@pytest.mark.parametrize("name", REDIRECTING_ENVIRONMENT_VARIABLES)
+def test_destructive_test_guard_rejects_redirecting_environment_variables(clean_pg_environment, name) -> None:
+    clean_pg_environment.setenv(name, "anything")
 
-    assert not _is_local_database_url("postgresql://amira@localhost/amira_test")
+    reason = _destructive_test_skip_reason("postgresql://amira@localhost/amira_test")
 
-
-@pytest.mark.parametrize("env_value", ["localhost", "127.0.0.1", "/var/run/postgresql"])
-def test_destructive_test_database_guard_accepts_empty_host_resolved_to_a_local_pghost(monkeypatch, env_value) -> None:
-    monkeypatch.delenv("PGHOSTADDR", raising=False)
-    monkeypatch.setenv("PGHOST", env_value)
-
-    assert _is_local_database_url("postgresql:///amira_test")
-
-
-def test_destructive_test_database_guard_accepts_fully_empty_host_as_default_socket(monkeypatch) -> None:
-    monkeypatch.delenv("PGHOST", raising=False)
-    monkeypatch.delenv("PGHOSTADDR", raising=False)
-
-    assert _is_local_database_url("postgresql:///amira_test")
+    assert reason is not None
+    assert name in reason
 
 
 def test_destructive_test_is_skipped_for_remote_database_before_any_engine_is_created(monkeypatch) -> None:
@@ -401,7 +365,7 @@ def test_destructive_test_is_skipped_for_remote_database_before_any_engine_is_cr
     monkeypatch.setenv(PUBLIC_SEARCH_TEST_DATABASE_ENV, "postgresql://amira:secret@db.example.test:5432/amira")
     monkeypatch.setattr("amira_api.db.create_engine", fail_if_engine_created)
 
-    with pytest.raises(pytest.skip.Exception, match="local host"):
+    with pytest.raises(pytest.skip.Exception, match="explicit host"):
         test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
 
 

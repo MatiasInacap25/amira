@@ -155,7 +155,9 @@ uv lock --check
 
 `tests/test_public_db.py` includes a PostgreSQL public search test that is skipped unless `AMIRA_TEST_DATABASE_URL` is set. That test drops and recreates the public search tables (`Regiones`, `Comunas`, `Rol_Usuario`, `Usuario`, `Rol_Perfil`, `Perfil`, `Tipos_Servicio`, `Servicios_Disponibles`), so:
 
-- Point `AMIRA_TEST_DATABASE_URL` only at a disposable local database. Its host must be `localhost`, `127.0.0.1`, `::1`, or a unix socket; any other host is skipped without touching the database.
+- Point `AMIRA_TEST_DATABASE_URL` only at a disposable database on TCP `localhost`, `127.0.0.1` or `::1`. Unix sockets, host lists, and service files are not supported.
+- The test is skipped, without connecting, unless the URL has that explicit host and none of these are set: the URL query keys `host`, `hostaddr`, `service`, `servicefile`, or the environment variables `PGHOST`, `PGHOSTADDR`, `PGSERVICE`, `PGSERVICEFILE`. libpq honours those settings over the URL, so they could send the test to a different server.
+- Why: the test drops and recreates the tables above. A mistyped or redirected URL must never reach a shared or real database, so the rule is an allowlist: anything not explicitly local is skipped.
 - `DATABASE_URL` is never used for this test, because it may point at a real project.
 - Do not reuse the variable for a hosted or shared database.
 
