@@ -153,6 +153,17 @@ uv run python -c "from amira_api.main import app; print(app.title)"
 uv lock --check
 ```
 
+`tests/test_public_db.py` includes a PostgreSQL public search test that is skipped unless `AMIRA_TEST_DATABASE_URL` is set. That test drops and recreates the public search tables (`Regiones`, `Comunas`, `Rol_Usuario`, `Usuario`, `Rol_Perfil`, `Perfil`, `Tipos_Servicio`, `Servicios_Disponibles`), so:
+
+- Point `AMIRA_TEST_DATABASE_URL` only at a disposable local database. Its host must be `localhost`, `127.0.0.1`, `::1`, or a unix socket; any other host is skipped without touching the database.
+- `DATABASE_URL` is never used for this test, because it may point at a real project.
+- Do not reuse the variable for a hosted or shared database.
+
+```powershell
+$env:AMIRA_TEST_DATABASE_URL = "postgresql://amira:amira@localhost:5432/amira_test"
+uv run pytest tests/test_public_db.py
+```
+
 ## Migrations
 
 Alembic is initialized under `alembic/`. The declarative mappings live in `src/amira_api/models.py`; configure `DATABASE_URL` before applying migrations. Migrations are not run as part of tests and no live database is required for structural checks or offline PostgreSQL SQL generation.

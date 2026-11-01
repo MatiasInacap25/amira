@@ -8,13 +8,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 DESCRIPTION_MAX_LENGTH = 2000
 NAME_MAX_LENGTH = 160
 SERVICE_TYPE_IDS_MAX_LENGTH = 50
+# Chilean commune codes (Comunas.Codigo) are exactly 5 digits; models.py enforces the same format in ck_commune_code_format.
+COMMUNE_CODE_LENGTH = 5
+COMMUNE_CODE_PATTERN = r"^[0-9]{5}$"
 
 
 class ProviderProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     description: str | None = Field(default=None, max_length=DESCRIPTION_MAX_LENGTH)
-    commune_code: str | None = Field(default=None, max_length=5)
+    commune_code: str | None = Field(
+        default=None,
+        max_length=COMMUNE_CODE_LENGTH,
+        pattern=COMMUNE_CODE_PATTERN,
+    )
     service_type_ids: list[UUID] = Field(default_factory=list, max_length=SERVICE_TYPE_IDS_MAX_LENGTH)
     name: str | None = Field(default=None, max_length=NAME_MAX_LENGTH)
 

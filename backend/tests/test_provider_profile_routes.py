@@ -184,6 +184,19 @@ def test_put_profile_rejects_unknown_commune_without_writing(call, db, scenario)
     assert _service_ids(db, company) == set()
 
 
+@pytest.mark.parametrize("commune_code", ["1310", "131011", "13l01", " 13101"])
+def test_put_profile_rejects_commune_codes_that_are_not_five_digits(call, db, scenario, commune_code):
+    company = scenario["company"]
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_profile_body(
+        commune_code=commune_code,
+    ))
+
+    assert response.status_code == 422
+    db.refresh(company)
+    assert company.commune_code is None
+
+
 def test_put_profile_rejects_unknown_service_type_without_writing(call, db, scenario):
     company = scenario["company"]
 

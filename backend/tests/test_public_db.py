@@ -1,8 +1,64 @@
+import os
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from uuid import uuid4
 
-from amira_api.db import create_database_engine
-from amira_api.models import Base
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+from sqlalchemy.orm import Session
+
+from amira_api.auth import AuthenticatedUser, get_current_user
+from amira_api.db import create_database_engine, get_db_session
+from amira_api.main import app
+from amira_api.models import Base, Commune, Perfil, Region, RolPerfil, RolUsuario, TipoServicio, Usuario
+
+# The public search query uses PostgreSQL-only SQL (json_agg, aggregate_order_by), so this test needs a real database.
+# It drops and recreates PUBLIC_SEARCH_TABLES, so AMIRA_TEST_DATABASE_URL must point at a disposable local database.
+# DATABASE_URL is deliberately not used: it may point at a real project.
+PUBLIC_SEARCH_TEST_DATABASE_ENV = "AMIRA_TEST_DATABASE_URL"
+LOCAL_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+PUBLIC_SEARCH_TABLES = (
+    "Regiones",
+    "Comunas",
+    "Rol_Usuario",
+    "Usuario",
+    "Rol_Perfil",
+    "Perfil",
+    "Tipos_Servicio",
+    "Servicios_Disponibles",
+)
+
+
+def _is_local_database_url(database_url: str) -> bool:
+    """True only when every host libpq would try is localhost, a loopback address, or a unix socket."""
+    try:
+        url = make_url(database_url)
+    except ArgumentError:
+        return False
+
+    candidates = [url.host or ""]
+    for key in ("host", "hostaddr"):
+        value = url.query.get(key)
+        if value is None:
+            continue
+        candidates.extend(value if isinstance(value, tuple) else [value])
+
+    hosts = [host for candidate in candidates for host in candidate.split(",")]
+    return all(host == "" or host.startswith("/") or host in LOCAL_DATABASE_HOSTS for host in hosts)
+
+
+def _disposable_test_database_url() -> str:
+    database_url = os.environ.get(PUBLIC_SEARCH_TEST_DATABASE_ENV, "").strip()
+    if not database_url:
+        pytest.skip(f"{PUBLIC_SEARCH_TEST_DATABASE_ENV} is not set; the Postgres public search test was skipped")
+    if not _is_local_database_url(database_url):
+        pytest.skip(
+            f"{PUBLIC_SEARCH_TEST_DATABASE_ENV} must point at a local host (localhost, 127.0.0.1, ::1 or a unix socket); "
+            "refusing to drop and recreate tables on a non-local database"
+        )
+    return database_url
 
 
 def load_public_migration():
@@ -156,3 +212,130 @@ def test_role_seed_codes_survive_upgrade_downgrade_upgrade_structurally() -> Non
             expected = f"""UPDATE "{table}" SET "code" = '{code}' WHERE "ID" = '{role_id}' AND "Rol" = '{name}'"""
             assert expected in first_upgrade
             assert expected in second_upgrade
+
+
+def _public_search_ids(client: TestClient) -> list[str]:
+    response = client.get("/api/services")
+
+    assert response.status_code == 200
+    return [item["profileId"] for item in response.json()["items"]]
+
+
+def test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete() -> None:
+    engine = create_database_engine(_disposable_test_database_url())
+    tables = [Base.metadata.tables[name] for name in PUBLIC_SEARCH_TABLES]
+    Base.metadata.drop_all(engine, tables=tables)
+    Base.metadata.create_all(engine, tables=tables)
+    driver_auth_id = uuid4()
+    profile_id = uuid4()
+    service_type_id = uuid4()
+
+    try:
+        with Session(engine) as session:
+            user_role = RolUsuario(id=uuid4(), name="independent_driver", code="independent_driver")
+            profile_role = RolPerfil(id=uuid4(), name="independent_driver", code="independent_driver")
+            driver = Usuario(
+                id=uuid4(),
+                auth_user_id=driver_auth_id,
+                first_name="Dana",
+                last_name="Test",
+                email="dana@example.test",
+                role_id=user_role.id,
+            )
+            session.add_all([
+                user_role,
+                profile_role,
+                Region(code="13", name="Metropolitana de Santiago", order=1),
+                Commune(code="13101", region_code="13", name="Santiago"),
+                driver,
+                Perfil(
+                    id=profile_id,
+                    owner_user_id=driver.id,
+                    name="Dana Fletes",
+                    kind="independent_driver",
+                    role_id=profile_role.id,
+                ),
+                TipoServicio(id=service_type_id, name="Mudanza", slug="mudanza"),
+            ])
+            session.commit()
+
+            app.dependency_overrides[get_db_session] = lambda: session
+            app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+                id=driver_auth_id,
+                email="dana@example.test",
+                session_id=uuid4(),
+                assurance="aal2",
+                authentication_methods=frozenset({"password", "phone"}),
+            )
+            try:
+                client = TestClient(app)
+                complete = {
+                    "description": "Fletes en Santiago",
+                    "commune_code": "13101",
+                    "service_type_ids": [str(service_type_id)],
+                }
+
+                assert client.put("/api/provider/profile", json=complete).status_code == 200
+                assert _public_search_ids(client) == []
+
+                assert client.post("/api/provider/profile/publish").status_code == 200
+                assert _public_search_ids(client) == [str(profile_id)]
+
+                assert client.post("/api/provider/profile/unpublish").status_code == 200
+                assert _public_search_ids(client) == []
+
+                assert client.post("/api/provider/profile/publish").status_code == 200
+                assert _public_search_ids(client) == [str(profile_id)]
+
+                response = client.put("/api/provider/profile", json={**complete, "description": ""})
+
+                assert response.status_code == 200
+                assert response.json()["published"] is False
+                assert response.json()["missing"] == ["description"]
+                assert _public_search_ids(client) == []
+            finally:
+                app.dependency_overrides.pop(get_db_session, None)
+                app.dependency_overrides.pop(get_current_user, None)
+    finally:
+        Base.metadata.drop_all(engine, tables=tables)
+        engine.dispose()
+
+
+@pytest.mark.parametrize("database_url", [
+    "postgresql://amira:secret@localhost:5432/amira_test",
+    "postgresql+psycopg://amira:secret@127.0.0.1/amira_test",
+    "postgresql://amira:secret@[::1]:5432/amira_test",
+    "postgresql://amira@/amira_test?host=/var/run/postgresql",
+    "postgresql:///amira_test",
+])
+def test_destructive_test_database_guard_accepts_local_hosts_and_unix_sockets(database_url) -> None:
+    assert _is_local_database_url(database_url)
+
+
+@pytest.mark.parametrize("database_url", [
+    "postgresql://amira:secret@db.example.test:5432/amira",
+    "postgresql://amira:secret@localhost,db.example.test/amira_test",
+    "postgresql://amira@/amira_test?host=localhost,db.example.test",
+    "postgresql://amira@localhost/amira_test?hostaddr=10.0.0.5",
+    "not a database url",
+])
+def test_destructive_test_database_guard_rejects_remote_hosts_and_unparseable_urls(database_url) -> None:
+    assert not _is_local_database_url(database_url)
+
+
+def test_destructive_test_is_skipped_for_remote_database_before_any_engine_is_created(monkeypatch) -> None:
+    def fail_if_engine_created(*args, **kwargs):
+        raise AssertionError("the guard must skip before any engine is created")
+
+    monkeypatch.setenv(PUBLIC_SEARCH_TEST_DATABASE_ENV, "postgresql://amira:secret@db.example.test:5432/amira")
+    monkeypatch.setattr("amira_api.db.create_engine", fail_if_engine_created)
+
+    with pytest.raises(pytest.skip.Exception, match="local host"):
+        test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
+
+
+def test_destructive_test_is_skipped_when_database_url_is_unset(monkeypatch) -> None:
+    monkeypatch.delenv(PUBLIC_SEARCH_TEST_DATABASE_ENV, raising=False)
+
+    with pytest.raises(pytest.skip.Exception, match="is not set"):
+        test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
