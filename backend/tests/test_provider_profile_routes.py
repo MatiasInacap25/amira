@@ -210,6 +210,30 @@ def test_put_profile_saves_an_independent_driver_without_a_name(call, db, scenar
     assert solo.description == "Fletes en Santiago"
 
 
+def test_put_profile_rejects_explicit_null_company_name_without_writing(call, db, scenario):
+    company = scenario["company"]
+    _save_and_publish_company(call)
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_profile_body(name=None))
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Company profiles require a name."
+    db.refresh(company)
+    assert company.name == "Transportes Norte"
+    assert company.description == "Fletes en Santiago"
+    assert company.public_activated_at is not None
+
+
+def test_put_profile_keeps_today_behavior_for_null_name_on_independent_driver(call, db, scenario):
+    solo = scenario["solo"]
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=INDEPENDENT_AUTH, json=_profile_body(name=None))
+
+    assert response.status_code == 200
+    db.refresh(solo)
+    assert solo.name == "Dana Fletes"
+
+
 def test_explicit_nulls_and_empty_service_list_still_save_as_a_draft(call, db, scenario):
     company = scenario["company"]
     _save_and_publish_company(call)
