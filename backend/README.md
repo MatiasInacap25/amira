@@ -153,7 +153,7 @@ uv run python -c "from amira_api.main import app; print(app.title)"
 uv lock --check
 ```
 
-`tests/test_public_db.py` includes a PostgreSQL public search test that is skipped unless `AMIRA_TEST_DATABASE_URL` is set. That test drops and recreates the public search tables (`Regiones`, `Comunas`, `Rol_Usuario`, `Usuario`, `Rol_Perfil`, `Perfil`, `Tipos_Servicio`, `Servicios_Disponibles`), so:
+`tests/test_public_db.py` (public search) and `tests/test_payment_db.py` (simulated payment persistence) are PostgreSQL tests that are skipped unless `AMIRA_TEST_DATABASE_URL` is set. They drop and recreate their own tables: `test_public_db.py` drops the public search tables (`Regiones`, `Comunas`, `Rol_Usuario`, `Usuario`, `Rol_Perfil`, `Perfil`, `Tipos_Servicio`, `Servicios_Disponibles`), and `test_payment_db.py` drops the payment path tables plus the tables their foreign keys reference. The shared guard and engine live in `tests/postgres_support.py`, so:
 
 - Point `AMIRA_TEST_DATABASE_URL` only at a disposable database on TCP `localhost`, `127.0.0.1` or `::1`. Unix sockets, host lists, and service files are not supported.
 - The test is skipped, without connecting, unless the URL has that explicit host and none of these are set: the URL query keys `host`, `hostaddr`, `service`, `servicefile`, or the environment variables `PGHOST`, `PGHOSTADDR`, `PGSERVICE`, `PGSERVICEFILE`. libpq honours those settings over the URL, so they could send the test to a different server.

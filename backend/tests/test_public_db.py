@@ -1,29 +1,27 @@
-import os
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from uuid import uuid4
 
+import postgres_support
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import create_database_engine, get_db_session
 from amira_api.main import app
 from amira_api.models import Base, Commune, Perfil, Region, RolPerfil, RolUsuario, TipoServicio, Usuario
+from postgres_support import (
+    REDIRECTING_ENVIRONMENT_VARIABLES,
+    REDIRECTING_QUERY_KEYS,
+    destructive_test_skip_reason,
+    disposable_test_database_url,
+    disposable_test_engine,
+)
 
 # The public search query uses PostgreSQL-only SQL (json_agg, aggregate_order_by), so this test needs a real database.
-# It drops and recreates PUBLIC_SEARCH_TABLES, so AMIRA_TEST_DATABASE_URL must point at a disposable local database.
-# DATABASE_URL is deliberately not used: it may point at a real project.
-PUBLIC_SEARCH_TEST_DATABASE_ENV = "AMIRA_TEST_DATABASE_URL"
-# Allowlist: the only URL hosts the destructive test accepts. Anything else is skipped, never connected to.
-ALLOWED_TEST_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-# Connection settings that can redirect libpq away from the URL host (URL query keys and environment variables).
-REDIRECTING_QUERY_KEYS = ("host", "hostaddr", "service", "servicefile")
-REDIRECTING_ENVIRONMENT_VARIABLES = ("PGHOST", "PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE")
+# It drops and recreates PUBLIC_SEARCH_TABLES, so AMIRA_TEST_DATABASE_URL must point at a disposable local database
+# (guard and engine live in postgres_support).
 PUBLIC_SEARCH_TABLES = (
     "Regiones",
     "Comunas",
@@ -34,49 +32,6 @@ PUBLIC_SEARCH_TABLES = (
     "Tipos_Servicio",
     "Servicios_Disponibles",
 )
-
-
-def _destructive_test_skip_reason(database_url: str) -> str | None:
-    """Why the destructive test must not run against this URL, or None when it may run.
-
-    Allowlist only: an explicit TCP host of exactly localhost, 127.0.0.1 or ::1, and no libpq setting that could
-    redirect the connection (URL query keys or PG* environment variables). Nothing here opens a connection.
-    """
-    try:
-        url = make_url(database_url)
-    except ArgumentError:
-        return "is not a parseable database URL"
-    if url.host not in ALLOWED_TEST_DATABASE_HOSTS:
-        return (
-            "must name an explicit host of localhost, 127.0.0.1 or ::1 "
-            f"(found {url.host or 'an empty host'!r}; unix sockets and host lists are not supported)"
-        )
-    for key in REDIRECTING_QUERY_KEYS:
-        if key in url.query:
-            return f"must not use the URL query parameter {key!r}"
-    for name in REDIRECTING_ENVIRONMENT_VARIABLES:
-        if name in os.environ:
-            return f"must not be combined with the environment variable {name}"
-    return None
-
-
-def _disposable_test_database_url() -> str:
-    database_url = os.environ.get(PUBLIC_SEARCH_TEST_DATABASE_ENV, "").strip()
-    if not database_url:
-        pytest.skip(f"{PUBLIC_SEARCH_TEST_DATABASE_ENV} is not set; the Postgres public search test was skipped")
-    reason = _destructive_test_skip_reason(database_url)
-    if reason is not None:
-        pytest.skip(
-            f"{PUBLIC_SEARCH_TEST_DATABASE_ENV} {reason}; refusing to drop and recreate tables "
-            "(the Postgres public search test was skipped without connecting)"
-        )
-    return database_url
-
-
-def _public_search_test_engine(database_url: str) -> Engine:
-    # Only called after _disposable_test_database_url() has accepted an explicit localhost URL. A local Postgres
-    # usually has no SSL, so this skips the forced sslmode=require that create_database_engine applies in production.
-    return create_engine(make_url(database_url).set(drivername="postgresql+psycopg"))
 
 
 def load_public_migration():
@@ -240,7 +195,7 @@ def _public_search_ids(client: TestClient) -> list[str]:
 
 
 def test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete() -> None:
-    engine = _public_search_test_engine(_disposable_test_database_url())
+    engine = disposable_test_engine(disposable_test_database_url())
     tables = [Base.metadata.tables[name] for name in PUBLIC_SEARCH_TABLES]
     Base.metadata.drop_all(engine, tables=tables)
     Base.metadata.create_all(engine, tables=tables)
@@ -332,7 +287,7 @@ def clean_pg_environment(monkeypatch):
     "postgresql://amira:secret@[::1]:5432/amira_test",
 ])
 def test_destructive_test_guard_accepts_the_three_allowlisted_hosts(clean_pg_environment, database_url) -> None:
-    assert _destructive_test_skip_reason(database_url) is None
+    assert destructive_test_skip_reason(database_url) is None
 
 
 @pytest.mark.parametrize("database_url", [
@@ -344,12 +299,12 @@ def test_destructive_test_guard_accepts_the_three_allowlisted_hosts(clean_pg_env
     "not a database url",
 ])
 def test_destructive_test_guard_rejects_hosts_outside_the_allowlist(clean_pg_environment, database_url) -> None:
-    assert _destructive_test_skip_reason(database_url) is not None
+    assert destructive_test_skip_reason(database_url) is not None
 
 
 @pytest.mark.parametrize("key", REDIRECTING_QUERY_KEYS)
 def test_destructive_test_guard_rejects_redirecting_url_query_keys(clean_pg_environment, key) -> None:
-    reason = _destructive_test_skip_reason(f"postgresql://amira@localhost/amira_test?{key}=value")
+    reason = destructive_test_skip_reason(f"postgresql://amira@localhost/amira_test?{key}=value")
 
     assert reason is not None
     assert key in reason
@@ -359,7 +314,7 @@ def test_destructive_test_guard_rejects_redirecting_url_query_keys(clean_pg_envi
 def test_destructive_test_guard_rejects_redirecting_environment_variables(clean_pg_environment, name) -> None:
     clean_pg_environment.setenv(name, "anything")
 
-    reason = _destructive_test_skip_reason("postgresql://amira@localhost/amira_test")
+    reason = destructive_test_skip_reason("postgresql://amira@localhost/amira_test")
 
     assert reason is not None
     assert name in reason
@@ -369,15 +324,15 @@ def test_destructive_test_is_skipped_for_remote_database_before_any_engine_is_cr
     def fail_if_engine_created(*args, **kwargs):
         raise AssertionError("the guard must skip before any engine is created")
 
-    monkeypatch.setenv(PUBLIC_SEARCH_TEST_DATABASE_ENV, "postgresql://amira:secret@db.example.test:5432/amira")
-    monkeypatch.setattr(f"{__name__}.create_engine", fail_if_engine_created)
+    monkeypatch.setenv(postgres_support.PUBLIC_SEARCH_TEST_DATABASE_ENV, "postgresql://amira:secret@db.example.test:5432/amira")
+    monkeypatch.setattr("postgres_support.create_engine", fail_if_engine_created)
 
     with pytest.raises(pytest.skip.Exception, match="explicit host"):
         test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
 
 
 def test_destructive_test_is_skipped_when_database_url_is_unset(monkeypatch) -> None:
-    monkeypatch.delenv(PUBLIC_SEARCH_TEST_DATABASE_ENV, raising=False)
+    monkeypatch.delenv(postgres_support.PUBLIC_SEARCH_TEST_DATABASE_ENV, raising=False)
 
     with pytest.raises(pytest.skip.Exception, match="is not set"):
         test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
