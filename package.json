@@ -3,6 +3,6 @@
     "api": "cd backend && uv run uvicorn amira_api.main:app --reload"
   },
   "devDependencies": {
-    "supabase": "^2.119.0"
+    "supabase": "^2.122.1"
   }
 }
