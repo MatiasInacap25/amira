@@ -166,6 +166,15 @@ $env:AMIRA_TEST_DATABASE_URL = "postgresql://amira:amira@localhost:5432/amira_te
 uv run pytest tests/test_public_db.py
 ```
 
+To run it against the local Supabase stack (the DB listens on `127.0.0.1:54322`):
+
+```bash
+npx supabase start
+AMIRA_TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres uv run pytest tests/test_public_db.py
+```
+
+The local database has no SSL, so this test builds its engine without the forced `sslmode=require` used in production. The allowlist above is what makes that safe.
+
 ## Migrations
 
 Alembic is initialized under `alembic/`. The declarative mappings live in `src/amira_api/models.py`; configure `DATABASE_URL` before applying migrations. Migrations are not run as part of tests and no live database is required for structural checks or offline PostgreSQL SQL generation.

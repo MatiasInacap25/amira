@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import Session
@@ -70,6 +71,12 @@ def _disposable_test_database_url() -> str:
             "(the Postgres public search test was skipped without connecting)"
         )
     return database_url
+
+
+def _public_search_test_engine(database_url: str) -> Engine:
+    # Only called after _disposable_test_database_url() has accepted an explicit localhost URL. A local Postgres
+    # usually has no SSL, so this skips the forced sslmode=require that create_database_engine applies in production.
+    return create_engine(make_url(database_url).set(drivername="postgresql+psycopg"))
 
 
 def load_public_migration():
@@ -233,7 +240,7 @@ def _public_search_ids(client: TestClient) -> list[str]:
 
 
 def test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete() -> None:
-    engine = create_database_engine(_disposable_test_database_url())
+    engine = _public_search_test_engine(_disposable_test_database_url())
     tables = [Base.metadata.tables[name] for name in PUBLIC_SEARCH_TABLES]
     Base.metadata.drop_all(engine, tables=tables)
     Base.metadata.create_all(engine, tables=tables)
@@ -363,7 +370,7 @@ def test_destructive_test_is_skipped_for_remote_database_before_any_engine_is_cr
         raise AssertionError("the guard must skip before any engine is created")
 
     monkeypatch.setenv(PUBLIC_SEARCH_TEST_DATABASE_ENV, "postgresql://amira:secret@db.example.test:5432/amira")
-    monkeypatch.setattr("amira_api.db.create_engine", fail_if_engine_created)
+    monkeypatch.setattr(f"{__name__}.create_engine", fail_if_engine_created)
 
     with pytest.raises(pytest.skip.Exception, match="explicit host"):
         test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
