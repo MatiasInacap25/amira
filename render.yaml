@@ -13,8 +13,13 @@ services:
     envVars:
       - key: APP_NAME
         value: Amira API
+      # Demo deployment, not used by real customers: the simulated payment adapter needs a development APP_ENV.
       - key: APP_ENV
-        value: production
+        value: development
+      - key: PAYMENT_SIMULATOR_SECRET
+        generateValue: true
+      - key: FRONTEND_BASE_URL
+        value: https://amira-blush.vercel.app
       - key: CORS_ORIGINS
         sync: false
       - key: DATABASE_URL
