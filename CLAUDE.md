@@ -82,3 +82,12 @@ Playwright starts its own isolated app copy and fake Supabase endpoint on `127.0
 - Al terminar cada worker: herdr agent read worker-N --source recent --lines 80 y verifica el resultado.
 - Si un worker se bloquea: herdr agent explain worker-N antes de reintentar.
 - Ante dudas de sintaxis, usa `herdr <grupo> --help` en vez de adivinar.
+
+### Review con Codex (gpt-6.1-sol) al terminar los workers
+Cuando TODOS los workers hayan terminado y verificado su resultado, y los cambios estén listos:
+1. Abre un panel nuevo: `PANE=$(herdr pane split --current --direction right --cwd "$PWD" --no-focus)` (id en `.result.pane`).
+2. Inicia Codex: `herdr agent start reviewer --kind codex --pane <id> -- --model gpt-6.1-sol`.
+3. Pídele el review nativo de gentle-ai sobre el diff resultante: `herdr agent prompt reviewer "Ejecuta el review nativo de gentle-ai (gentle-ai review assess --cwd $PWD --agent codex --json y sigue el next_transition que devuelva) sobre los cambios actuales. No edites código." --wait --timeout 900000`.
+4. El prompt de consentimiento de gentle-ai lo responde el usuario en ese panel; no lo respondas por él. Si el estado es `blocked`, avísale y espera.
+5. Al terminar: `herdr agent read reviewer --source recent --lines 80` y resume el veredicto. Si hay blockers, créalos como tareas para workers; no edites tú.
+- Si `HERDR_ENV` no es 1, no abras Codex: avisa que el review con Codex requiere herdr.
