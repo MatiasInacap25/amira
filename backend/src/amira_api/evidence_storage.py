@@ -96,6 +96,24 @@ def _chat_attachment_storage(settings: Settings) -> EvidenceStorage:
     )
 
 
+def get_request_image_storage_resolver(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Callable[[], EvidenceStorage]:
+    """Same port and adapter, bound to the request images bucket. Deferred like the resolvers above."""
+    return lambda: _request_image_storage(settings)
+
+
+def _request_image_storage(settings: Settings) -> EvidenceStorage:
+    bucket = (settings.request_images_bucket or "").strip()
+    if not settings.supabase_url or settings.supabase_service_role_key is None or not bucket:
+        raise HTTPException(status_code=503, detail="Request image storage is not configured.")
+    return _supabase_storage(
+        settings.supabase_url,
+        settings.supabase_service_role_key.get_secret_value(),
+        bucket,
+    )
+
+
 @lru_cache
 def _supabase_storage(base_url: str, service_role_key: str, bucket: str) -> EvidenceStorage:
     # Imported here: the adapter imports EvidenceStorageError from this module.
