@@ -561,6 +561,35 @@ test("provider sees a server rejection of the quotation as a readable message", 
   await expect(dialog).toBeVisible();
 });
 
+test("provider sees its own quotation on the provider side of the thread", async ({ page }) => {
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ viewerRole: "provider", timeline: [quotationEntry()] }) }));
+
+  await signInToChat(page, "provider");
+
+  await expect(page.locator("li.chat-timeline-quotation")).toHaveClass(/chat-timeline-quotation--own/);
+});
+
+test("customer sees a quotation on the customer side of the thread", async ({ page }) => {
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ viewerRole: "customer", timeline: [quotationEntry()] }) }));
+
+  await signInToChat(page, "customer");
+
+  await expect(page.getByRole("article", { name: "Cotización" })).toBeVisible();
+  await expect(page.locator("li.chat-timeline-quotation")).not.toHaveClass(/chat-timeline-quotation--own/);
+});
+
+test("provider quotation dialog shows the chat's service type as read-only text", async ({ page }) => {
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ viewerRole: "provider" }) }));
+
+  await signInToChat(page, "provider");
+  await page.getByRole("button", { name: "Enviar cotización" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Envía tu cotización" });
+  await expect(dialog.getByText("Tipo de servicio", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Mudanzas", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Tipo de servicio")).toHaveCount(0);
+});
+
 test("customer sees a pending quotation with its amount, expiry and pay and reject actions", async ({ page }) => {
   await mockThread(page, async (route) => route.fulfill({ json: threadPage({ timeline: [quotationEntry()] }) }));
 
