@@ -20,7 +20,7 @@ Branch: feat/viajes-compartidos (from main 15a1610). Delivery strategy: ask-on-r
 ## Tasks
 
 - [x] T1, S1, delegated (herdr worker-5): sharing select in the quote modal, payload field, request, quotation and service carry the choice, provider label. Backend RED observed (5 failures); frontend RED not observed. Backend 773 passed, Playwright 44 of 44 on marketplace and request detail, unit 158, lint clean.
-- [ ] T2, S3, delegated (after T1, herdr worker): hide the "Carga compartida" type.
+- [x] T2, S3, delegated (after T1, herdr worker-6): hide the "Carga compartida" type. RED observed (5 failed, 2 guards passed); backend 780 passed. Hidden in code by slug, no migration. Left open: a customer can still request that type from a provider who already has the link; a provider cannot remove an existing hidden link from the UI; the /api/services SQL was not executed against Postgres.
 - [ ] T3, S2 backend, delegated (after T1, herdr worker): publish a shared trip from a paid shareable service, close it, list it, join request tied to the trip with stops, link the paid service to the trip. High risk: permissions and persisted data.
 - [ ] T4, S2 frontend, delegated (after T3, herdr worker): provider publish and close actions, "Sumarme" on `/rutas-compartidas`, trip shown in request and service details.
 - [ ] T5, delegated (herdr reviewer): independent verification and Codex gpt-6.1-sol native gentle-ai review.
