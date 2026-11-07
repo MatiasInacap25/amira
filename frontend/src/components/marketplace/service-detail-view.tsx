@@ -276,7 +276,10 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
                     detail.isExclusive ? (
                       <p className="account-service-empty">El cliente no aceptó compartir el viaje.</p>
                     ) : detail.sharedTripId ? (
-                      <p className="account-service-empty">Este servicio ya forma parte de un viaje compartido.</p>
+                      <>
+                        <p className="account-service-empty">Publicado como viaje compartido.</p>
+                        <Link className="button button-secondary" href="/cuenta/viajes-compartidos">Ver mis viajes compartidos</Link>
+                      </>
                     ) : (
                       <>
                         <button className="button button-secondary" onClick={() => setPublishOpen(true)} type="button">Publicar como viaje compartido</button>

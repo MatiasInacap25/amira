@@ -391,3 +391,30 @@ test("joining sends requestedTripId with the customer's pickup and delivery", as
     destination: "Av. Brasil 1",
   });
 });
+
+test("joining hides the sharing question and sends acceptsSharing true", async ({ page }) => {
+  const bodies: Array<Record<string, unknown>> = [];
+  await mockSharedRoutes(page, () => routesPage([sharedRoute({ tripId: "trip-join-4" })], 1));
+  await mockJoinProfile(page);
+  await page.route("**/api/service-requests", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { requestId: "request-join-4", status: "pending" } });
+  });
+  await signInAsJoinCustomer(page);
+
+  await page.getByRole("button", { name: "Sumarme a este viaje" }).click();
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await expect(dialog.getByLabel("¿Aceptas compartir el vehículo con otro cliente?")).toHaveCount(0);
+  await dialog.getByLabel("Servicio").selectOption("service-type-5");
+  await dialog.getByLabel("Región de recogida").selectOption("13");
+  await dialog.getByLabel("Comuna de recogida").selectOption("13114");
+  await dialog.getByLabel("Región de entrega").selectOption("05");
+  await dialog.getByLabel("Comuna de entrega").selectOption("05101");
+  await dialog.getByLabel("Dirección de recogida", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Dirección de entrega", { exact: true }).fill("Av. Brasil 1");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Solicitud enviada" })).toBeVisible();
+  expect(bodies).toHaveLength(1);
+  expect(bodies[0]).toMatchObject({ requestedTripId: "trip-join-4", acceptsSharing: true });
+});

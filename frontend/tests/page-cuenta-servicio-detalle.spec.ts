@@ -671,3 +671,13 @@ test("a 409 from publishing explains in Spanish why the service cannot become a 
 
   await expect(dialog.getByRole("alert")).toHaveText("No se puede publicar este servicio como viaje compartido. Revisa que el cliente acepte compartir, que no tenga un viaje previo y que tenga fecha y ruta.");
 });
+
+test("a service already published as a shared trip links to the shared trips page instead of a publish button", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail({ sharedTripId: "trip-9" }) }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText("Publicado como viaje compartido.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ver mis viajes compartidos" })).toHaveAttribute("href", "/cuenta/viajes-compartidos");
+  await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
+});
