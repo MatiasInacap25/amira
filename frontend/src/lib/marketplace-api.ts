@@ -242,6 +242,21 @@ export type ProviderRequestPage = PagedResponse<ProviderRequest> & {
   counts: ProviderRequestCounts;
 };
 
+export type ServiceRequestCreated = {
+  requestId: string;
+  status: string;
+};
+
+export type RequestImage = {
+  imageId: string;
+  url: string;
+  expiresAt: string;
+};
+
+export type RequestImagePage = {
+  items: RequestImage[];
+};
+
 export type ProviderRequestDecision = {
   requestId: string;
   status: "accepted" | "rejected";
@@ -631,6 +646,41 @@ export async function completeSimulatedPayment(accessToken: string, paymentId: s
 export async function getProviderRequest(accessToken: string, requestId: string) {
   return authenticatedApiFetch(
     `/api/provider/requests/${encodeURIComponent(requestId)}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" } },
+  );
+}
+
+// Customer photos on a request. The backend checks type, size and count again and remains the authority.
+export const REQUEST_IMAGE_MAX_COUNT = 5;
+export const REQUEST_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const REQUEST_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+export const REQUEST_IMAGE_ACCEPT = REQUEST_IMAGE_TYPES.join(",");
+
+// Returns the Spanish error for a photo the customer picked, or null when it can be attached.
+export function validateRequestImage(file: { type: string; size: number }, alreadyAttached: number): string | null {
+  if (!(REQUEST_IMAGE_TYPES as readonly string[]).includes(file.type)) return "Solo puedes adjuntar fotos en formato JPEG, PNG o WebP.";
+  if (file.size > REQUEST_IMAGE_MAX_BYTES) return "La foto no puede superar los 5 MB.";
+  if (alreadyAttached >= REQUEST_IMAGE_MAX_COUNT) return `Puedes adjuntar hasta ${REQUEST_IMAGE_MAX_COUNT} fotos por solicitud.`;
+  return null;
+}
+
+// Multipart upload: the browser sets the boundary, so no Content-Type header is passed.
+export function uploadRequestImage(accessToken: string, requestId: string, photo: File) {
+  const form = new FormData();
+  form.append("photo", photo);
+  return authenticatedApiFetch(
+    `/api/requests/${encodeURIComponent(requestId)}/images`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { Accept: "application/json" }, body: form },
+  );
+}
+
+export function getRequestImages(accessToken: string, requestId: string) {
+  return authenticatedApiFetch(
+    `/api/requests/${encodeURIComponent(requestId)}/images`,
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
     { headers: { Accept: "application/json" } },
