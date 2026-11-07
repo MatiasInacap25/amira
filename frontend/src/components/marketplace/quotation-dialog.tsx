@@ -15,6 +15,7 @@ type Props = {
   chatId: string;
   onClose: () => void;
   onCreated: () => void;
+  serviceName: string;
 };
 
 // datetime-local expects local "YYYY-MM-DDTHH:mm" values; the browser compares them as local time.
@@ -33,7 +34,7 @@ function sendErrorMessage(cause: unknown): string {
 }
 
 // Mounted only while open, so every opening starts with an empty form.
-export function QuotationDialog({ chatId, onClose, onCreated }: Props) {
+export function QuotationDialog({ chatId, onClose, onCreated, serviceName }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -99,6 +100,10 @@ export function QuotationDialog({ chatId, onClose, onCreated }: Props) {
         <button aria-label="Cerrar cotización" className="quote-dialog-close" onClick={() => dialogRef.current?.close()} type="button">×</button>
       </div>
       <form className="quote-request-form" noValidate onSubmit={submit}>
+        <div className="marketplace-field quotation-service-type">
+          <span>Tipo de servicio</span>
+          <p>{serviceName}</p>
+        </div>
         <label className="marketplace-field" htmlFor="quotation-amount">
           <span>Monto (CLP)</span>
           <input id="quotation-amount" inputMode="numeric" min={1} name="amount" placeholder="Ej: 125000" step={1} type="number" />

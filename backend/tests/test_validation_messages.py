@@ -78,7 +78,7 @@ def test_cross_field_provider_messages_are_spanish():
 
 
 def test_quote_request_messages_are_spanish_for_timezone_and_past_dates():
-    base = {"profileId": PROFILE_ID, "serviceTypeId": SERVICE_TYPE_ID, "originCommuneCode": "13101", "destinationCommuneCode": "05101"}
+    base = {"profileId": PROFILE_ID, "serviceTypeId": SERVICE_TYPE_ID, "origin": "Santiago", "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101"}
 
     naive = single_error(ServiceRequestCreate, {**base, "requestedAt": "2026-11-08T10:00:00"})
     assert naive["msg"] == "La fecha solicitada debe incluir zona horaria."

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/mnt/data/projects/amira/.archify/sequence-flujo-cliente-20261102-191957/candidate.json",
+    "sha256": "8b656c47bc4ae53801f45c01bc763463ec41e28754d7ac2dc73f3fbf1defb647",
+    "bytes": 6986
+  },
+  "artifact": {
+    "path": "/mnt/data/projects/amira/.archify/sequence-flujo-cliente-20261102-191957/flujo-cliente.html",
+    "sha256": "56634a2e77b11080fcb9d3d92f2c28425aa167104f70f1e414f79b86fbd1e431",
+    "bytes": 858484
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/mnt/data/projects/amira/.archify/sequence-flujo-cliente-20261102-191957/flujo-cliente.finalize.json",
+    "summaryReceipt": "/mnt/data/projects/amira/.archify/sequence-flujo-cliente-20261102-191957/flujo-cliente.finalize-summary.json",
+    "browserCheckReceipt": "/mnt/data/projects/amira/.archify/sequence-flujo-cliente-20261102-191957/flujo-cliente.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-02T22:20:25.059Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2152,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

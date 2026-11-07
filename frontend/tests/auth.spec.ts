@@ -446,6 +446,8 @@ test("verified client can submit a quote request with the current MFA access tok
   await page.getByLabel("Comuna de origen").selectOption("13101");
   await page.getByLabel("Región de destino").selectOption("05");
   await page.getByLabel("Comuna de destino").selectOption("05101");
+  await page.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await page.getByLabel("Dirección de destino", { exact: true }).fill("Av. Brasil 1");
   await page.getByLabel("Peso estimado (kg)").fill("250.5");
   await page.getByLabel("Detalles de la solicitud").fill("Retiro de muebles.");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
@@ -457,8 +459,8 @@ test("verified client can submit a quote request with the current MFA access tok
     serviceTypeId: "service-type-2",
     originCommuneCode: "13101",
     destinationCommuneCode: "05101",
-    origin: null,
-    destination: null,
+    origin: "Av. Matta 123",
+    destination: "Av. Brasil 1",
     estimatedWeight: "250.5",
     description: "Retiro de muebles.",
   });

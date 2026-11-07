@@ -38,6 +38,7 @@ export default defineConfig({
         NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54329",
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "test_publishable_key_only",
         NEXT_PUBLIC_API_URL: "http://127.0.0.1:8001",
+        NEXT_PUBLIC_APP_ENV: "development",
       },
     },
   ],

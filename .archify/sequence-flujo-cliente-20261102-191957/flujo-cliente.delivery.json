@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "add3b222-2ecb-4674-869a-7da218c73ddf",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/mnt/data/projects/amira/.archify/sequence-flujo-cliente-20261102-191957/candidate.json",
+  "output": "/mnt/data/projects/amira/.archify/sequence-flujo-cliente-20261102-191957/flujo-cliente.html",
+  "specification": {
+    "sha256": "8b656c47bc4ae53801f45c01bc763463ec41e28754d7ac2dc73f3fbf1defb647",
+    "bytes": 6986
+  },
+  "artifact": {
+    "sha256": "56634a2e77b11080fcb9d3d92f2c28425aa167104f70f1e414f79b86fbd1e431",
+    "bytes": 858484
+  }
+}

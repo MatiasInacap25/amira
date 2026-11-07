@@ -3,12 +3,18 @@
 
 const DEV_SMS_MFA_BYPASS_APP_ENVS = new Set(["development", "local", "test"]);
 
+// Shared allowlist for development-only surfaces (SMS bypass, simulated payments).
+// Unset, empty or unknown values fail closed.
+export function isDevelopmentAppEnv(appEnv: string | undefined): boolean {
+  return DEV_SMS_MFA_BYPASS_APP_ENVS.has((appEnv ?? "").trim().toLowerCase());
+}
+
 // Next.js inlines NEXT_PUBLIC_* values only when read as a literal `process.env.NAME`,
 // so both variables are read here and never through a dynamic lookup.
 // NODE_ENV is not consulted: Vercel always builds with NODE_ENV=production.
 export function isDevSkipSmsMfaEnabled(flag: string | undefined, appEnv: string | undefined): boolean {
   if (flag !== "true") return false;
-  return DEV_SMS_MFA_BYPASS_APP_ENVS.has((appEnv ?? "").trim().toLowerCase());
+  return isDevelopmentAppEnv(appEnv);
 }
 
 export const devSkipSmsMfa = isDevSkipSmsMfaEnabled(
