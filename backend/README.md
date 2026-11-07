@@ -150,6 +150,20 @@ Optional settings and defaults: `REQUEST_IMAGE_URL_TTL_SECONDS` (300). The size 
 - `POST /api/requests/{requestId}/images`: multipart with a required `photo`. Only the customer who owns the request may upload; other callers get 404. The type is detected from the bytes. An oversize photo gets 413, another type 415, and a sixth image 409. The count is checked under the request's row lock. The object is stored under `requests/{requestId}/{imageId}.{ext}` with a server-generated id, never the client's filename. If the database write fails, the object is deleted. The response is `{imageId}`.
 - `GET /api/requests/{requestId}/images`: returns `{items: [{imageId, url, expiresAt}]}`. The owning customer, and exactly the providers who can open `GET /api/provider/requests/{requestId}`, may read it. Anyone else gets the same response that route gives them.
 
+### Provider vehicles (private Supabase Storage bucket)
+
+A provider (company owner or independent driver) registers the vehicles it can later assign to a shared trip. Each vehicle has one photo in a private bucket, read back only through short-lived signed URLs. The bucket is named `vehicle-images` and already exists in the Supabase project; set `VEHICLE_IMAGES_BUCKET=vehicle-images` in the backend environment. The bucket name has no default: when `VEHICLE_IMAGES_BUCKET` is unset or blank, the endpoints answer 503 to the owner and write nothing. It uses the same `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as the other buckets.
+
+Optional settings and defaults: `VEHICLE_IMAGE_URL_TTL_SECONDS` (300). The photo size cap is `CHAT_ATTACHMENT_MAX_BYTES` (5 MiB).
+
+Only the owner of a provider profile may use these routes; company-employed drivers and customers get 403. Another provider's vehicle is never visible: list omits it and delete answers 404 with the same body as a missing vehicle.
+
+- `POST /api/provider/vehicles`: multipart with required `plate`, `brand`, `model` and `photo`, and optional `year` (1886 to 2200) and `maximum_weight` (above 0, kg). Plate uniqueness ignores case and surrounding spaces; a duplicate answers 409. The photo type is detected from the bytes (415 otherwise) and the size is capped (413). The object is stored under `vehicles/{profileId}/{vehicleId}.{ext}` with a server-generated id. No open transaction is held during the upload; if the database write fails, the object is deleted. Response: `{vehicleId}`, status 201.
+- `GET /api/provider/vehicles`: returns `{items: [{vehicleId, plate, brand, model, year, maximumWeight, url, expiresAt}]}`, where `url` is a signed link for the photo.
+- `DELETE /api/provider/vehicles/{vehicleId}`: deletes the vehicle and its photo (204). It answers 409 while any contracted service, service assignment or shared trip references the vehicle.
+
+Schema: the photo is required (`Vehiculo.Imagen_Storage_Key` is not null). No migration is needed for these routes.
+
 ### Unread counts
 
 Each participant has a read time, `Chat_participantes.Ultima_Lectura` (migration `20261019_0002`, default `now()`, so existing chats start read). A message is unread for a participant when another participant sent it after that time; the caller's own messages and quotations never count.

@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Customer images on a service request use their own private bucket. It has no default: unset means fail closed.
     request_images_bucket: str | None = None
     request_image_url_ttl_seconds: int = Field(default=300, gt=0)
+    # Provider vehicle photos use their own private bucket. No default: unset means fail closed (503).
+    vehicle_images_bucket: str | None = None
+    vehicle_image_url_ttl_seconds: int = Field(default=300, gt=0)
     service_claim_window_hours: int = Field(default=24, gt=0)
     # Platform commission withheld from each payout, as a whole percent of the gross payment (0 to 99).
     payout_commission_percent: int = Field(default=10, ge=0, lt=100)
