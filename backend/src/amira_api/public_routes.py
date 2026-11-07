@@ -248,10 +248,22 @@ def create_service_request(
                 detail=[{"loc": ["body", field], "msg": "Selecciona una comuna válida del catálogo.", "type": "value_error"}],
             )
 
+    if payload.requested_trip_id is not None:
+        trip = session.execute(
+            select(Viaje.id, Viaje.profile_id, Viaje.is_published, Viaje.accepts_requests).where(
+                Viaje.id == payload.requested_trip_id
+            )
+        ).one_or_none()
+        if trip is None or trip.profile_id != payload.profile_id:
+            raise HTTPException(status_code=404, detail="Viaje compartido no encontrado.")
+        if not trip.is_published or not trip.accepts_requests:
+            raise HTTPException(status_code=409, detail="Este viaje compartido no acepta solicitudes.")
+
     request = FormularioServicio(
         id=uuid4(),
         profile_id=payload.profile_id,
         service_type_id=matching_service,
+        requested_trip_id=payload.requested_trip_id,
         origin=payload.origin,
         destination=payload.destination,
         origin_commune_code=payload.origin_commune_code,
@@ -359,6 +371,7 @@ def _provider_request_rows(profile_id: UUID) -> Select:
                 FormularioServicio.description.label("description"),
                 FormularioServicio.cargo_measurements.label("cargo_measurements"),
                 FormularioServicio.is_exclusive.label("is_exclusive"),
+                FormularioServicio.requested_trip_id.label("requested_trip_id"),
                 FormularioServicio.origin_commune_code.label("origin_commune_code"),
                 origin_commune.name.label("origin_commune_name"),
                 origin_region.name.label("origin_region_name"),
