@@ -43,7 +43,7 @@ test("page shows its heading, skip link, back link and booking disclaimer", asyn
   await expect(page.getByRole("heading", { name: "Rutas compartidas", level: 2 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Ir a los resultados" })).toHaveAttribute("href", "#resultados");
   await expect(page.getByRole("link", { name: "Volver a Amira" })).toHaveAttribute("href", "/");
-  await expect(page.getByText("Consultar una ruta no reserva espacio ni inicia una solicitud. Amira no procesa pagos ni confirma reservas.")).toBeVisible();
+  await expect(page.getByText("Sumarte a un viaje envía una solicitud al transportista, que debe confirmarla. Amira no procesa pagos ni confirma reservas.")).toBeVisible();
 });
 
 test("initial load requests the first page without commune or date filters", async ({ page }) => {
@@ -236,4 +236,158 @@ test("results with stops stay within a 320px viewport", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Buscar rutas" })).toBeVisible();
   const dimensions = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
   expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport);
+});
+
+const joinCustomer = {
+  id: "user-join-1",
+  aud: "authenticated",
+  role: "authenticated",
+  email: "persona@example.test",
+  email_confirmed_at: "2026-10-01T12:00:00.000Z",
+  confirmed_at: "2026-10-01T12:00:00.000Z",
+  app_metadata: { provider: "email", providers: ["email"] },
+  user_metadata: {},
+  created_at: "2026-10-01T11:00:00.000Z",
+};
+const joinSmsFactor = { id: "factor-sms-join", factor_type: "phone", status: "verified", phone: "+56912345678" };
+
+function joinSession(aal: "aal1" | "aal2", tokenId: string) {
+  const payload = Buffer.from(JSON.stringify({ aal, exp: 2000000000, sub: joinCustomer.id })).toString("base64url");
+  return {
+    access_token: `eyJhbGciOiJub25lIn0.${payload}.${tokenId}`,
+    token_type: "bearer",
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    refresh_token: "refresh-test-token",
+    user: joinCustomer,
+  };
+}
+
+// Signs in through the login form with SMS verification, then lands back on the routes page.
+async function signInAsJoinCustomer(page: Page) {
+  await page.route("**/auth/v1/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname.replace("/auth/v1", "");
+    const method = request.method();
+    if (path === "/token" && url.searchParams.get("grant_type") === "password") {
+      await route.fulfill({ json: joinSession("aal1", "password-aal1-join") });
+      return;
+    }
+    if (path === "/user" && method === "GET") {
+      await route.fulfill({ json: { ...joinCustomer, factors: [joinSmsFactor] } });
+      return;
+    }
+    if (path === "/factors" && method === "GET") {
+      await route.fulfill({ json: { all: [joinSmsFactor], phone: [joinSmsFactor], totp: [] } });
+      return;
+    }
+    if (path === "/factors/factor-sms-join/challenge" && method === "POST") {
+      await route.fulfill({ json: { id: "challenge-join", expires_at: Date.now() + 300000 } });
+      return;
+    }
+    if (path === "/factors/factor-sms-join/verify" && method === "POST") {
+      await route.fulfill({ json: joinSession("aal2", "verified-aal2-join") });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { msg: `Unexpected fake Auth request: ${method} ${path}` } });
+  });
+  await page.route("**/api/account/me", async (route) => route.fulfill({ json: { user_id: "account-join-1", role: "client", profile_id: null } }));
+  await page.goto("/login?next=%2Frutas-compartidas");
+  await page.locator("#auth-email").fill(joinCustomer.email);
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.locator("form.auth-form button[type=submit]").click();
+  await page.locator("#auth-code").fill("246810");
+  await page.locator("form.auth-form button[type=submit]").click();
+  await expect(page).toHaveURL(/\/rutas-compartidas$/);
+}
+
+async function mockJoinProfile(page: Page) {
+  await page.route("**/api/providers/profile-test-1", async (route) => route.fulfill({
+    json: {
+      profileId: "profile-test-1",
+      providerName: "Transportista de prueba",
+      kind: "company",
+      description: null,
+      location: "Santiago",
+      ownerName: "Ana Pérez",
+      drivers: [],
+      services: [{ serviceTypeId: "service-type-5", name: "Mudanzas" }],
+      vehicles: [],
+    },
+  }));
+}
+
+test("each route offers Sumarme a este viaje, which opens the quote dialog labelled with pickup and delivery", async ({ page }) => {
+  await mockSharedRoutes(page, () => routesPage([sharedRoute({ tripId: "trip-join-1" })], 1));
+  await mockJoinProfile(page);
+
+  await page.goto("/rutas-compartidas");
+  await page.getByRole("button", { name: "Sumarme a este viaje" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Comuna de recogida")).toBeVisible();
+  await expect(dialog.getByLabel("Dirección de recogida", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Comuna de entrega")).toBeVisible();
+  await expect(dialog.getByLabel("Dirección de entrega", { exact: true })).toBeVisible();
+});
+
+test("signed-out visitor who tries to join is asked to sign in before the request is sent", async ({ page }) => {
+  const posts: unknown[] = [];
+  await mockSharedRoutes(page, () => routesPage([sharedRoute({ tripId: "trip-join-2" })], 1));
+  await mockJoinProfile(page);
+  await page.route("**/api/service-requests", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { requestId: "request-x", status: "pending" } });
+  });
+
+  await page.goto("/rutas-compartidas");
+  await page.getByRole("button", { name: "Sumarme a este viaje" }).click();
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await dialog.getByLabel("Servicio").selectOption("service-type-5");
+  await dialog.getByLabel("Región de recogida").selectOption("13");
+  await dialog.getByLabel("Comuna de recogida").selectOption("13114");
+  await dialog.getByLabel("Región de entrega").selectOption("05");
+  await dialog.getByLabel("Comuna de entrega").selectOption("05101");
+  await dialog.getByLabel("Dirección de recogida", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Dirección de entrega", { exact: true }).fill("Av. Brasil 1");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("alert")).toContainText("Inicia sesión con un correo confirmado");
+  await expect(dialog.getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Frutas-compartidas");
+  expect(posts).toHaveLength(0);
+});
+
+test("joining sends requestedTripId with the customer's pickup and delivery", async ({ page }) => {
+  const bodies: Array<Record<string, unknown>> = [];
+  await mockSharedRoutes(page, () => routesPage([sharedRoute({ tripId: "trip-join-3" })], 1));
+  await mockJoinProfile(page);
+  await page.route("**/api/service-requests", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { requestId: "request-join-3", status: "pending" } });
+  });
+  await signInAsJoinCustomer(page);
+
+  await page.getByRole("button", { name: "Sumarme a este viaje" }).click();
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await dialog.getByLabel("Servicio").selectOption("service-type-5");
+  await dialog.getByLabel("Región de recogida").selectOption("13");
+  await dialog.getByLabel("Comuna de recogida").selectOption("13114");
+  await dialog.getByLabel("Región de entrega").selectOption("05");
+  await dialog.getByLabel("Comuna de entrega").selectOption("05101");
+  await dialog.getByLabel("Dirección de recogida", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Dirección de entrega", { exact: true }).fill("Av. Brasil 1");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Solicitud enviada" })).toBeVisible();
+  expect(bodies).toHaveLength(1);
+  expect(bodies[0]).toMatchObject({
+    profileId: "profile-test-1",
+    requestedTripId: "trip-join-3",
+    originCommuneCode: "13114",
+    destinationCommuneCode: "05101",
+    origin: "Av. Matta 123",
+    destination: "Av. Brasil 1",
+  });
 });

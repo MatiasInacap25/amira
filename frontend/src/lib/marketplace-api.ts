@@ -138,6 +138,8 @@ export type ServiceDetail = ServiceListItem & {
   payoutDeadlineAt: string | null;
   viewerRole: "customer" | "provider";
   canManage: boolean;
+  // Shared trip this service was published to, or null. Provider-only; the backend exposes it on the provider detail.
+  sharedTripId?: string | null;
   // True when the viewer is one of the assigned drivers; always false for customers.
   viewerAssigned: boolean;
   assignments: ServiceAssignment[];
@@ -205,6 +207,8 @@ export type ServiceRequestInput = {
   description: string | null;
   cargoMeasurements: string | null;
   acceptsSharing: boolean;
+  // Set when the customer asks to join a shared trip; origin and destination are then the pickup and delivery.
+  requestedTripId?: string;
 };
 
 export type ProviderRequest = {
@@ -229,6 +233,8 @@ export type ProviderRequest = {
   description: string | null;
   cargoMeasurements: string | null;
   serviceName: string;
+  // Non-null when the request asks to join a shared trip.
+  requestedTripId?: string | null;
   chatId: string | null;
 };
 

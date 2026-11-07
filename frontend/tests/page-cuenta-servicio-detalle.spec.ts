@@ -573,3 +573,101 @@ test("service detail fits a phone-width viewport without horizontal page scroll"
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+// Shared trip publishing: provider side of the contracted service.
+const publishButtonName = "Publicar como viaje compartido";
+
+function providerShareableDetail(overrides: Record<string, unknown> = {}) {
+  return serviceDetail({
+    viewerRole: "provider",
+    canManage: true,
+    counterpartName: "Ana Pérez",
+    status: "confirmed",
+    completedAt: null,
+    payoutDeadlineAt: null,
+    canClaim: false,
+    canConsent: false,
+    isExclusive: false,
+    sharedTripId: null,
+    ...overrides,
+  });
+}
+
+test("publish button appears only for a shareable contracted service without a trip", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail() }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+  await expect(page.getByRole("button", { name: publishButtonName })).toBeVisible();
+});
+
+test("exclusive service explains the customer did not accept sharing and offers no publish button", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail({ isExclusive: true }) }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+  await expect(page.getByText("El cliente no aceptó compartir el viaje.")).toBeVisible();
+  await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
+});
+
+test("service that already has a shared trip offers no publish button", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail({ sharedTripId: "trip-9" }) }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+  await expect(page.getByRole("heading", { name: "Conductores asignados" })).toBeVisible();
+  await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
+});
+
+test("publishing sends the chosen vehicleId and driverId and confirms the trip", async ({ page }) => {
+  const bodies: Array<Record<string, unknown>> = [];
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail() }));
+  await page.route("**/api/provider/vehicles", async (route) => route.fulfill({
+    json: { items: [{ vehicleId: "vehicle-1", plate: "KLM12", brand: "Hyundai", model: "Porter", year: null, maximumWeight: null, url: "https://storage.example.test/v.png", expiresAt: "2026-11-07T12:05:00.000Z" }] },
+  }));
+  await page.route("**/api/provider/drivers", async (route) => route.fulfill({ json: { items: [{ driverId: "driver-1", name: "Lucía Soto" }] } }));
+  await page.route("**/api/provider/services/service-1/shared-trip", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { tripId: "trip-new" } });
+  });
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await page.getByRole("button", { name: publishButtonName }).click();
+  const dialog = page.getByRole("dialog", { name: "Publicar viaje compartido" });
+  await dialog.getByLabel("Vehículo").selectOption("vehicle-1");
+  await dialog.getByLabel("Conductor").selectOption("driver-1");
+  await dialog.getByRole("button", { name: "Publicar viaje" }).click();
+
+  await expect(page.getByRole("status").filter({ hasText: "Viaje publicado." })).toBeVisible();
+  expect(bodies).toEqual([{ vehicleId: "vehicle-1", driverId: "driver-1" }]);
+});
+
+test("a provider without vehicles is told to register one, with a link to the vehicles page", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail() }));
+  await page.route("**/api/provider/vehicles", async (route) => route.fulfill({ json: { items: [] } }));
+  await page.route("**/api/provider/drivers", async (route) => route.fulfill({ json: { items: [{ driverId: "driver-1", name: "Lucía Soto" }] } }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await page.getByRole("button", { name: publishButtonName }).click();
+  const dialog = page.getByRole("dialog", { name: "Publicar viaje compartido" });
+  await expect(dialog.getByText("Aún no tienes vehículos registrados.")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Registrar un vehículo" })).toHaveAttribute("href", "/cuenta/vehiculos");
+});
+
+test("a 409 from publishing explains in Spanish why the service cannot become a trip", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail() }));
+  await page.route("**/api/provider/vehicles", async (route) => route.fulfill({
+    json: { items: [{ vehicleId: "vehicle-1", plate: "KLM12", brand: "Hyundai", model: "Porter", year: null, maximumWeight: null, url: "https://storage.example.test/v.png", expiresAt: "2026-11-07T12:05:00.000Z" }] },
+  }));
+  await page.route("**/api/provider/drivers", async (route) => route.fulfill({ json: { items: [{ driverId: "driver-1", name: "Lucía Soto" }] } }));
+  await page.route("**/api/provider/services/service-1/shared-trip", async (route) => route.fulfill({ status: 409, json: { detail: "conflict" } }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await page.getByRole("button", { name: publishButtonName }).click();
+  const dialog = page.getByRole("dialog", { name: "Publicar viaje compartido" });
+  await dialog.getByLabel("Vehículo").selectOption("vehicle-1");
+  await dialog.getByLabel("Conductor").selectOption("driver-1");
+  await dialog.getByRole("button", { name: "Publicar viaje" }).click();
+
+  await expect(dialog.getByRole("alert")).toHaveText("No se puede publicar este servicio como viaje compartido. Revisa que el cliente acepte compartir, que no tenga un viaje previo y que tenga fecha y ruta.");
+});
