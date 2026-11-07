@@ -1,6 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptsAssuranceLevel, isDevSkipSmsMfaEnabled } from "../../src/lib/auth/dev-mfa.ts";
+import { acceptsAssuranceLevel, isDevelopmentAppEnv, isDevSkipSmsMfaEnabled } from "../../src/lib/auth/dev-mfa.ts";
+
+test("the dev app environment allowlist admits development, local and test, ignoring case and spaces", () => {
+  assert.equal(isDevelopmentAppEnv("development"), true);
+  assert.equal(isDevelopmentAppEnv("local"), true);
+  assert.equal(isDevelopmentAppEnv("test"), true);
+  assert.equal(isDevelopmentAppEnv(" Development "), true);
+  assert.equal(isDevelopmentAppEnv("LOCAL"), true);
+});
+
+test("the dev app environment allowlist fails closed for unset, empty, production and unknown values", () => {
+  assert.equal(isDevelopmentAppEnv(undefined), false);
+  assert.equal(isDevelopmentAppEnv(""), false);
+  assert.equal(isDevelopmentAppEnv("production"), false);
+  assert.equal(isDevelopmentAppEnv("preview"), false);
+  assert.equal(isDevelopmentAppEnv("developmnet"), false);
+});
 
 test("enables the SMS skip when the flag is 'true' and the app environment is development, local or test", () => {
   assert.equal(isDevSkipSmsMfaEnabled("true", "development"), true);

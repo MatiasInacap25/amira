@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mockCatalogs } from "./support/catalog-fixtures";
 
 test.beforeEach(async ({ page }) => {
@@ -260,6 +260,8 @@ test("public provider profile shows real names and services, while quote request
   await page.getByLabel("Comuna de origen").selectOption("13101");
   await page.getByLabel("Región de destino").selectOption("05");
   await page.getByLabel("Comuna de destino").selectOption("05101");
+  await page.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await page.getByLabel("Dirección de destino", { exact: true }).fill("Av. Brasil 1");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Inicia sesión con un correo confirmado");
   await expect(page.getByRole("dialog").getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fprestadores%2Fprofile-test-1");
@@ -290,8 +292,8 @@ test("quote request uses commune codes for origin and destination and rejects pa
   const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
   await expect(dialog.getByLabel("Comuna de origen")).toBeDisabled();
   await expect(dialog.getByLabel("Comuna de destino")).toBeDisabled();
-  await expect(dialog.getByLabel("Dirección de origen (opcional)")).toBeVisible();
-  await expect(dialog.getByLabel("Fecha deseada")).toHaveAttribute("min", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  await expect(dialog.getByLabel("Dirección de origen", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Fecha deseada")).toHaveAttribute("min", /^\d{4}-\d{2}-\d{2}$/);
 
   await dialog.getByLabel("Servicio").selectOption("service-type-2");
   await dialog.getByLabel("Región de origen").selectOption("13");
@@ -299,13 +301,75 @@ test("quote request uses commune codes for origin and destination and rejects pa
   await dialog.getByLabel("Comuna de origen").selectOption("13114");
   await dialog.getByLabel("Región de destino").selectOption("05");
   await dialog.getByLabel("Comuna de destino").selectOption("05101");
-  await dialog.getByLabel("Dirección de origen (opcional)").fill("Av. Matta 123");
-  await dialog.getByLabel("Fecha deseada").fill("2020-01-01T10:00");
+  await dialog.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Fecha deseada").fill("2020-01-01");
+  await dialog.getByLabel("Hora deseada").fill("10:00");
   const underflow = await dialog.getByLabel("Fecha deseada").evaluate((element) => (element as HTMLInputElement).validity.rangeUnderflow);
   expect(underflow).toBe(true);
   await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await expect(dialog.getByRole("heading", { name: "Cuéntanos qué necesitas" })).toBeVisible();
+});
+
+test("quote request makes origin and destination addresses required and drops the measures field", async ({ page }) => {
+  await page.route("**/api/providers/profile-required", async (route) => route.fulfill({ json: {
+    profileId: "profile-required",
+    providerName: "Fletes Norte",
+    kind: "independent_driver",
+    description: null,
+    location: "Valparaíso",
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [{ serviceTypeId: "service-type-3", name: "Fletes" }],
+    vehicles: [],
+  } }));
+  await page.goto("/prestadores/profile-required");
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await expect(dialog.getByLabel("Dirección de origen", { exact: true })).toHaveAttribute("required", "");
+  await expect(dialog.getByLabel("Dirección de destino", { exact: true })).toHaveAttribute("required", "");
+  await expect(dialog.getByLabel("Peso estimado (kg) (opcional)")).toBeVisible();
+  await expect(dialog.getByLabel("Volumen estimado (m³) (opcional)")).toBeVisible();
+  await expect(dialog.getByLabel("Medidas de la carga")).toHaveCount(0);
+});
+
+test("quote request requires date and time together and allows both empty", async ({ page }) => {
+  await page.route("**/api/providers/profile-schedule", async (route) => route.fulfill({ json: {
+    profileId: "profile-schedule",
+    providerName: "Fletes Sur",
+    kind: "independent_driver",
+    description: null,
+    location: "Valparaíso",
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [{ serviceTypeId: "service-type-4", name: "Fletes" }],
+    vehicles: [],
+  } }));
+  await page.goto("/prestadores/profile-schedule");
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await dialog.getByLabel("Servicio").selectOption("service-type-4");
+  await dialog.getByLabel("Región de origen").selectOption("13");
+  await dialog.getByLabel("Comuna de origen").selectOption("13114");
+  await dialog.getByLabel("Región de destino").selectOption("05");
+  await dialog.getByLabel("Comuna de destino").selectOption("05101");
+  await dialog.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Dirección de destino", { exact: true }).fill("Av. Brasil 1");
+
+  await dialog.getByLabel("Fecha deseada").fill("2099-01-15");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(dialog.locator("#quote-schedule-error")).toHaveText("Indica la fecha y la hora deseadas, o deja ambas vacías.");
+
+  await dialog.getByLabel("Fecha deseada").fill("");
+  await dialog.getByLabel("Hora deseada").fill("10:00");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(dialog.locator("#quote-schedule-error")).toHaveText("Indica la fecha y la hora deseadas, o deja ambas vacías.");
+
+  await dialog.getByLabel("Hora deseada").fill("");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(dialog.locator("#quote-schedule-error")).toHaveCount(0);
 });
 
 test("provider profile skip target remains available while loading, failed, and retrying", async ({ page }) => {
@@ -491,4 +555,243 @@ test("mobile landing navigation exposes and opens the service and shared-route p
   await navigation.getByRole("link", { name: "Servicios" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
   await expect(page.getByRole("heading", { name: "Encuentra el servicio que necesitas." })).toBeVisible();
+});
+
+// Request photos: the customer attaches images in the quote modal and they upload after the request exists.
+const photoJpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64)]);
+const photoPng = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
+const imageProfileResponse = {
+  profileId: "profile-images",
+  providerName: "Fletes Centro",
+  kind: "independent_driver",
+  description: null,
+  location: "Valparaíso",
+  ownerName: "Alex Rojas",
+  drivers: [],
+  services: [{ serviceTypeId: "service-type-5", name: "Fletes" }],
+  vehicles: [],
+};
+
+async function openImageQuoteDialog(page: Page) {
+  await page.route("**/api/providers/profile-images", async (route) => route.fulfill({ json: imageProfileResponse }));
+  await page.goto("/prestadores/profile-images");
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
+  return page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+}
+
+async function fillRequiredQuote(dialog: ReturnType<Page["getByRole"]>) {
+  await dialog.getByLabel("Servicio").selectOption("service-type-5");
+  await dialog.getByLabel("Región de origen").selectOption("13");
+  await dialog.getByLabel("Comuna de origen").selectOption("13114");
+  await dialog.getByLabel("Región de destino").selectOption("05");
+  await dialog.getByLabel("Comuna de destino").selectOption("05101");
+  await dialog.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Dirección de destino", { exact: true }).fill("Av. Brasil 1");
+}
+
+const photoCustomer = {
+  id: "user-photo-1",
+  aud: "authenticated",
+  role: "authenticated",
+  email: "persona@example.test",
+  email_confirmed_at: "2026-10-01T12:00:00.000Z",
+  confirmed_at: "2026-10-01T12:00:00.000Z",
+  app_metadata: { provider: "email", providers: ["email"] },
+  user_metadata: {},
+  created_at: "2026-10-01T11:00:00.000Z",
+};
+const photoSmsFactor = { id: "factor-sms-photo", factor_type: "phone", status: "verified", phone: "+56912345678" };
+
+function photoSession(aal: "aal1" | "aal2", tokenId: string) {
+  const payload = Buffer.from(JSON.stringify({ aal, exp: 2000000000, sub: photoCustomer.id })).toString("base64url");
+  return {
+    access_token: `eyJhbGciOiJub25lIn0.${payload}.${tokenId}`,
+    token_type: "bearer",
+    expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    refresh_token: "refresh-test-token",
+    user: photoCustomer,
+  };
+}
+
+async function signInAsPhotoCustomer(page: Page) {
+  await page.route("**/auth/v1/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname.replace("/auth/v1", "");
+    const method = request.method();
+    if (path === "/token" && url.searchParams.get("grant_type") === "password") {
+      await route.fulfill({ json: photoSession("aal1", "password-aal1-photo") });
+      return;
+    }
+    if (path === "/user" && method === "GET") {
+      await route.fulfill({ json: { ...photoCustomer, factors: [photoSmsFactor] } });
+      return;
+    }
+    if (path === "/factors" && method === "GET") {
+      await route.fulfill({ json: { all: [photoSmsFactor], phone: [photoSmsFactor], totp: [] } });
+      return;
+    }
+    if (path === "/factors/factor-sms-photo/challenge" && method === "POST") {
+      await route.fulfill({ json: { id: "challenge-photo", expires_at: Date.now() + 300000 } });
+      return;
+    }
+    if (path === "/factors/factor-sms-photo/verify" && method === "POST") {
+      await route.fulfill({ json: photoSession("aal2", "verified-aal2-photo") });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { msg: `Unexpected fake Auth request: ${method} ${path}` } });
+  });
+  await page.route("**/api/account/me", async (route) => route.fulfill({ json: { user_id: "account-photo-1", role: "client", profile_id: null } }));
+  await page.goto("/login?next=%2Fprestadores%2Fprofile-images");
+  await page.locator("#auth-email").fill(photoCustomer.email);
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.locator("form.auth-form button[type=submit]").click();
+  await page.locator("#auth-code").fill("246810");
+  await page.locator("form.auth-form button[type=submit]").click();
+  await expect(page).toHaveURL(/\/prestadores\/profile-images$/);
+}
+
+test("quote modal attaches photos with a preview and lets the customer remove one", async ({ page }) => {
+  const dialog = await openImageQuoteDialog(page);
+
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles([
+    { name: "mueble.jpg", mimeType: "image/jpeg", buffer: photoJpeg },
+    { name: "caja.png", mimeType: "image/png", buffer: photoPng },
+  ]);
+  await expect(dialog.getByRole("img", { name: "Vista previa de la foto 1" })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: "Vista previa de la foto 2" })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Quitar la foto 1" }).click();
+  await expect(dialog.getByRole("img", { name: "Vista previa de la foto 1" })).toHaveCount(1);
+  await expect(dialog.getByRole("img", { name: "Vista previa de la foto 2" })).toHaveCount(0);
+});
+
+test("quote modal refuses non-image and oversize photos in Spanish and caps the count at five", async ({ page }) => {
+  const dialog = await openImageQuoteDialog(page);
+
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles([
+    { name: "notas.jpg", mimeType: "text/plain", buffer: Buffer.from("no es una imagen") },
+  ]);
+  await expect(dialog.getByRole("alert").filter({ hasText: "Solo puedes adjuntar fotos en formato JPEG, PNG o WebP." })).toBeVisible();
+
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles([
+    { name: "grande.jpg", mimeType: "image/jpeg", buffer: Buffer.concat([photoJpeg, Buffer.alloc(5 * 1024 * 1024)]) },
+  ]);
+  await expect(dialog.getByRole("alert").filter({ hasText: "La foto no puede superar los 5 MB." })).toBeVisible();
+
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles(
+    Array.from({ length: 6 }, (_, index) => ({ name: `foto-${index}.jpg`, mimeType: "image/jpeg", buffer: photoJpeg })),
+  );
+  await expect(dialog.getByRole("alert").filter({ hasText: "Puedes adjuntar hasta 5 fotos por solicitud." })).toBeVisible();
+  // The first five are kept; only the sixth is refused.
+  await expect(dialog.getByRole("img", { name: /Vista previa de la foto/ })).toHaveCount(5);
+});
+
+test("after the request is created each photo is uploaded to that request", async ({ page }) => {
+  const uploads: string[] = [];
+  let created = 0;
+  await page.route("**/api/service-requests", async (route) => {
+    created += 1;
+    await route.fulfill({ status: 201, json: { requestId: "request-img-1", status: "pending" } });
+  });
+  await page.route("**/api/requests/request-img-1/images", async (route) => {
+    uploads.push(route.request().method());
+    await route.fulfill({ status: 201, json: { imageId: `image-${uploads.length}` } });
+  });
+  await signInAsPhotoCustomer(page);
+  const dialog = await openImageQuoteDialog(page);
+  await fillRequiredQuote(dialog);
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles([
+    { name: "mueble.jpg", mimeType: "image/jpeg", buffer: photoJpeg },
+    { name: "caja.png", mimeType: "image/png", buffer: photoPng },
+  ]);
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Solicitud enviada" })).toBeVisible();
+  expect(created).toBe(1);
+  expect(uploads).toEqual(["POST", "POST"]);
+});
+
+test("a failed photo upload keeps the request sent and says some photos were not attached", async ({ page }) => {
+  let created = 0;
+  await page.route("**/api/service-requests", async (route) => {
+    created += 1;
+    await route.fulfill({ status: 201, json: { requestId: "request-img-2", status: "pending" } });
+  });
+  await page.route("**/api/requests/request-img-2/images", async (route) => {
+    await route.fulfill({ status: 502, json: { detail: "The request photo could not be stored. Try again." } });
+  });
+  await signInAsPhotoCustomer(page);
+  const dialog = await openImageQuoteDialog(page);
+  await fillRequiredQuote(dialog);
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles([
+    { name: "mueble.jpg", mimeType: "image/jpeg", buffer: photoJpeg },
+  ]);
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Solicitud enviada" })).toBeVisible();
+  await expect(dialog.getByRole("alert")).toHaveText("La solicitud se envió, pero no pudimos adjuntar algunas fotos.");
+  expect(created).toBe(1);
+});
+
+test("the close button cannot dismiss the dialog while photos are uploading, and the notice still appears", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/service-requests", async (route) => route.fulfill({ status: 201, json: { requestId: "request-close-1", status: "pending" } }));
+  await page.route("**/api/requests/request-close-1/images", async (route) => {
+    await gate;
+    await route.fulfill({ status: 502, json: { detail: "The request photo could not be stored. Try again." } });
+  });
+  await signInAsPhotoCustomer(page);
+  const dialog = await openImageQuoteDialog(page);
+  await fillRequiredQuote(dialog);
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles([{ name: "mueble.jpg", mimeType: "image/jpeg", buffer: photoJpeg }]);
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  const close = dialog.getByRole("button", { name: "Cerrar solicitud" });
+  await expect(close).toBeDisabled();
+  await expect(dialog).toBeVisible();
+
+  release();
+  await expect(dialog.getByRole("alert")).toHaveText("La solicitud se envió, pero no pudimos adjuntar algunas fotos.");
+  await expect(dialog).toBeVisible();
+  await expect(close).toBeEnabled();
+});
+
+test("the Escape key cannot dismiss the dialog while photos are uploading, and the notice still appears", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/service-requests", async (route) => route.fulfill({ status: 201, json: { requestId: "request-escape-1", status: "pending" } }));
+  await page.route("**/api/requests/request-escape-1/images", async (route) => {
+    await gate;
+    await route.fulfill({ status: 502, json: { detail: "The request photo could not be stored. Try again." } });
+  });
+  await signInAsPhotoCustomer(page);
+  const dialog = await openImageQuoteDialog(page);
+  await fillRequiredQuote(dialog);
+  await dialog.getByLabel("Fotos de la carga (opcional)").setInputFiles([{ name: "mueble.jpg", mimeType: "image/jpeg", buffer: photoJpeg }]);
+  const imageUpload = page.waitForRequest("**/api/requests/request-escape-1/images");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await imageUpload;
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+
+  release();
+  await expect(dialog.getByRole("alert")).toHaveText("La solicitud se envió, pero no pudimos adjuntar algunas fotos.");
+  await expect(dialog).toBeVisible();
+});
+
+test("when idle the dialog closes with the close button and with Escape", async ({ page }) => {
+  const dialog = await openImageQuoteDialog(page);
+  await expect(dialog).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cerrar solicitud" }).click();
+  await expect(dialog).toBeHidden();
 });

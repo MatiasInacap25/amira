@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -84,8 +85,8 @@ export default function PanelPage() {
     return (
       <PanelShell>
         <nav aria-label="Acciones del conductor">
-          <ul className="account-service-list">
-            <li><Link className="button button-secondary" href="/cuenta/perfil">Mi perfil</Link></li>
+          <ul className="panel-action-list">
+            <li><Link className="panel-action" href="/cuenta/perfil">Mi perfil <ArrowRight aria-hidden="true" size={16} /></Link></li>
           </ul>
         </nav>
         <ProviderServicesBody />
@@ -97,12 +98,12 @@ export default function PanelPage() {
     return (
       <PanelShell>
         <nav aria-label="Acciones del proveedor">
-          <ul className="account-service-list">
-            <li><Link className="button button-secondary" href="/mensajes">Mensajes</Link></li>
-            <li><Link className="button button-secondary" href="/cuenta/servicios">Servicios</Link></li>
-            <li><Link className="button button-secondary" href="/cuenta/perfil">Configuración del perfil</Link></li>
+          <ul className="panel-action-list">
+            <li><Link className="panel-action" href="/mensajes">Mensajes <ArrowRight aria-hidden="true" size={16} /></Link></li>
+            <li><Link className="panel-action" href="/cuenta/servicios">Servicios <ArrowRight aria-hidden="true" size={16} /></Link></li>
+            <li><Link className="panel-action" href="/cuenta/perfil">Configuración del perfil <ArrowRight aria-hidden="true" size={16} /></Link></li>
             {role === "company_owner" && (
-              <li><Link className="button button-secondary" href="/cuenta/invitaciones">Invitaciones</Link></li>
+              <li><Link className="panel-action" href="/cuenta/invitaciones">Invitaciones <ArrowRight aria-hidden="true" size={16} /></Link></li>
             )}
           </ul>
         </nav>

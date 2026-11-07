@@ -155,7 +155,7 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
                   <time dateTime={entry.sentAt}>{timeFormatter.format(new Date(entry.sentAt))}</time>
                 </li>
               ) : (
-                <li className="chat-timeline-quotation" key={entry.quotation.quotationId}>
+                <li className={viewerRole === "provider" ? "chat-timeline-quotation chat-timeline-quotation--own" : "chat-timeline-quotation"} key={entry.quotation.quotationId}>
                   <ChatQuotationCard onChanged={refreshThread} quotation={entry.quotation} viewerRole={viewerRole ?? "customer"} />
                 </li>
               ))}
@@ -167,6 +167,7 @@ export function ChatThreadView({ chatId }: { chatId: string }) {
             <QuotationDialog
               chatId={chatId}
               onClose={() => setQuotationOpen(false)}
+              serviceName={chat?.serviceName ?? ""}
               onCreated={refreshThread}
             />
           )}

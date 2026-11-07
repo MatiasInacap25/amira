@@ -340,3 +340,32 @@ test("request detail fits a phone-width viewport without horizontal page scroll"
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+const detailPhotoPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
+
+test("provider sees the customer's photos in the request detail, with alt text", async ({ page }) => {
+  await mockProviderRequest(page, async (route) => route.fulfill({ json: providerRequest() }));
+  await page.route("**/api/requests/request-provider-1/images", async (route) => route.fulfill({ json: { items: [
+    { imageId: "image-1", url: "https://storage.example.test/request-1.png?token=signed", expiresAt: "2026-10-01T12:05:00Z" },
+    { imageId: "image-2", url: "https://storage.example.test/request-2.png?token=signed", expiresAt: "2026-10-01T12:05:00Z" },
+  ] } }));
+  await page.route("https://storage.example.test/**", async (route) => route.fulfill({ body: detailPhotoPng, contentType: "image/png" }));
+  await signInAsSmsVerifiedProvider(page);
+
+  await expect(page.getByRole("img", { name: "Foto 1 de la solicitud" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Foto 2 de la solicitud" })).toBeVisible();
+  await expect(page.locator(".provider-request-photos img")).toHaveCount(2);
+});
+
+test("a failed photo list leaves the rest of the request detail visible", async ({ page }) => {
+  await mockProviderRequest(page, async (route) => route.fulfill({ json: providerRequest() }));
+  await page.route("**/api/requests/request-provider-1/images", async (route) => route.fulfill({ status: 500, json: { detail: "Internal error" } }));
+  await signInAsSmsVerifiedProvider(page);
+
+  await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aceptar y abrir chat" })).toBeEnabled();
+  await expect(page.getByRole("img", { name: /Foto \d de la solicitud/ })).toHaveCount(0);
+});

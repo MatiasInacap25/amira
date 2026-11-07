@@ -26,7 +26,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
 import { ChatNotifications } from "@/components/marketplace/chat-notifications";
 import { ProfileMenu, useSignOut } from "@/components/marketplace/profile-menu";
-import { useNavUserId, useProviderNavAccountScope } from "@/components/marketplace/site-navigation";
+import { useNavAccountRole, useNavUserId, useProviderNavAccountScope, usesPanelNavigation } from "@/components/marketplace/site-navigation";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { getServiceTypes } from "@/lib/marketplace-api";
 
@@ -187,6 +187,7 @@ export default function HomePage() {
   const router = useRouter();
   // The landing page has no chat nav, but signed-in visitors still get the in-app chat toasts.
   const { userId, pending } = useNavUserId();
+  const panelNav = usesPanelNavigation(useNavAccountRole());
   // The landing page does not mount MarketplaceHeader, so it needs the same account-scope listener here.
   useProviderNavAccountScope();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -236,9 +237,9 @@ export default function HomePage() {
         <div className="header-inner">
           <Brand />
           <nav aria-label="Navegación principal" className="desktop-nav">
-          <Link className="button button-secondary header-nav-button" href="/servicios">Buscar servicios</Link>
-          <Link className="button button-secondary header-nav-button" href="/rutas-compartidas">Rutas compartidas</Link>
-            <a href="#como-funciona">Cómo funciona</a>
+            {!panelNav && <Link className="button button-secondary header-nav-button" href="/servicios">Buscar servicios</Link>}
+            {!panelNav && <Link className="button button-secondary header-nav-button" href="/rutas-compartidas">Rutas compartidas</Link>}
+            {!panelNav && <a href="#como-funciona">Cómo funciona</a>}
             <a href="#empresas">Empresas</a>
             <a href="#transportistas">Para transportistas</a>
           </nav>
@@ -266,9 +267,9 @@ export default function HomePage() {
         </div>
         {mobileMenuOpen && (
           <nav aria-label="Navegación móvil" className="mobile-nav" id="mobile-navigation">
-            <Link className="header-nav-button" href="/servicios" onClick={() => setMobileMenuOpen(false)}>Buscar servicios</Link>
-            <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMobileMenuOpen(false)}>Rutas compartidas</Link>
-            <a href="#como-funciona" onClick={() => setMobileMenuOpen(false)}>Cómo funciona</a>
+            {!panelNav && <Link className="header-nav-button" href="/servicios" onClick={() => setMobileMenuOpen(false)}>Buscar servicios</Link>}
+            {!panelNav && <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMobileMenuOpen(false)}>Rutas compartidas</Link>}
+            {!panelNav && <a href="#como-funciona" onClick={() => setMobileMenuOpen(false)}>Cómo funciona</a>}
             <a href="#empresas" onClick={() => setMobileMenuOpen(false)}>Empresas</a>
             <a href="#transportistas" onClick={() => setMobileMenuOpen(false)}>Para transportistas</a>
             {!pending && (userId ? (

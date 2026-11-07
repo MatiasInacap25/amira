@@ -130,18 +130,13 @@ class ServiceRequestCreate(BaseModel):
     service_type_id: UUID
     origin_commune_code: str = Field(pattern=r"^\d{5}$")
     destination_commune_code: str = Field(pattern=r"^\d{5}$")
-    origin: str | None = Field(default=None, max_length=300)
-    destination: str | None = Field(default=None, max_length=300)
+    origin: str = Field(min_length=1, max_length=300)
+    destination: str = Field(min_length=1, max_length=300)
     requested_at: datetime | None = None
     estimated_weight: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     estimated_volume: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=3)
     description: str | None = Field(default=None, max_length=4000)
     cargo_measurements: str | None = Field(default=None, max_length=2000)
-
-    @field_validator("origin", "destination")
-    @classmethod
-    def blank_street_address_is_absent(cls, value: str | None) -> str | None:
-        return value or None
 
     @field_validator("requested_at")
     @classmethod
