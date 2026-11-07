@@ -137,6 +137,15 @@ Optional settings and defaults: `CHAT_ATTACHMENTS_BUCKET` (`chat-attachments`), 
 
 Timeline message entries carry `attachment: {contentType, sizeBytes} | null`. The chat list shows `Foto` as the preview when the last message has no text and an attachment.
 
+### Request images (private Supabase Storage bucket)
+
+The customer can attach up to 5 images (JPEG, PNG or WebP) to a service request, for example from the quote modal. The bytes are stored in a private bucket and read back only through short-lived signed URLs. Create the bucket once per Supabase project: in the dashboard, open Storage and create a bucket named `request-images`, with **Public** switched off, then set `REQUEST_IMAGES_BUCKET=request-images` in the backend environment. The bucket name has no default: when `REQUEST_IMAGES_BUCKET` is unset or blank, the endpoints answer 503 and write nothing. It uses the same `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as the other buckets.
+
+Optional settings and defaults: `REQUEST_IMAGE_URL_TTL_SECONDS` (300). The size cap is the chat one, `CHAT_ATTACHMENT_MAX_BYTES` (5 MiB).
+
+- `POST /api/requests/{requestId}/images`: multipart with a required `photo`. Only the customer who owns the request may upload; other callers get 404. The type is detected from the bytes. An oversize photo gets 413, another type 415, and a sixth image 409. The count is checked under the request's row lock. The object is stored under `requests/{requestId}/{imageId}.{ext}` with a server-generated id, never the client's filename. If the database write fails, the object is deleted. The response is `{imageId}`.
+- `GET /api/requests/{requestId}/images`: returns `{items: [{imageId, url, expiresAt}]}`. The owning customer, and exactly the providers who can open `GET /api/provider/requests/{requestId}`, may read it. Anyone else gets the same response that route gives them.
+
 ### Unread counts
 
 Each participant has a read time, `Chat_participantes.Ultima_Lectura` (migration `20261019_0002`, default `now()`, so existing chats start read). A message is unread for a participant when another participant sent it after that time; the caller's own messages and quotations never count.
