@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Flujo del usuario cliente en Amira",
+    "locale": "es",
+    "output": ".archify/sequence-flujo-cliente-20261102-191957/flujo-cliente.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/MatiasInacap25/amira.git",
+      "revision": "35a8ab0916730222ff3187b8b083d35ec8e81c17"
+    }
+  },
+  "participants": [
+    { "id": "cliente", "type": "external", "label": "Cliente", "sublabel": "navegador", "icon": "person" },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web Next.js",
+      "sublabel": "marketplace-api.ts",
+      "sources": [
+        { "path": "frontend/src/lib/marketplace-api.ts", "line": 299, "end_line": 310, "label": "createServiceRequest" },
+        { "path": "frontend/src/lib/marketplace-api.ts", "line": 600, "end_line": 640, "label": "pago y pago simulado" }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Supabase Auth",
+      "sublabel": "contraseña + SMS",
+      "sources": [
+        { "path": "backend/src/amira_api/auth.py", "line": 110, "end_line": 165, "label": "verifica JWT y AAL" }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API FastAPI",
+      "sublabel": "routers + servicios",
+      "sources": [
+        { "path": "backend/src/amira_api/account_routes.py", "line": 36, "end_line": 40, "label": "provision" },
+        { "path": "backend/src/amira_api/public_routes.py", "line": 198, "end_line": 250, "label": "service-requests" },
+        { "path": "backend/src/amira_api/payment_routes.py", "line": 153, "end_line": 230, "label": "pagos" }
+      ]
+    },
+    {
+      "id": "sim",
+      "type": "cloud",
+      "label": "Pago simulado",
+      "sublabel": "adaptador demo",
+      "sources": [
+        { "path": "backend/src/amira_api/simulated_payment_provider.py", "line": 23, "end_line": 68, "label": "SimulatedPaymentProvider" }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "Postgres",
+      "sublabel": "Supabase",
+      "sources": [
+        { "path": "backend/src/amira_api/public_routes.py", "line": 482, "end_line": 482, "label": "INSERT Chat" },
+        { "path": "backend/src/amira_api/payment_service.py", "line": 99, "end_line": 175, "label": "confirm_payment" }
+      ]
+    },
+    {
+      "id": "proveedor",
+      "type": "external",
+      "label": "Proveedor",
+      "sublabel": "su panel",
+      "icon": "briefcase",
+      "sources": [
+        { "path": "backend/src/amira_api/public_routes.py", "line": 445, "end_line": 497, "label": "acepta la solicitud" },
+        { "path": "backend/src/amira_api/quotation_routes.py", "line": 26, "end_line": 30, "label": "crea cotización" }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 315, "label": "Registro y SMS" },
+    { "from": 322, "to": 468, "label": "Búsqueda y solicitud" },
+    { "from": 475, "to": 612, "label": "Chat y cotización" },
+    { "from": 619, "to": 962, "label": "Pago simulado" },
+    { "from": 969, "to": 1030, "label": "Después del servicio" }
+  ],
+  "messages": [
+    { "id": "signup", "from": "cliente", "to": "web", "y": 160, "label": "se registra e ingresa el código SMS" },
+    { "id": "mfa", "from": "web", "to": "auth", "y": 190, "label": "signUp + verificación SMS", "variant": "security" },
+    { "id": "aal2", "from": "auth", "to": "web", "y": 220, "label": "sesión AAL2", "variant": "return" },
+    { "id": "provision", "from": "web", "to": "api", "y": 250, "label": "POST /api/account/provision", "variant": "security", "note": "La API verifica el JWT de Supabase y crea el Usuario cliente." },
+    { "id": "insert-user", "from": "api", "to": "db", "y": 305, "label": "INSERT Usuario" },
+    { "id": "browse", "from": "cliente", "to": "web", "y": 335, "label": "busca en /servicios" },
+    { "id": "list-services", "from": "web", "to": "api", "y": 365, "label": "GET /api/services" },
+    { "id": "providers", "from": "api", "to": "web", "y": 395, "label": "proveedores publicados", "variant": "return" },
+    { "id": "request", "from": "web", "to": "api", "y": 425, "label": "POST /api/service-requests", "variant": "emphasis" },
+    { "id": "insert-request", "from": "api", "to": "db", "y": 455, "label": "INSERT FormularioServicio" },
+    { "id": "accept", "from": "proveedor", "to": "api", "y": 485, "label": "acepta la solicitud", "note": "Al aceptar se abre el chat del pedido." },
+    { "id": "insert-chat", "from": "api", "to": "db", "y": 540, "label": "INSERT Chat" },
+    { "id": "quote", "from": "proveedor", "to": "api", "y": 570, "label": "POST /chats/{id}/quotations" },
+    { "id": "quote-shown", "from": "api", "to": "web", "y": 600, "label": "cotización en el chat", "variant": "return" },
+    { "id": "pay-click", "from": "cliente", "to": "web", "y": 630, "label": "Pagar" },
+    { "id": "start-payment", "from": "web", "to": "api", "y": 660, "label": "POST /quotations/{id}/payments", "variant": "emphasis" },
+    { "id": "checkout", "from": "api", "to": "sim", "y": 690, "label": "checkout_url firmado" },
+    { "id": "checkout-url", "from": "sim", "to": "api", "y": 720, "label": "URL /pagos/simulado", "variant": "return" },
+    { "id": "redirect", "from": "api", "to": "web", "y": 750, "label": "payment_id + checkout_url", "variant": "return" },
+    { "id": "approve", "from": "cliente", "to": "web", "y": 780, "label": "aprueba en /pagos/simulado" },
+    { "id": "complete", "from": "web", "to": "api", "y": 810, "label": "POST /payments/simulated/{id}/complete", "variant": "security", "note": "Verifica y consume el token del enlace, y firma la confirmación." },
+    { "id": "persist", "from": "api", "to": "db", "y": 865, "label": "Pago approved · Cotización paid · Servicio confirmed", "variant": "emphasis", "note": "Las otras cotizaciones pendientes pasan a superseded." },
+    { "id": "result", "from": "api", "to": "web", "y": 920, "label": "resultado del pago", "variant": "return" },
+    { "id": "result-page", "from": "web", "to": "cliente", "y": 950, "label": "/pagos/resultado", "variant": "return" },
+    { "id": "after", "from": "cliente", "to": "web", "y": 980, "label": "consentimiento, reclamo o calificación" },
+    { "id": "after-api", "from": "web", "to": "api", "y": 1010, "label": "POST /services/{id}/consent · claims · rating" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Seguridad",
+      "items": [
+        "Supabase Auth maneja contraseña y SMS; la API solo verifica el JWT",
+        "Los endpoints del cliente exigen una sesión verificada (AAL2)",
+        "Solo el cliente dueño puede pagar la cotización"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Pago simulado",
+      "items": [
+        "El adaptador solo corre con APP_ENV development, local o test",
+        "El enlace de pago se usa una sola vez",
+        "Reintentar con el mismo token no crea un segundo Servicio"
+      ]
+    }
+  ]
+}
