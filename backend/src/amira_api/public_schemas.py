@@ -137,6 +137,7 @@ class ServiceRequestCreate(BaseModel):
     estimated_volume: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=3)
     description: str | None = Field(default=None, max_length=4000)
     cargo_measurements: str | None = Field(default=None, max_length=2000)
+    accepts_sharing: bool = False
 
     @field_validator("requested_at")
     @classmethod

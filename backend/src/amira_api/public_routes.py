@@ -261,7 +261,7 @@ def create_service_request(
         status="pending",
         description=payload.description,
         customer_id=customer_id,
-        is_exclusive=False,
+        is_exclusive=not payload.accepts_sharing,
         cargo_measurements=payload.cargo_measurements,
     )
     session.add(request)

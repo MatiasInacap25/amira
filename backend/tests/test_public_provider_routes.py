@@ -421,9 +421,57 @@ def test_quote_request_uses_server_account_actor_and_creates_only_request():
     assert created.destination_commune_code == "05101"
     assert created.status == "pending"
     assert created.requested_trip_id is None
-    assert created.is_exclusive is False
+    assert created.is_exclusive is True
     assert "chat" not in response.text.lower()
     assert "quote" not in response.text.lower()
+
+
+LEGACY_QUOTE_BODY = {
+    "profileId": str(PROFILE_ID),
+    "serviceTypeId": str(SERVICE_TYPE_ID),
+    "origin": "Santiago",
+    "destination": "Valparaíso",
+    "originCommuneCode": "13101",
+    "destinationCommuneCode": "05101",
+}
+
+
+def _quote_session():
+    return FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(scalar=SERVICE_TYPE_ID),
+        FakeResult(rows=[("13101",), ("05101",)]),
+    ])
+
+
+def test_quote_request_payload_without_sharing_field_still_returns_201():
+    session = _quote_session()
+
+    response = run_request("POST", "/api/service-requests", session, json_body=LEGACY_QUOTE_BODY)
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending"
+    assert session.committed
+
+
+def test_quote_request_without_sharing_field_stores_an_exclusive_request():
+    session = _quote_session()
+
+    response = run_request("POST", "/api/service-requests", session, json_body=LEGACY_QUOTE_BODY)
+
+    assert response.status_code == 201
+    assert len(session.added) == 1
+    assert session.added[0].is_exclusive is True
+
+
+def test_quote_request_accepting_sharing_stores_a_shareable_request():
+    session = _quote_session()
+
+    response = run_request("POST", "/api/service-requests", session, json_body=LEGACY_QUOTE_BODY | {"acceptsSharing": True})
+
+    assert response.status_code == 201
+    assert len(session.added) == 1
+    assert session.added[0].is_exclusive is False
 
 
 @pytest.mark.parametrize("field", ["origin", "destination"])

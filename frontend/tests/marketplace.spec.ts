@@ -713,6 +713,40 @@ test("after the request is created each photo is uploaded to that request", asyn
   expect(uploads).toEqual(["POST", "POST"]);
 });
 
+test("quote modal sends acceptsSharing false when the customer leaves the sharing choice as it comes", async ({ page }) => {
+  const bodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/service-requests", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { requestId: "request-share-default", status: "pending" } });
+  });
+  await signInAsPhotoCustomer(page);
+  const dialog = await openImageQuoteDialog(page);
+  await expect(dialog.getByLabel("¿Aceptas compartir el vehículo con otro cliente?")).toHaveValue("false");
+  await fillRequiredQuote(dialog);
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Solicitud enviada" })).toBeVisible();
+  expect(bodies).toHaveLength(1);
+  expect(bodies[0]).toMatchObject({ acceptsSharing: false });
+});
+
+test("quote modal sends acceptsSharing true when the customer chooses Sí", async ({ page }) => {
+  const bodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/service-requests", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { requestId: "request-share-yes", status: "pending" } });
+  });
+  await signInAsPhotoCustomer(page);
+  const dialog = await openImageQuoteDialog(page);
+  await dialog.getByLabel("¿Aceptas compartir el vehículo con otro cliente?").selectOption("true");
+  await fillRequiredQuote(dialog);
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Solicitud enviada" })).toBeVisible();
+  expect(bodies).toHaveLength(1);
+  expect(bodies[0]).toMatchObject({ acceptsSharing: true });
+});
+
 test("a failed photo upload keeps the request sent and says some photos were not attached", async ({ page }) => {
   let created = 0;
   await page.route("**/api/service-requests", async (route) => {

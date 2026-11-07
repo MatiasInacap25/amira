@@ -204,6 +204,7 @@ export type ServiceRequestInput = {
   estimatedVolume: string | null;
   description: string | null;
   cargoMeasurements: string | null;
+  acceptsSharing: boolean;
 };
 
 export type ProviderRequest = {
