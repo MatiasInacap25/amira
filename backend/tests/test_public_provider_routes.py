@@ -426,6 +426,63 @@ def test_quote_request_uses_server_account_actor_and_creates_only_request():
     assert "quote" not in response.text.lower()
 
 
+@pytest.mark.parametrize("field", ["origin", "destination"])
+def test_quote_request_requires_street_address(field):
+    session = FakeSession([FakeResult(row=(ACCOUNT_ID, "client"))])
+    body = {
+        "profileId": str(PROFILE_ID),
+        "serviceTypeId": str(SERVICE_TYPE_ID),
+        "origin": "Santiago",
+        "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101",
+    }
+    del body[field]
+
+    response = run_request("POST", "/api/service-requests", session, json_body=body)
+
+    assert response.status_code == 422
+    assert session.added == []
+    assert not session.committed
+
+
+@pytest.mark.parametrize("field", ["origin", "destination"])
+def test_quote_request_rejects_blank_street_address(field):
+    session = FakeSession([FakeResult(row=(ACCOUNT_ID, "client"))])
+    body = {
+        "profileId": str(PROFILE_ID),
+        "serviceTypeId": str(SERVICE_TYPE_ID),
+        "origin": "Santiago",
+        "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101",
+    }
+    body[field] = "   "
+
+    response = run_request("POST", "/api/service-requests", session, json_body=body)
+
+    assert response.status_code == 422
+    assert session.added == []
+    assert not session.committed
+
+
+def test_quote_request_accepts_omitted_weight_volume_and_requested_at():
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(scalar=SERVICE_TYPE_ID),
+        FakeResult(rows=[("13101",), ("05101",)]),
+    ])
+
+    response = run_request("POST", "/api/service-requests", session, json_body={
+        "profileId": str(PROFILE_ID),
+        "serviceTypeId": str(SERVICE_TYPE_ID),
+        "origin": "Santiago",
+        "destination": "Valparaíso", "originCommuneCode": "13101", "destinationCommuneCode": "05101",
+    })
+
+    assert response.status_code == 201
+    created = session.added[0]
+    assert created.estimated_weight is None
+    assert created.estimated_volume is None
+    assert created.requested_at is None
+
+
 @pytest.mark.parametrize("role", ["company_owner", "independent_driver", "company_driver", "demo_fixture"])
 def test_non_customer_roles_cannot_create_quote_requests(role):
     session = FakeSession([FakeResult(row=(ACCOUNT_ID, role))])
@@ -545,6 +602,8 @@ def test_company_driver_cannot_assign_services_or_act_as_provider_owner():
 BASE_QUOTE_BODY = {
     "profileId": str(PROFILE_ID),
     "serviceTypeId": str(SERVICE_TYPE_ID),
+    "origin": "Santiago",
+    "destination": "Valparaíso",
     "originCommuneCode": "13101",
     "destinationCommuneCode": "05101",
 }
@@ -569,21 +628,6 @@ def test_quote_request_validates_required_fields_and_rejects_client_controlled_a
     assert response.status_code == 422
     assert session.added == []
     assert not session.committed
-
-
-def test_quote_request_treats_blank_street_address_as_absent_and_keeps_commune_codes():
-    session = FakeSession([
-        FakeResult(row=(ACCOUNT_ID, "client")),
-        FakeResult(scalar=SERVICE_TYPE_ID),
-        FakeResult(rows=[("13101",), ("05101",)]),
-    ])
-
-    response = run_request("POST", "/api/service-requests", session, json_body={**BASE_QUOTE_BODY, "origin": "  "})
-
-    assert response.status_code == 201
-    created = session.added[0]
-    assert created.origin is None
-    assert created.origin_commune_code == "13101"
 
 
 def test_quote_request_rejects_commune_codes_missing_from_the_catalog_without_persisting():

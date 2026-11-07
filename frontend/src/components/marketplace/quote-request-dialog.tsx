@@ -21,11 +21,13 @@ function signInHref() {
   return `/login?next=${encodeURIComponent(next)}`;
 }
 
-// datetime-local expects local "YYYY-MM-DDTHH:mm" values; the browser compares them as local time.
-function localDateTimeNow(now = new Date()) {
+// date inputs expect local "YYYY-MM-DD" values; the browser compares them as local dates.
+function localDateToday(now = new Date()) {
   const pad = (value: number) => String(value).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
+
+const schedulePairingMessage = "Indica la fecha y la hora deseadas, o deja ambas vacías.";
 
 export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -36,6 +38,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
   const [serviceId, setServiceId] = useState(selectedServiceId);
   const [originLocation, setOriginLocation] = useState<RegionCommuneValue>(emptyLocation);
   const [destinationLocation, setDestinationLocation] = useState<RegionCommuneValue>(emptyLocation);
+  const [scheduleError, setScheduleError] = useState("");
   const selectedService = profile.services.find((service) => service.serviceTypeId === serviceId);
 
   useEffect(() => {
@@ -56,7 +59,14 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
       return;
     }
     const form = new FormData(event.currentTarget);
-    const requestedAt = String(form.get("requestedAt") ?? "");
+    const requestedDate = String(form.get("requestedDate") ?? "");
+    const requestedTime = String(form.get("requestedTime") ?? "");
+    if (Boolean(requestedDate) !== Boolean(requestedTime)) {
+      setScheduleError(schedulePairingMessage);
+      return;
+    }
+    setScheduleError("");
+    const requestedAt = requestedDate && requestedTime ? `${requestedDate}T${requestedTime}` : "";
     if (requestedAt && new Date(requestedAt).getTime() < Date.now()) {
       setError("La fecha deseada no puede estar en el pasado.");
       return;
@@ -68,13 +78,14 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
       serviceTypeId: selectedService.serviceTypeId,
       originCommuneCode: originLocation.communeCode,
       destinationCommuneCode: destinationLocation.communeCode,
-      origin: String(form.get("origin") ?? "").trim() || null,
-      destination: String(form.get("destination") ?? "").trim() || null,
+      origin: String(form.get("origin") ?? "").trim(),
+      destination: String(form.get("destination") ?? "").trim(),
       requestedAt: requestedAt ? new Date(requestedAt).toISOString() : null,
       estimatedWeight: weight || null,
       estimatedVolume: volume || null,
       description: String(form.get("description") ?? "").trim() || null,
-      cargoMeasurements: String(form.get("cargoMeasurements") ?? "").trim() || null,
+      // The measures input was removed; the API field stays for legacy rows.
+      cargoMeasurements: null,
     };
 
     setBusy(true);
@@ -157,7 +168,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
               required
               value={originLocation}
             />
-            <label className="marketplace-field" htmlFor="quote-origin-address"><span>Dirección de origen (opcional)</span><input autoComplete="street-address" id="quote-origin-address" maxLength={300} name="origin" /></label>
+            <label className="marketplace-field" htmlFor="quote-origin-address"><span>Dirección de origen</span><input autoComplete="street-address" id="quote-origin-address" maxLength={300} name="origin" required /></label>
             <RegionCommuneSelect
               communeLabel="Comuna de destino"
               idPrefix="quote-destination"
@@ -166,12 +177,13 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
               required
               value={destinationLocation}
             />
-            <label className="marketplace-field" htmlFor="quote-destination-address"><span>Dirección de destino (opcional)</span><input autoComplete="street-address" id="quote-destination-address" maxLength={300} name="destination" /></label>
-            <label className="marketplace-field" htmlFor="quote-date"><span>Fecha deseada</span><input id="quote-date" min={localDateTimeNow()} name="requestedAt" type="datetime-local" /></label>
-            <label className="marketplace-field" htmlFor="quote-weight"><span>Peso estimado (kg)</span><input id="quote-weight" min="0" name="estimatedWeight" step="0.01" type="number" /></label>
-            <label className="marketplace-field" htmlFor="quote-volume"><span>Volumen estimado (m³)</span><input id="quote-volume" min="0" name="estimatedVolume" step="0.001" type="number" /></label>
-            <label className="marketplace-field" htmlFor="quote-measurements"><span>Medidas de la carga</span><input id="quote-measurements" maxLength={2000} name="cargoMeasurements" /></label>
+            <label className="marketplace-field" htmlFor="quote-destination-address"><span>Dirección de destino</span><input autoComplete="street-address" id="quote-destination-address" maxLength={300} name="destination" required /></label>
+            <label className="marketplace-field" htmlFor="quote-date"><span>Fecha deseada</span><input aria-invalid={scheduleError ? true : undefined} id="quote-date" min={localDateToday()} name="requestedDate" onChange={() => setScheduleError("")} type="date" /></label>
+            <label className="marketplace-field" htmlFor="quote-time"><span>Hora deseada</span><input aria-invalid={scheduleError ? true : undefined} id="quote-time" name="requestedTime" onChange={() => setScheduleError("")} type="time" /></label>
+            <label className="marketplace-field" htmlFor="quote-weight"><span>Peso estimado (kg) (opcional)</span><input id="quote-weight" min="0" name="estimatedWeight" step="0.01" type="number" /></label>
+            <label className="marketplace-field" htmlFor="quote-volume"><span>Volumen estimado (m³) (opcional)</span><input id="quote-volume" min="0" name="estimatedVolume" step="0.001" type="number" /></label>
           </div>
+          {scheduleError && <p className="marketplace-field-error" id="quote-schedule-error" role="alert">{scheduleError}</p>}
           <label className="marketplace-field" htmlFor="quote-description"><span>Detalles de la solicitud</span><textarea id="quote-description" maxLength={4000} name="description" rows={4} /></label>
           {error && (
             <div className="quote-request-error" id="quote-request-error" role="alert">

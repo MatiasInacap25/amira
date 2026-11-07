@@ -191,6 +191,8 @@ test("signed-out visitor is asked to sign in before a quote request is sent", as
   await dialog.getByLabel("Comuna de origen").selectOption("13101");
   await dialog.getByLabel("Región de destino").selectOption("05");
   await dialog.getByLabel("Comuna de destino").selectOption("05101");
+  await dialog.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Dirección de destino", { exact: true }).fill("Av. Brasil 1");
   await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
 
   await expect(dialog.getByRole("alert")).toContainText("Inicia sesión con un correo confirmado");

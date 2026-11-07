@@ -260,6 +260,8 @@ test("public provider profile shows real names and services, while quote request
   await page.getByLabel("Comuna de origen").selectOption("13101");
   await page.getByLabel("Región de destino").selectOption("05");
   await page.getByLabel("Comuna de destino").selectOption("05101");
+  await page.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await page.getByLabel("Dirección de destino", { exact: true }).fill("Av. Brasil 1");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Inicia sesión con un correo confirmado");
   await expect(page.getByRole("dialog").getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fprestadores%2Fprofile-test-1");
@@ -290,8 +292,8 @@ test("quote request uses commune codes for origin and destination and rejects pa
   const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
   await expect(dialog.getByLabel("Comuna de origen")).toBeDisabled();
   await expect(dialog.getByLabel("Comuna de destino")).toBeDisabled();
-  await expect(dialog.getByLabel("Dirección de origen (opcional)")).toBeVisible();
-  await expect(dialog.getByLabel("Fecha deseada")).toHaveAttribute("min", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  await expect(dialog.getByLabel("Dirección de origen", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Fecha deseada")).toHaveAttribute("min", /^\d{4}-\d{2}-\d{2}$/);
 
   await dialog.getByLabel("Servicio").selectOption("service-type-2");
   await dialog.getByLabel("Región de origen").selectOption("13");
@@ -299,13 +301,75 @@ test("quote request uses commune codes for origin and destination and rejects pa
   await dialog.getByLabel("Comuna de origen").selectOption("13114");
   await dialog.getByLabel("Región de destino").selectOption("05");
   await dialog.getByLabel("Comuna de destino").selectOption("05101");
-  await dialog.getByLabel("Dirección de origen (opcional)").fill("Av. Matta 123");
-  await dialog.getByLabel("Fecha deseada").fill("2020-01-01T10:00");
+  await dialog.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Fecha deseada").fill("2020-01-01");
+  await dialog.getByLabel("Hora deseada").fill("10:00");
   const underflow = await dialog.getByLabel("Fecha deseada").evaluate((element) => (element as HTMLInputElement).validity.rangeUnderflow);
   expect(underflow).toBe(true);
   await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await expect(dialog.getByRole("heading", { name: "Cuéntanos qué necesitas" })).toBeVisible();
+});
+
+test("quote request makes origin and destination addresses required and drops the measures field", async ({ page }) => {
+  await page.route("**/api/providers/profile-required", async (route) => route.fulfill({ json: {
+    profileId: "profile-required",
+    providerName: "Fletes Norte",
+    kind: "independent_driver",
+    description: null,
+    location: "Valparaíso",
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [{ serviceTypeId: "service-type-3", name: "Fletes" }],
+    vehicles: [],
+  } }));
+  await page.goto("/prestadores/profile-required");
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await expect(dialog.getByLabel("Dirección de origen", { exact: true })).toHaveAttribute("required", "");
+  await expect(dialog.getByLabel("Dirección de destino", { exact: true })).toHaveAttribute("required", "");
+  await expect(dialog.getByLabel("Peso estimado (kg) (opcional)")).toBeVisible();
+  await expect(dialog.getByLabel("Volumen estimado (m³) (opcional)")).toBeVisible();
+  await expect(dialog.getByLabel("Medidas de la carga")).toHaveCount(0);
+});
+
+test("quote request requires date and time together and allows both empty", async ({ page }) => {
+  await page.route("**/api/providers/profile-schedule", async (route) => route.fulfill({ json: {
+    profileId: "profile-schedule",
+    providerName: "Fletes Sur",
+    kind: "independent_driver",
+    description: null,
+    location: "Valparaíso",
+    ownerName: "Alex Rojas",
+    drivers: [],
+    services: [{ serviceTypeId: "service-type-4", name: "Fletes" }],
+    vehicles: [],
+  } }));
+  await page.goto("/prestadores/profile-schedule");
+  await page.locator(".provider-profile-hero").getByRole("button", { name: "Cotizar", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Cuéntanos qué necesitas" });
+  await dialog.getByLabel("Servicio").selectOption("service-type-4");
+  await dialog.getByLabel("Región de origen").selectOption("13");
+  await dialog.getByLabel("Comuna de origen").selectOption("13114");
+  await dialog.getByLabel("Región de destino").selectOption("05");
+  await dialog.getByLabel("Comuna de destino").selectOption("05101");
+  await dialog.getByLabel("Dirección de origen", { exact: true }).fill("Av. Matta 123");
+  await dialog.getByLabel("Dirección de destino", { exact: true }).fill("Av. Brasil 1");
+
+  await dialog.getByLabel("Fecha deseada").fill("2099-01-15");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(dialog.locator("#quote-schedule-error")).toHaveText("Indica la fecha y la hora deseadas, o deja ambas vacías.");
+
+  await dialog.getByLabel("Fecha deseada").fill("");
+  await dialog.getByLabel("Hora deseada").fill("10:00");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(dialog.locator("#quote-schedule-error")).toHaveText("Indica la fecha y la hora deseadas, o deja ambas vacías.");
+
+  await dialog.getByLabel("Hora deseada").fill("");
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+  await expect(dialog.locator("#quote-schedule-error")).toHaveCount(0);
 });
 
 test("provider profile skip target remains available while loading, failed, and retrying", async ({ page }) => {
