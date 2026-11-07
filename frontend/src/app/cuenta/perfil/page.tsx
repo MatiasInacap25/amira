@@ -57,13 +57,19 @@ export default function ProfileSettingsPage() {
             </div>
           )}
           {profileQuery.isSuccess && (
-            <dl>
-              <dt>Correo</dt>
-              <dd>{profileQuery.data.email || MISSING_VALUE}</dd>
-              <dt>Teléfono</dt>
-              <dd>{profileQuery.data.phone || MISSING_VALUE}</dd>
-              <dt>Tipo de cuenta</dt>
-              <dd>{accountRoleLabel(profileQuery.data.role)}</dd>
+            <dl className="account-data">
+              <div>
+                <dt>Correo</dt>
+                <dd>{profileQuery.data.email || MISSING_VALUE}</dd>
+              </div>
+              <div>
+                <dt>Teléfono</dt>
+                <dd>{profileQuery.data.phone || MISSING_VALUE}</dd>
+              </div>
+              <div>
+                <dt>Tipo de cuenta</dt>
+                <dd>{accountRoleLabel(profileQuery.data.role)}</dd>
+              </div>
             </dl>
           )}
           {profileQuery.isSuccess && PROVIDER_ROLES.has(profileQuery.data.role ?? "") && (

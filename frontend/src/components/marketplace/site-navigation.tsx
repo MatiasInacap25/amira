@@ -82,10 +82,9 @@ function ChatsLink({ className, onNavigate }: { className?: string; onNavigate?:
   );
 }
 
-// Shown only to provider accounts with an active session; anonymous and client visitors get nothing.
-function ProviderRequestsLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+// Role of the signed-in account, shared by every header link that depends on it. Null while unknown and for anonymous visitors.
+export function useNavAccountRole(): string | null {
   const { userId } = useNavUserId();
-
   const roleQuery = useQuery({
     queryKey: providerNavRoleKey(userId ?? ""),
     queryFn: async () => {
@@ -98,7 +97,22 @@ function ProviderRequestsLink({ className, onNavigate }: { className?: string; o
     retry: false,
     staleTime: 60_000,
   });
-  const provider = isProviderRole(roleQuery.data);
+  return roleQuery.data ?? null;
+}
+
+// Roles that work in the provider and company panel. Their header drops the public search links.
+// Kept in sync with DASHBOARD_ROLES in lib/post-login-path.ts; company_driver is included here on purpose.
+const PANEL_NAV_ROLES = new Set(["independent_driver", "company_owner", "company_driver"]);
+
+export function usesPanelNavigation(role: string | null): boolean {
+  return role !== null && PANEL_NAV_ROLES.has(role);
+}
+
+// Shown only to provider accounts with an active session; anonymous and client visitors get nothing.
+function ProviderRequestsLink({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+  const { userId } = useNavUserId();
+  const role = useNavAccountRole();
+  const provider = isProviderRole(role);
 
   const pendingQuery = useQuery({
     queryKey: providerNavPendingKey(userId ?? ""),
@@ -127,6 +141,8 @@ export function MarketplaceHeader() {
   const { userId, pending } = useNavUserId();
   const { signOut, signingOut, error: signOutError } = useSignOut(() => setMenuOpen(false));
   useProviderNavAccountScope();
+  const panelNav = usesPanelNavigation(useNavAccountRole());
+  // Hidden links wait for a confirmed panel role, so anonymous visitors and customers never see them flicker out.
 
   return (
     <header className="site-header">
@@ -137,12 +153,12 @@ export function MarketplaceHeader() {
           <span>amira<span className="brand-period">.</span></span>
         </Link>
         <nav aria-label="Navegación principal" className="desktop-nav">
-          <Link className="button button-secondary header-nav-button" href="/servicios">Buscar servicios</Link>
-          <Link className="button button-secondary header-nav-button" href="/rutas-compartidas">Rutas compartidas</Link>
+          {!panelNav && <Link className="button button-secondary header-nav-button" href="/servicios">Buscar servicios</Link>}
+          {!panelNav && <Link className="button button-secondary header-nav-button" href="/rutas-compartidas">Rutas compartidas</Link>}
           <ChatsLink />
           <ProviderRequestsLink />
           <Link href="/cuenta/servicios">Mis servicios</Link>
-          <Link href="/#como-funciona">Cómo funciona</Link>
+          {!panelNav && <Link href="/#como-funciona">Cómo funciona</Link>}
         </nav>
         <div className="header-actions">
           {!pending && (userId ? (
@@ -153,7 +169,7 @@ export function MarketplaceHeader() {
               <Link className="button button-secondary header-nav-button" href="/registro">Crear cuenta</Link>
             </div>
           ))}
-          <Link className="button button-primary header-cta" href="/servicios">Buscar un servicio <ArrowRight aria-hidden="true" size={16} /></Link>
+          {!panelNav && <Link className="button button-primary header-cta" href="/servicios">Buscar un servicio <ArrowRight aria-hidden="true" size={16} /></Link>}
           <button
             aria-controls="marketplace-mobile-navigation"
             aria-expanded={menuOpen}
@@ -168,8 +184,8 @@ export function MarketplaceHeader() {
       </div>
       {menuOpen && (
         <nav aria-label="Navegación móvil" className="mobile-nav" id="marketplace-mobile-navigation">
-          <Link className="header-nav-button" href="/servicios" onClick={() => setMenuOpen(false)}>Buscar servicios</Link>
-          <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMenuOpen(false)}>Rutas compartidas</Link>
+          {!panelNav && <Link className="header-nav-button" href="/servicios" onClick={() => setMenuOpen(false)}>Buscar servicios</Link>}
+          {!panelNav && <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMenuOpen(false)}>Rutas compartidas</Link>}
           <ChatsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <ProviderRequestsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Mis servicios</Link>
@@ -187,7 +203,7 @@ export function MarketplaceHeader() {
               <Link className="header-nav-button" href="/registro" onClick={() => setMenuOpen(false)}>Crear cuenta</Link>
             </>
           ))}
-          <Link href="/#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</Link>
+          {!panelNav && <Link href="/#como-funciona" onClick={() => setMenuOpen(false)}>Cómo funciona</Link>}
         </nav>
       )}
     </header>
