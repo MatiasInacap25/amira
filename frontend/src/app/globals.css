@@ -1035,3 +1035,13 @@ h1, h2, h3, p { margin-top: 0; }
   .provider-profile-form { margin-inline: 0; }
   .provider-profile-fields select, .provider-profile-form input[type="text"] { font-size: 16px; }
 }
+
+/* Customer photos on a service request: the quote modal preview and the provider detail gallery. */
+.quote-photos { display: grid; gap: 10px; }
+.quote-photo-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.quote-photo-item { position: relative; width: 84px; height: 84px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+.quote-photo-item img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.quote-photo-remove { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 999px; background: rgba(23, 57, 75, .85); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; }
+.quote-dialog-notice { margin: 0; padding: 11px 13px; border: 1px solid #ead3cc; border-radius: 8px; background: #fff8f5; color: #8a4035; font-size: 13px; line-height: 1.5; }
+.provider-request-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.provider-request-photos img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid #e0e8e8; border-radius: 8px; }

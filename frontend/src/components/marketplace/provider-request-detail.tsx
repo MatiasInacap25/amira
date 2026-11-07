@@ -7,7 +7,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { PROVIDER_REQUEST_DETAIL_LAYOUT, MarketplaceSkeleton } from "@/components/marketplace/marketplace-skeleton";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
-import { decideProviderRequest, getProviderRequest, type ProviderRequest, type ProviderRequestDecision } from "@/lib/marketplace-api";
+import {
+  decideProviderRequest,
+  getProviderRequest,
+  getRequestImages,
+  type ProviderRequest,
+  type ProviderRequestDecision,
+  type RequestImagePage,
+} from "@/lib/marketplace-api";
 import { currentAccessToken, isSignInRequired, requestErrorMessage } from "@/lib/provider-request-access";
 import { PROVIDER_NAV_ROOT_KEY } from "@/lib/provider-nav-cache";
 import { customerDisplayName, formatRouteEndpoint, type ProviderRequestStatus } from "@/lib/provider-requests";
@@ -52,6 +59,19 @@ export function ProviderRequestDetail({ requestId }: { requestId: string }) {
 
   const item = requestQuery.data;
   const queryError = requestQuery.error;
+
+  // Photos load only after the request itself is visible to this provider, and a failure hides only this panel.
+  const photosQuery = useQuery({
+    queryKey: ["provider-request-images", requestId],
+    queryFn: async () => {
+      const response = await getRequestImages(await currentAccessToken(), requestId);
+      if (!response.ok) throw new Error(`Request images failed (${response.status})`);
+      return (await response.json() as RequestImagePage).items;
+    },
+    enabled: Boolean(item),
+    retry: false,
+  });
+  const photos = photosQuery.data ?? [];
 
   async function decide(decision: "accept" | "reject") {
     if (busy || !item) return;
@@ -159,6 +179,21 @@ export function ProviderRequestDetail({ requestId }: { requestId: string }) {
                       <p className="provider-request-muted">El cliente no especificó detalles de la carga.</p>
                     )}
                   </div>
+
+                  {photos.length > 0 && (
+                    <div className="provider-request-panel">
+                      <h2>Fotos del cliente</h2>
+                      <ul className="provider-request-photos">
+                        {photos.map((photo, index) => (
+                          <li key={photo.imageId}>
+                            {/* Short-lived signed URLs from private storage; next/image cannot optimize them. */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img alt={`Foto ${index + 1} de la solicitud`} src={photo.url} />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {actionError && <p className="provider-inbox-error" role="alert">{actionError}</p>}
                   <div className="provider-request-actions">

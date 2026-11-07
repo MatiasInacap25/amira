@@ -4,7 +4,15 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { acceptsAssuranceLevel } from "@/lib/auth/dev-mfa";
-import { createServiceRequest, type ProviderProfile, type ServiceRequestInput } from "@/lib/marketplace-api";
+import {
+  REQUEST_IMAGE_ACCEPT,
+  createServiceRequest,
+  uploadRequestImage,
+  validateRequestImage,
+  type ProviderProfile,
+  type ServiceRequestCreated,
+  type ServiceRequestInput,
+} from "@/lib/marketplace-api";
 import { createClient } from "@/lib/supabase/client";
 
 type Props = {
@@ -13,6 +21,8 @@ type Props = {
   selectedServiceId: string;
   onClose: () => void;
 };
+
+type AttachedPhoto = { file: File; previewUrl: string };
 
 const emptyLocation: RegionCommuneValue = { regionCode: "", communeCode: "" };
 
@@ -39,6 +49,10 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
   const [originLocation, setOriginLocation] = useState<RegionCommuneValue>(emptyLocation);
   const [destinationLocation, setDestinationLocation] = useState<RegionCommuneValue>(emptyLocation);
   const [scheduleError, setScheduleError] = useState("");
+  const [photos, setPhotos] = useState<AttachedPhoto[]>([]);
+  const [photoError, setPhotoError] = useState("");
+  const [photoUploadFailed, setPhotoUploadFailed] = useState(false);
+  const photosRef = useRef<AttachedPhoto[]>([]);
   const selectedService = profile.services.find((service) => service.serviceTypeId === serviceId);
 
   useEffect(() => {
@@ -46,6 +60,51 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
   }, [open]);
+
+  // Preview URLs are revoked when a photo is removed and when the dialog closes.
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+  useEffect(() => () => {
+    photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+  }, []);
+
+  function addPhotos(files: File[]) {
+    const accepted: AttachedPhoto[] = [];
+    let message = "";
+    for (const file of files) {
+      const problem = validateRequestImage(file, photos.length + accepted.length);
+      if (problem) {
+        message = problem;
+        continue;
+      }
+      accepted.push({ file, previewUrl: URL.createObjectURL(file) });
+    }
+    setPhotos([...photos, ...accepted]);
+    setPhotoError(message);
+  }
+
+  function removePhoto(index: number) {
+    const removed = photos[index];
+    if (removed) URL.revokeObjectURL(removed.previewUrl);
+    setPhotos(photos.filter((_, position) => position !== index));
+    setPhotoError("");
+  }
+
+  // Uploads run one after another after the request exists. Each failure is counted, never thrown,
+  // so the request stays created and the customer is told that some photos were not attached.
+  async function uploadPhotos(requestId: string, accessToken: string, files: File[]): Promise<number> {
+    let failed = 0;
+    for (const file of files) {
+      try {
+        const response = await uploadRequestImage(accessToken, requestId, file);
+        if (!response.ok) failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    return failed;
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -119,6 +178,12 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
         else setError("No pudimos enviar la solicitud. Inténtalo nuevamente.");
         return;
       }
+      const created = await response.json() as ServiceRequestCreated;
+      // The request is already created; a failed photo never turns it into an error.
+      if (photos.length > 0) {
+        const failed = await uploadPhotos(created.requestId, sessionData.session.access_token, photos.map((photo) => photo.file));
+        setPhotoUploadFailed(failed > 0);
+      }
       setSuccess(true);
     } catch (cause) {
       setError(cause instanceof Error && /API todav[ií]a no est[aá] configurada/i.test(cause.message)
@@ -133,7 +198,8 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
     <dialog
       aria-labelledby="quote-dialog-title"
       className="quote-dialog"
-      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      /* While submitting or uploading photos, Escape is refused so the upload outcome notice can be shown. */
+      onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }}
       onClose={onClose}
       ref={dialogRef}
     >
@@ -142,12 +208,13 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
           <p className="eyebrow">SOLICITUD DE COTIZACIÓN</p>
           <h2 id="quote-dialog-title">Cuéntanos qué necesitas</h2>
         </div>
-        <button aria-label="Cerrar solicitud" className="quote-dialog-close" onClick={onClose} type="button">×</button>
+        <button aria-label="Cerrar solicitud" className="quote-dialog-close" disabled={busy} onClick={onClose} type="button">×</button>
       </div>
       {success ? (
         <div className="quote-dialog-success" role="status">
           <h3>Solicitud enviada</h3>
           <p>El prestador podrá revisar los detalles y responderte. Aún no se ha confirmado una reserva ni realizado un pago.</p>
+          {photoUploadFailed && <p className="quote-dialog-notice" role="alert">La solicitud se envió, pero no pudimos adjuntar algunas fotos.</p>}
           <button className="button button-primary" onClick={onClose} type="button">Listo</button>
         </div>
       ) : (
@@ -185,6 +252,35 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
           </div>
           {scheduleError && <p className="marketplace-field-error" id="quote-schedule-error" role="alert">{scheduleError}</p>}
           <label className="marketplace-field" htmlFor="quote-description"><span>Detalles de la solicitud</span><textarea id="quote-description" maxLength={4000} name="description" rows={4} /></label>
+          <div className="quote-photos">
+            <label className="marketplace-field" htmlFor="quote-images">
+              <span>Fotos de la carga (opcional)</span>
+              <input
+                accept={REQUEST_IMAGE_ACCEPT}
+                id="quote-images"
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  event.target.value = "";
+                  addPhotos(files);
+                }}
+                type="file"
+              />
+            </label>
+            {photos.length > 0 && (
+              <ul className="quote-photo-list">
+                {photos.map((photo, index) => (
+                  <li className="quote-photo-item" key={photo.previewUrl}>
+                    {/* Object URLs from the local file; next/image does not apply to blob previews. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img alt={`Vista previa de la foto ${index + 1}`} src={photo.previewUrl} />
+                    <button aria-label={`Quitar la foto ${index + 1}`} className="quote-photo-remove" onClick={() => removePhoto(index)} type="button">×</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {photoError && <p className="marketplace-field-error" id="quote-photo-error" role="alert">{photoError}</p>}
+          </div>
           {error && (
             <div className="quote-request-error" id="quote-request-error" role="alert">
               <p>{error}</p>
