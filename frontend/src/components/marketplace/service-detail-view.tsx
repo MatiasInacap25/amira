@@ -1,12 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { PublishSharedTripDialog } from "@/components/account/publish-shared-trip-dialog";
 import { CustomerServiceActions } from "@/components/marketplace/customer-service-actions";
 import { DeliveryPhoto } from "@/components/marketplace/delivery-photo";
+import { DriverLocationSharing } from "@/components/marketplace/driver-location-sharing";
 import { ServiceActions } from "@/components/marketplace/service-actions";
 import { ServiceAssignmentForm } from "@/components/marketplace/service-assignment-form";
 import { MarketplaceSkeleton, SERVICE_DETAIL_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
@@ -15,6 +17,7 @@ import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/s
 import { accountApiFetch } from "@/lib/auth/account-api";
 import {
   parseAssignmentSaveResponse,
+  parseServiceLocationResponse,
   parseServiceResponse,
   type DeliveryPhotoLink,
   requestCustomerDeliveryPhoto,
@@ -26,12 +29,22 @@ import {
   requestProviderDeliveryPhoto,
   requestProviderServiceComplete,
   requestProviderServiceDetail,
+  requestProviderServiceLocationUpdate,
   requestProviderServiceStart,
+  requestServiceLocation,
   ServiceRequestError,
   type ServiceAssignmentOptions,
   type ServiceAssignmentUpdate,
   type ServiceDetail as ServiceDetailData,
+  type ServiceLocation,
 } from "@/lib/marketplace-api";
+import {
+  LOCATION_INTERVAL_MS,
+  LocationError,
+  type LocationPayload,
+  geolocationErrorMessage,
+  requestDriverLocation,
+} from "@/lib/geolocation";
 import { sendWithTokenRetry, type StatusResponse } from "@/lib/customer-request-retry";
 import { CustomerSessionError, readAccessToken, refreshAccessToken } from "@/lib/customer-session";
 import { isProviderRole } from "@/lib/provider-requests";
@@ -47,6 +60,12 @@ const SIGN_IN_HREF = "/login?next=%2Fcuenta%2Fservicios";
 const LIST_HREF = "/cuenta/servicios";
 
 class ServiceNotFoundError extends Error {}
+
+// The map pulls in Leaflet and touches the DOM, so it is loaded only in the browser.
+const LiveLocationMap = dynamic(() => import("@/components/marketplace/live-location-map"), {
+  ssr: false,
+  loading: () => <p className="account-service-empty">Cargando mapa…</p>,
+});
 
 // Sends with the session token, retrying once with a refreshed token on 401. A second 401 is returned to the caller.
 function sendAuthorizedRequest<T extends StatusResponse>(send: (accessToken: string) => Promise<T>) {
@@ -98,9 +117,11 @@ function useProviderServiceMutations(serviceId: string) {
     },
   });
 
+  // The position is asked first: if the browser refuses it, nothing is sent and the service stays confirmed.
   const startService = useMutation({
     mutationFn: async () => {
-      const response = await sendAuthorizedRequest((accessToken) => requestProviderServiceStart(accessToken, serviceId));
+      const location = await requestDriverLocation();
+      const response = await sendAuthorizedRequest((accessToken) => requestProviderServiceStart(accessToken, serviceId, location));
       return parseServiceResponse<ServiceDetailData>(response);
     },
     onSuccess: refreshServiceViews,
@@ -147,6 +168,11 @@ function useCustomerServiceMutations(serviceId: string) {
   return { consent, claim };
 }
 
+// Time only: the last update is always from today while the service is in progress, so the date adds nothing.
+function formatLocationTime(value: string) {
+  return new Date(value).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+}
+
 function assignmentSignature(assignments: ServiceDetailData["assignments"]) {
   return assignments.map((assignment) => `${assignment.driverId}:${assignment.vehicleId}`).join("|");
 }
@@ -157,6 +183,7 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   const mutations = useProviderServiceMutations(serviceId);
   const customerMutations = useCustomerServiceMutations(serviceId);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
 
   const detailQuery = useQuery({
     queryKey: ["service-detail", provider ? "provider" : "customer", serviceId],
@@ -203,6 +230,39 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   // Claims and consent only exist once the service is completed; a disputed service still shows its open claim.
   const showCustomerResolution = Boolean(isCustomerViewer && detail && (detail.status === "completed" || detail.status === "disputed"));
 
+  // The assigned driver shares their own position; anyone else who can see an in-progress service follows it on the map.
+  const showDriverSharing = Boolean(isProviderViewer && detail?.viewerAssigned && detail.status === "in_progress");
+  const showLiveMap = Boolean(detail && detail.status === "in_progress" && !showDriverSharing);
+  const locationQuery = useQuery({
+    queryKey: ["service-location", isCustomerViewer ? "customer" : "provider", serviceId],
+    queryFn: async () => {
+      const viewer = isCustomerViewer ? "customer" : "provider";
+      const response = await sendAuthorizedRequest((accessToken) => requestServiceLocation(accessToken, viewer, serviceId));
+      if (response.status === 401) throw new CustomerSessionError();
+      return parseServiceLocationResponse(response);
+    },
+    enabled: showLiveMap,
+    // The customer page refreshes about every 15 seconds, the same cadence the driver sends at.
+    refetchInterval: LOCATION_INTERVAL_MS,
+    retry: false,
+  });
+
+  function sendDriverLocation(location: LocationPayload) {
+    return sendAuthorizedRequest((accessToken) => requestProviderServiceLocationUpdate(accessToken, serviceId, location))
+      .then((response) => parseServiceResponse<ServiceLocation>(response));
+  }
+
+  // A refused position is shown here, not as the generic start error, because the service did not start at all.
+  async function startWithLocation() {
+    setLocationMessage(null);
+    try {
+      await mutations.startService.mutateAsync();
+    } catch (cause) {
+      if (!(cause instanceof LocationError)) throw cause;
+      setLocationMessage(geolocationErrorMessage(cause.code));
+    }
+  }
+
   return (
     <>
       <MarketplaceHeader />
@@ -245,16 +305,37 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
               {detail && (
                 <ServiceDetail
                   actions={isProviderViewer ? (
-                    <ServiceActions
-                      canManage={detail.canManage}
-                      completePending={mutations.completeService.isPending}
-                      hasAssignments={detail.assignments.length > 0}
-                      onComplete={(photo) => mutations.completeService.mutateAsync(photo)}
-                      onStart={() => mutations.startService.mutateAsync()}
-                      startPending={mutations.startService.isPending}
-                      status={detail.status}
-                      viewerAssigned={detail.viewerAssigned}
-                    />
+                    <>
+                      <ServiceActions
+                        canManage={detail.canManage}
+                        completePending={mutations.completeService.isPending}
+                        hasAssignments={detail.assignments.length > 0}
+                        onComplete={(photo) => mutations.completeService.mutateAsync(photo)}
+                        onStart={startWithLocation}
+                        startPending={mutations.startService.isPending}
+                        status={detail.status}
+                        viewerAssigned={detail.viewerAssigned}
+                      />
+                      {locationMessage && <p className="account-service-form-error" role="alert">{locationMessage}</p>}
+                    </>
+                  ) : undefined}
+                  locationSharing={showDriverSharing ? (
+                    <DriverLocationSharing sendLocation={sendDriverLocation} />
+                  ) : showLiveMap ? (
+                    locationQuery.isError ? (
+                      <p className="account-service-form-error" role="alert">No pudimos cargar la ubicación del conductor. Inténtalo nuevamente en unos minutos.</p>
+                    ) : locationQuery.data ? (
+                      <>
+                        <LiveLocationMap latitude={locationQuery.data.latitude} longitude={locationQuery.data.longitude} />
+                        <p className="live-location-updated">
+                          Última actualización: <time dateTime={locationQuery.data.updatedAt}>{formatLocationTime(locationQuery.data.updatedAt)}</time>
+                        </p>
+                      </>
+                    ) : locationQuery.isSuccess ? (
+                      <p className="account-service-empty">El conductor todavía no comparte su ubicación</p>
+                    ) : (
+                      <p className="account-service-empty">Cargando ubicación…</p>
+                    )
                   ) : undefined}
                   assignmentEditor={showAssignmentForm ? (
                     <>

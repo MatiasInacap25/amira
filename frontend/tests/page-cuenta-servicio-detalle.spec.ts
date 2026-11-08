@@ -440,6 +440,7 @@ test("provider sees the client, the prefilled assignments, and a start action fo
   await expect(page.getByRole("button", { name: "Guardar asignaciones" })).toBeVisible();
   expect(optionsRequests.length).toBeGreaterThan(0);
 
+  await grantDriverLocation(page);
   await page.getByRole("button", { name: "Iniciar servicio" }).click();
 
   await expect(page.locator(".account-service-status")).toHaveText("En curso");
@@ -680,4 +681,198 @@ test("a service already published as a shared trip links to the shared trips pag
   await expect(page.getByText("Publicado como viaje compartido.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Ver mis viajes compartidos" })).toHaveAttribute("href", "/cuenta/viajes-compartidos");
   await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
+});
+
+// Live service location: the driver shares the position on start and while in progress; the customer follows it on a map.
+const driverPosition = { latitude: -33.4489, longitude: -70.6693, accuracy: 12.5 };
+const locationRegionName = "Mapa de la ubicación del conductor";
+const locationWaitingMessage = "El conductor todavía no comparte su ubicación";
+
+// The map loads OpenStreetMap tiles; answer them with a local empty image so tests never reach the network.
+async function mockMapTiles(page: Page) {
+  await page.route("**/tile.openstreetmap.org/**", async (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from(PNG_BASE64, "base64") }),
+  );
+}
+
+// Grants the browser location permission and places the device at the driver position.
+async function grantDriverLocation(page: Page) {
+  await page.context().grantPermissions(["geolocation"]);
+  await page.context().setGeolocation(driverPosition);
+}
+
+function locationResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    latitude: -33.4489,
+    longitude: -70.6693,
+    accuracy: 12.5,
+    updatedAt: "2026-10-20T13:20:00Z",
+    ...overrides,
+  };
+}
+
+function inProgressDetail(viewer: "customer" | "provider", overrides: Record<string, unknown> = {}) {
+  return serviceDetail({
+    status: "in_progress",
+    viewerRole: viewer,
+    canManage: viewer === "provider",
+    viewerAssigned: viewer === "provider",
+    counterpartName: viewer === "provider" ? "Ana Pérez" : "Transportes Andes",
+    completedAt: null,
+    payoutDeadlineAt: null,
+    canClaim: false,
+    canConsent: false,
+    ...overrides,
+  });
+}
+
+test("driver start sends the browser position with the start request", async ({ page }) => {
+  const startBodies: Array<Record<string, unknown>> = [];
+  let status = "confirmed";
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({ json: inProgressDetail("provider", { status, startedAt: null, viewerAssigned: true, canManage: true }) }),
+  );
+  await page.route("**/api/provider/services/service-1/assignment-options", async (route) =>
+    route.fulfill({ json: { drivers: [{ driverId: "driver-1", firstName: "Lucía", lastName: "Soto", isOwner: true }], vehicles: [{ vehicleId: "vehicle-1", vehicleLabel: "Furgón 3,5 t", plate: "KLM12" }] } }),
+  );
+  await page.route("**/api/provider/services/service-1/start", async (route) => {
+    startBodies.push(route.request().postDataJSON());
+    status = "in_progress";
+    await route.fulfill({ json: inProgressDetail("provider", { viewerAssigned: true, canManage: true }) });
+  });
+  await page.route("**/api/provider/services/service-1/location", async (route) => route.fulfill({ json: locationResponse() }));
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await grantDriverLocation(page);
+  await page.getByRole("button", { name: "Iniciar servicio" }).click();
+
+  await expect(page.locator(".account-service-status")).toHaveText("En curso");
+  expect(startBodies).toEqual([{ latitude: driverPosition.latitude, longitude: driverPosition.longitude, accuracy: driverPosition.accuracy }]);
+});
+
+test("denied location keeps the service confirmed and explains how to enable location", async ({ page }) => {
+  const startRequests: string[] = [];
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({ json: inProgressDetail("provider", { status: "confirmed", startedAt: null, viewerAssigned: true, canManage: true }) }),
+  );
+  await page.route("**/api/provider/services/service-1/assignment-options", async (route) =>
+    route.fulfill({ json: { drivers: [{ driverId: "driver-1", firstName: "Lucía", lastName: "Soto", isOwner: true }], vehicles: [{ vehicleId: "vehicle-1", vehicleLabel: "Furgón 3,5 t", plate: "KLM12" }] } }),
+  );
+  await page.route("**/api/provider/services/service-1/start", async (route) => {
+    startRequests.push(route.request().method());
+    await route.fulfill({ json: inProgressDetail("provider") });
+  });
+  await signInTo(page, "independent_driver");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await page.context().clearPermissions();
+  await page.context().setGeolocation(null);
+  await page.getByRole("button", { name: "Iniciar servicio" }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "No puede iniciar el servicio sin compartir tu ubicación" })).toBeVisible();
+  await expect(page.locator(".account-service-status")).toHaveText("Confirmado");
+  expect(startRequests).toEqual([]);
+});
+
+test("in-progress driver sends the position to the location endpoint and sees the sharing notice", async ({ page }) => {
+  const locationBodies: Array<Record<string, unknown>> = [];
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: inProgressDetail("provider") }));
+  await page.route("**/api/provider/services/service-1/location", async (route) => {
+    if (route.request().method() === "PUT") {
+      locationBodies.push(route.request().postDataJSON());
+      await route.fulfill({ json: locationResponse() });
+      return;
+    }
+    await route.fulfill({ json: locationResponse() });
+  });
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await grantDriverLocation(page);
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toBeVisible();
+  await expect(page.getByText("La ubicación solo se comparte mientras esta página permanezca abierta.")).toBeVisible();
+  await expect.poll(() => locationBodies.length).toBeGreaterThan(0);
+  expect(locationBodies[0]).toEqual({ latitude: driverPosition.latitude, longitude: driverPosition.longitude, accuracy: driverPosition.accuracy });
+});
+
+test("customer follows the in-progress service on a map with the driver marker and last update time", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: inProgressDetail("customer") }));
+  await page.route("**/api/customer/services/service-1/location", async (route) => route.fulfill({ json: locationResponse() }));
+  await mockMapTiles(page);
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+
+  const map = page.getByRole("region", { name: locationRegionName });
+  await expect(map).toBeVisible();
+  await expect(map.locator(".leaflet-marker-icon")).toHaveCount(1);
+  await expect(map.locator(".leaflet-control-attribution")).toContainText("OpenStreetMap");
+  await expect(page.getByText(/Última actualización:/)).toBeVisible();
+  await expect(page.getByText(locationWaitingMessage)).toHaveCount(0);
+});
+
+test("customer sees the waiting message when the driver has not shared a position yet", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: inProgressDetail("customer") }));
+  await page.route("**/api/customer/services/service-1/location", async (route) =>
+    route.fulfill({ status: 404, json: { detail: "not_found" } }),
+  );
+  await mockMapTiles(page);
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText(locationWaitingMessage)).toBeVisible();
+  await expect(page.getByRole("region", { name: locationRegionName })).toHaveCount(0);
+});
+
+test("completed service shows no map and no sharing notice", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
+  await page.route("**/api/customer/services/service-1/location", async (route) => {
+    locationRequests.push(route.request().method());
+    await route.fulfill({ status: 404, json: { detail: "not_found" } });
+  });
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Mudanzas" })).toBeVisible();
+  await expect(page.getByRole("region", { name: locationRegionName })).toHaveCount(0);
+  await expect(page.getByText(locationWaitingMessage)).toHaveCount(0);
+  expect(locationRequests).toEqual([]);
+});
+
+test("assigned driver completes with a delivery photo and sharing and the map stop", async ({ page }) => {
+  let status = "in_progress";
+  const completeRequests: string[] = [];
+  const locationRequests: string[] = [];
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({ json: inProgressDetail("provider", { status, viewerAssigned: true, canManage: false }) }),
+  );
+  await page.route("**/api/provider/services/service-1/location", async (route) => {
+    locationRequests.push(route.request().method());
+    await route.fulfill({ json: locationResponse() });
+  });
+  await page.route("**/api/provider/services/service-1/complete", async (route) => {
+    completeRequests.push(route.request().headers()["content-type"] ?? "");
+    status = "completed";
+    await route.fulfill({ json: serviceDetail({ status, viewerRole: "provider", viewerAssigned: true, counterpartName: "Ana Pérez", payoutDeadlineAt: null, canClaim: false, canConsent: false }) });
+  });
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await grantDriverLocation(page);
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toBeVisible();
+  await page.getByLabel("Foto de entrega").setInputFiles({ name: "entrega.png", mimeType: "image/png", buffer: Buffer.from(PNG_BASE64, "base64") });
+  await page.getByRole("button", { name: "Finalizar servicio" }).click();
+
+  await expect(page.locator(".account-service-status")).toHaveText("Finalizado");
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: locationRegionName })).toHaveCount(0);
+  expect(completeRequests).toHaveLength(1);
+  expect(completeRequests[0]).toContain("multipart/form-data");
+  const locationCountAtCompletion = locationRequests.length;
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(locationCountAtCompletion);
 });

@@ -15,7 +15,7 @@ Branch: feat/seguimiento-conductor (from main 5e40b42). Delivery strategy: ask-o
 ## Tasks
 
 - [x] T1, S1 backend, delegated (herdr worker-11). Migration RED observed (5 failed); the actions file RED was an ImportError, not per assertion. Backend 857 passed. Surface extended by the parent to `backend/tests/test_public_db.py` (table count 33). Accuracy capped at 100000 m (worker choice). Endpoints: POST start with {latitude, longitude, accuracy?}; PUT, GET `/api/provider/services/{id}/location`; GET `/api/customer/services/{id}/location`. Original line: new table for the current service location (migration), start requires a location, driver position updates, customer and provider read, delete on completion. High risk: migration, permissions and personal data.
-- [ ] T2, S1 frontend, delegated (after T1, herdr worker): add leaflet and react-leaflet, driver permission flow on start and periodic updates, customer map.
+- [x] T2, S1 frontend, delegated (after T1, herdr worker-12). leaflet 1.9.4, react-leaflet 5.0.0, @types/leaflet 1.9.22, pinned exactly. RED observed (unit module missing; 6 Playwright tests). Service detail spec 33 of 33, unit 167, lint and build clean. next.config.ts has no CSP. Location errors are shown from service-detail-view.tsx because the start button lives in service-actions.tsx. Original line: add leaflet and react-leaflet, driver permission flow on start and periodic updates, customer map.
 - [ ] T3, delegated: independent verification and Codex gpt-6.1-sol native gentle-ai review.
 
 Route evidence: sequential herdr workers per the project orchestrator rule; T2 depends on T1's contract. The parent owns git. Outward step needing user authorization: applying the migration to the Supabase database.
