@@ -12,6 +12,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -31,7 +32,7 @@ from amira_api.evidence_storage import (
     get_evidence_storage_resolver,
     read_capped,
 )
-from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, Usuario, Vehiculo
+from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, ServicioUbicacion, Usuario, Vehiculo
 from amira_api.provider_service_schemas import (
     AssignmentDriverOption,
     AssignmentOptions,
@@ -41,6 +42,8 @@ from amira_api.provider_service_schemas import (
     SameDayConflictResponse,
     ServiceAssignmentsUpdate,
     ServiceDetail,
+    ServiceLocation,
+    ServiceLocationInput,
     ServicePage,
     ServiceStatus,
 )
@@ -330,7 +333,9 @@ def replace_service_assignments(
 
 
 @router.post("/services/{service_id}/start", response_model=ServiceDetail)
-def start_provider_service(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceDetail:
+def start_provider_service(
+    service_id: UUID, current_user: CurrentUser, session: Database, location: ServiceLocationInput
+) -> ServiceDetail:
     viewer = _provider_viewer(session, current_user)
     service = _lock_visible_service(session, viewer, service_id)
     if service.status != "confirmed":
@@ -341,13 +346,75 @@ def start_provider_service(service_id: UUID, current_user: CurrentUser, session:
     if not has_assignment:
         raise HTTPException(status_code=409, detail="Assign at least one driver and vehicle before starting.")
 
+    # The status change and the first location share this transaction: a started service always has a position.
+    now = utc_now()
     session.execute(
         update(Servicio)
         .where(Servicio.id == service_id)
-        .values(status="in_progress", starts_at=utc_now(), started_by_user_id=viewer.user_id)
+        .values(status="in_progress", starts_at=now, started_by_user_id=viewer.user_id)
     )
+    _store_location(session, service_id, location, now)
     session.commit()
     return _visible_detail(session, viewer, service_id)
+
+
+def _store_location(session: Session, service_id: UUID, location: ServiceLocationInput, now: datetime) -> ServicioUbicacion:
+    """Insert or update the single location row. The caller holds the service row lock, so this cannot race."""
+    row = session.get(ServicioUbicacion, service_id)
+    if row is None:
+        row = ServicioUbicacion(service_id=service_id)
+        session.add(row)
+    row.latitude = Decimal(str(location.latitude))
+    row.longitude = Decimal(str(location.longitude))
+    row.accuracy_meters = None if location.accuracy is None else Decimal(str(location.accuracy))
+    row.updated_at = now
+    return row
+
+
+def _location_view(row: ServicioUbicacion) -> ServiceLocation:
+    return ServiceLocation(
+        latitude=float(row.latitude),
+        longitude=float(row.longitude),
+        accuracy=None if row.accuracy_meters is None else float(row.accuracy_meters),
+        updated_at=row.updated_at,
+    )
+
+
+@router.put("/services/{service_id}/location", response_model=ServiceLocation)
+def update_provider_service_location(
+    service_id: UUID, current_user: CurrentUser, session: Database, location: ServiceLocationInput
+) -> ServiceLocation:
+    viewer = _provider_viewer(session, current_user)
+    service = _lock_visible_service(session, viewer, service_id)
+    if not _is_assigned_driver(session, viewer, service_id):
+        raise HTTPException(status_code=403, detail="Only an assigned driver can share the location of this service.")
+    if service.status != "in_progress":
+        raise HTTPException(status_code=409, detail="Only in-progress services can receive a location.")
+    row = _store_location(session, service_id, location, utc_now())
+    session.commit()
+    return _location_view(row)
+
+
+@router.get("/services/{service_id}/location", response_model=ServiceLocation)
+def get_provider_service_location(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceLocation:
+    viewer = _provider_viewer(session, current_user)
+    # A service the viewer cannot see answers exactly like the service detail, before any location lookup.
+    service = session.execute(
+        select(Servicio.id, Servicio.status).where(Servicio.id == service_id, *viewer.visibility())
+    ).one_or_none()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    row = _current_location(session, service_id, service.status)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Service location not found.")
+    return _location_view(row)
+
+
+def _current_location(session: Session, service_id: UUID, status: str) -> ServicioUbicacion | None:
+    """The stored position, but only while the service is in progress; after completion there is none to show."""
+    if status != "in_progress":
+        return None
+    return session.get(ServicioUbicacion, service_id)
 
 
 def _is_assigned_driver(session: Session, viewer: ProviderViewer, service_id: UUID) -> bool:
@@ -425,6 +492,8 @@ def _record_completion(
             payout_deadline_at=now + timedelta(hours=settings.service_claim_window_hours),
         )
     )
+    # The live position is only useful while the service is in progress, so it is removed in the same transaction.
+    session.execute(delete(ServicioUbicacion).where(ServicioUbicacion.service_id == service_id))
     session.commit()
 
 

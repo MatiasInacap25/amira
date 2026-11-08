@@ -10,6 +10,7 @@ import {
   type ChatUnreadTotal,
 } from "@/lib/chats";
 import { buildProviderRequestsQuery, type ProviderRequestStatus } from "@/lib/provider-requests";
+import type { LocationPayload } from "@/lib/geolocation";
 
 export type LocationCommune = {
   code: string;
@@ -428,13 +429,54 @@ export async function parseAssignmentSaveResponse(response: Response): Promise<S
   return { status: "saved", service: await parseServiceResponse<ServiceDetail>(response) };
 }
 
-export function requestProviderServiceStart(accessToken: string, serviceId: string) {
+// The start request carries the driver's position: the backend refuses a start without valid coordinates.
+export function requestProviderServiceStart(accessToken: string, serviceId: string, location: LocationPayload) {
   return authenticatedApiFetch(
     `/api/provider/services/${encodeURIComponent(serviceId)}/start`,
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
-    { method: "POST", headers: { Accept: "application/json" } },
+    {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(location),
+    },
   );
+}
+
+export function requestProviderServiceLocationUpdate(accessToken: string, serviceId: string, location: LocationPayload) {
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}/location`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(location),
+    },
+  );
+}
+
+// Owner and assigned drivers use the provider route; the customer uses the customer route.
+export function requestServiceLocation(accessToken: string, viewer: "customer" | "provider", serviceId: string) {
+  return authenticatedApiFetch(
+    `/api/${viewer}/services/${encodeURIComponent(serviceId)}/location`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" } },
+  );
+}
+
+export type ServiceLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  updatedAt: string;
+};
+
+// 404 means no position yet, or the service is not in progress: the viewer shows the waiting message.
+export async function parseServiceLocationResponse(response: Response): Promise<ServiceLocation | null> {
+  if (response.status === 404) return null;
+  return parseServiceResponse<ServiceLocation>(response);
 }
 
 // No Content-Type header: the browser sets the multipart boundary.

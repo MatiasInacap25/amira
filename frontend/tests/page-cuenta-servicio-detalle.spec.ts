@@ -440,6 +440,7 @@ test("provider sees the client, the prefilled assignments, and a start action fo
   await expect(page.getByRole("button", { name: "Guardar asignaciones" })).toBeVisible();
   expect(optionsRequests.length).toBeGreaterThan(0);
 
+  await grantDriverLocation(page);
   await page.getByRole("button", { name: "Iniciar servicio" }).click();
 
   await expect(page.locator(".account-service-status")).toHaveText("En curso");
@@ -680,4 +681,343 @@ test("a service already published as a shared trip links to the shared trips pag
   await expect(page.getByText("Publicado como viaje compartido.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Ver mis viajes compartidos" })).toHaveAttribute("href", "/cuenta/viajes-compartidos");
   await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
+});
+
+// Live service location: the driver shares the position on start and while in progress; the customer follows it on a map.
+const driverPosition = { latitude: -33.4489, longitude: -70.6693, accuracy: 12.5 };
+const locationRegionName = "Mapa de la ubicación del conductor";
+const locationWaitingMessage = "El conductor todavía no comparte su ubicación";
+
+// The map loads OpenStreetMap tiles; answer them with a local empty image so tests never reach the network.
+async function mockMapTiles(page: Page) {
+  await page.route("**/tile.openstreetmap.org/**", async (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from(PNG_BASE64, "base64") }),
+  );
+}
+
+// Grants the browser location permission and places the device at the driver position.
+async function grantDriverLocation(page: Page) {
+  await page.context().grantPermissions(["geolocation"]);
+  await page.context().setGeolocation(driverPosition);
+}
+
+function locationResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    latitude: -33.4489,
+    longitude: -70.6693,
+    accuracy: 12.5,
+    updatedAt: "2026-10-20T13:20:00Z",
+    ...overrides,
+  };
+}
+
+function inProgressDetail(viewer: "customer" | "provider", overrides: Record<string, unknown> = {}) {
+  return serviceDetail({
+    status: "in_progress",
+    viewerRole: viewer,
+    canManage: viewer === "provider",
+    viewerAssigned: viewer === "provider",
+    counterpartName: viewer === "provider" ? "Ana Pérez" : "Transportes Andes",
+    completedAt: null,
+    payoutDeadlineAt: null,
+    canClaim: false,
+    canConsent: false,
+    ...overrides,
+  });
+}
+
+test("driver start sends the browser position with the start request", async ({ page }) => {
+  const startBodies: Array<Record<string, unknown>> = [];
+  let status = "confirmed";
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({ json: inProgressDetail("provider", { status, startedAt: null, viewerAssigned: true, canManage: true }) }),
+  );
+  await page.route("**/api/provider/services/service-1/assignment-options", async (route) =>
+    route.fulfill({ json: { drivers: [{ driverId: "driver-1", firstName: "Lucía", lastName: "Soto", isOwner: true }], vehicles: [{ vehicleId: "vehicle-1", vehicleLabel: "Furgón 3,5 t", plate: "KLM12" }] } }),
+  );
+  await page.route("**/api/provider/services/service-1/start", async (route) => {
+    startBodies.push(route.request().postDataJSON());
+    status = "in_progress";
+    await route.fulfill({ json: inProgressDetail("provider", { viewerAssigned: true, canManage: true }) });
+  });
+  await page.route("**/api/provider/services/service-1/location", async (route) => route.fulfill({ json: locationResponse() }));
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await grantDriverLocation(page);
+  await page.getByRole("button", { name: "Iniciar servicio" }).click();
+
+  await expect(page.locator(".account-service-status")).toHaveText("En curso");
+  expect(startBodies).toEqual([{ latitude: driverPosition.latitude, longitude: driverPosition.longitude, accuracy: driverPosition.accuracy }]);
+});
+
+test("denied location keeps the service confirmed and explains how to enable location", async ({ page }) => {
+  const startRequests: string[] = [];
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({ json: inProgressDetail("provider", { status: "confirmed", startedAt: null, viewerAssigned: true, canManage: true }) }),
+  );
+  await page.route("**/api/provider/services/service-1/assignment-options", async (route) =>
+    route.fulfill({ json: { drivers: [{ driverId: "driver-1", firstName: "Lucía", lastName: "Soto", isOwner: true }], vehicles: [{ vehicleId: "vehicle-1", vehicleLabel: "Furgón 3,5 t", plate: "KLM12" }] } }),
+  );
+  await page.route("**/api/provider/services/service-1/start", async (route) => {
+    startRequests.push(route.request().method());
+    await route.fulfill({ json: inProgressDetail("provider") });
+  });
+  await signInTo(page, "independent_driver");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await page.context().clearPermissions();
+  await page.context().setGeolocation(null);
+  await page.getByRole("button", { name: "Iniciar servicio" }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "No puede iniciar el servicio sin compartir tu ubicación" })).toBeVisible();
+  await expect(page.locator(".account-service-status")).toHaveText("Confirmado");
+  expect(startRequests).toEqual([]);
+});
+
+test("in-progress driver sends the position to the location endpoint and sees the sharing notice", async ({ page }) => {
+  const locationBodies: Array<Record<string, unknown>> = [];
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: inProgressDetail("provider") }));
+  await page.route("**/api/provider/services/service-1/location", async (route) => {
+    if (route.request().method() === "PUT") {
+      locationBodies.push(route.request().postDataJSON());
+      await route.fulfill({ json: locationResponse() });
+      return;
+    }
+    await route.fulfill({ json: locationResponse() });
+  });
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await grantDriverLocation(page);
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toBeVisible();
+  await expect(page.getByText("La ubicación solo se comparte mientras esta página permanezca abierta.")).toBeVisible();
+  await expect.poll(() => locationBodies.length).toBeGreaterThan(0);
+  expect(locationBodies[0]).toEqual({ latitude: driverPosition.latitude, longitude: driverPosition.longitude, accuracy: driverPosition.accuracy });
+});
+
+test("customer follows the in-progress service on a map with the driver marker and last update time", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: inProgressDetail("customer") }));
+  await page.route("**/api/customer/services/service-1/location", async (route) => route.fulfill({ json: locationResponse() }));
+  await mockMapTiles(page);
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+
+  const map = page.getByRole("region", { name: locationRegionName });
+  await expect(map).toBeVisible();
+  await expect(map.locator(".leaflet-marker-icon")).toHaveCount(1);
+  await expect(map.locator(".leaflet-control-attribution")).toContainText("OpenStreetMap");
+  await expect(page.getByText(/Última actualización:/)).toBeVisible();
+  await expect(page.getByText(locationWaitingMessage)).toHaveCount(0);
+});
+
+test("customer sees the waiting message when the driver has not shared a position yet", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: inProgressDetail("customer") }));
+  await page.route("**/api/customer/services/service-1/location", async (route) =>
+    route.fulfill({ status: 404, json: { detail: "not_found" } }),
+  );
+  await mockMapTiles(page);
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText(locationWaitingMessage)).toBeVisible();
+  await expect(page.getByRole("region", { name: locationRegionName })).toHaveCount(0);
+});
+
+test("completed service shows no map and no sharing notice", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
+  await page.route("**/api/customer/services/service-1/location", async (route) => {
+    locationRequests.push(route.request().method());
+    await route.fulfill({ status: 404, json: { detail: "not_found" } });
+  });
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Mudanzas" })).toBeVisible();
+  await expect(page.getByRole("region", { name: locationRegionName })).toHaveCount(0);
+  await expect(page.getByText(locationWaitingMessage)).toHaveCount(0);
+  expect(locationRequests).toEqual([]);
+});
+
+test("assigned driver completes with a delivery photo and sharing and the map stop", async ({ page }) => {
+  let status = "in_progress";
+  const completeRequests: string[] = [];
+  const locationRequests: string[] = [];
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({ json: inProgressDetail("provider", { status, viewerAssigned: true, canManage: false }) }),
+  );
+  await page.route("**/api/provider/services/service-1/location", async (route) => {
+    locationRequests.push(route.request().method());
+    await route.fulfill({ json: locationResponse() });
+  });
+  await page.route("**/api/provider/services/service-1/complete", async (route) => {
+    completeRequests.push(route.request().headers()["content-type"] ?? "");
+    status = "completed";
+    await route.fulfill({ json: serviceDetail({ status, viewerRole: "provider", viewerAssigned: true, counterpartName: "Ana Pérez", payoutDeadlineAt: null, canClaim: false, canConsent: false }) });
+  });
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await grantDriverLocation(page);
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toBeVisible();
+  await page.getByLabel("Foto de entrega").setInputFiles({ name: "entrega.png", mimeType: "image/png", buffer: Buffer.from(PNG_BASE64, "base64") });
+  await page.getByRole("button", { name: "Finalizar servicio" }).click();
+
+  await expect(page.locator(".account-service-status")).toHaveText("Finalizado");
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: locationRegionName })).toHaveCount(0);
+  expect(completeRequests).toHaveLength(1);
+  expect(completeRequests[0]).toContain("multipart/form-data");
+  const locationCountAtCompletion = locationRequests.length;
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(locationCountAtCompletion);
+});
+
+// Replaces navigator.geolocation with a controllable watcher so tests can emit positions and watch errors on demand.
+async function installFakeDriverWatch(page: Page) {
+  await page.addInitScript(() => {
+    const watchers = new Map<number, { success: (position: unknown) => void; error: (error: unknown) => void }>();
+    const position = (timestamp: number) => ({ coords: { latitude: -33.4489, longitude: -70.6693, accuracy: 12.5 }, timestamp });
+    let nextId = 1;
+    const fake = {
+      watchPosition(success: (position: unknown) => void, error: (error: unknown) => void) {
+        const id = nextId++;
+        watchers.set(id, { success, error });
+        return id;
+      },
+      clearWatch(id: number) {
+        watchers.delete(id);
+      },
+      getCurrentPosition(success: (position: unknown) => void) {
+        success(position(Date.now()));
+      },
+    };
+    Object.defineProperty(navigator, "geolocation", { configurable: true, get: () => fake });
+    Object.defineProperty(window, "emitDriverPosition", {
+      value: (timestamp: number) => watchers.forEach((watcher) => watcher.success(position(timestamp))),
+    });
+    Object.defineProperty(window, "emitDriverWatchError", {
+      value: (code: number) => watchers.forEach((watcher) => watcher.error({ code, message: "fake" })),
+    });
+  });
+}
+
+async function emitDriverPosition(page: Page, timestamp: number) {
+  await page.evaluate((ts) => (window as unknown as { emitDriverPosition: (t: number) => void }).emitDriverPosition(ts), timestamp);
+}
+
+async function emitDriverWatchError(page: Page, code: number) {
+  await page.evaluate((c) => (window as unknown as { emitDriverWatchError: (c: number) => void }).emitDriverWatchError(c), code);
+}
+
+async function openInProgressDriverWithFakeWatch(page: Page, locationRequests: string[], failingAttempts = 0) {
+  await page.clock.install({ time: new Date("2026-11-07T12:00:00Z") });
+  await installFakeDriverWatch(page);
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: inProgressDetail("provider") }));
+  await page.route("**/api/provider/services/service-1/location", async (route) => {
+    locationRequests.push(route.request().method());
+    if (locationRequests.length <= failingAttempts) {
+      await route.fulfill({ status: 500, json: { detail: "temporary failure" } });
+      return;
+    }
+    await route.fulfill({ json: locationResponse() });
+  });
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await page.goto("/cuenta/servicios/service-1");
+  // The fake watcher only has listeners once the sharing component has mounted.
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toBeVisible();
+}
+
+test("after a watch error the driver stops sending and keeps the warning until a fresh position arrives", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests);
+  const warning = page.getByRole("alert").filter({ hasText: "Tu ubicación no se está compartiendo con el cliente" });
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+
+  await emitDriverWatchError(page, 2);
+  await expect(warning).toBeVisible();
+  await page.clock.runFor(30000);
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(1);
+  await expect(warning).toBeVisible();
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBeGreaterThan(1);
+  await expect(warning).toHaveCount(0);
+});
+
+test("a position older than the freshness limit is never sent as current", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests);
+
+  await emitDriverPosition(page, (await page.evaluate(() => Date.now())) - 60000);
+  await page.clock.runFor(15000);
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(0);
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+});
+
+test("a position whose send failed is retried on the next tick while it is still fresh", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests, 1);
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+  await expect(page.getByRole("alert").filter({ hasText: "No pudimos compartir tu ubicación" })).toBeVisible();
+
+  await page.clock.runFor(15000);
+  await expect.poll(() => locationRequests.length).toBe(2);
+  await expect(page.getByRole("alert").filter({ hasText: "No pudimos compartir tu ubicación" })).toHaveCount(0);
+});
+
+test("after a failed send, watch events do not resend; only the 15 second tick retries", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests, 1);
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+
+  for (let step = 0; step < 2; step += 1) {
+    await page.clock.runFor(5000);
+    await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  }
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(1);
+
+  await page.clock.runFor(5000);
+  await expect.poll(() => locationRequests.length).toBe(2);
+});
+
+test("a position whose send failed is not retried once it is stale", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests, 1);
+
+  await emitDriverPosition(page, (await page.evaluate(() => Date.now())) - 25000);
+  await expect.poll(() => locationRequests.length).toBe(1);
+
+  await page.clock.runFor(15000);
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(1);
+});
+
+test("normal sharing keeps sending about every 15 seconds while the position is fresh", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests);
+
+  for (let step = 0; step < 9; step += 1) {
+    await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+    await page.clock.runFor(5000);
+  }
+  await expect.poll(() => locationRequests.length).toBeGreaterThanOrEqual(3);
+  await page.waitForTimeout(200);
+  expect(locationRequests.length).toBeLessThanOrEqual(4);
 });

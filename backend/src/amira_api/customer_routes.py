@@ -20,7 +20,7 @@ from amira_api.customer_schemas import (
 )
 from amira_api.db import get_db_session
 from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError, get_evidence_storage_resolver
-from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceDetail
+from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceDetail, ServiceLocation
 from amira_api.service_views import (
     CLAIM_OPEN,
     DELIVERY_PHOTO_LINK_MESSAGE,
@@ -38,6 +38,7 @@ from amira_api.models import (
     Reclamo,
     RolUsuario,
     Servicio,
+    ServicioUbicacion,
     TipoServicio,
     Usuario,
     Valoracion,
@@ -161,6 +162,26 @@ def get_customer_service(service_id: UUID, current_user: CurrentUser, session: D
         raise HTTPException(status_code=404, detail="Service not found.")
     return shape_detail(
         row, "customer", can_manage=False, viewer_assigned=False, assignments=load_assignments(session, service_id)
+    )
+
+
+@router.get("/services/{service_id}/location", response_model=ServiceLocation)
+def get_customer_service_location(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceLocation:
+    """Only the current position of an in-progress service, and only for the customer who owns it."""
+    account_id = _customer_account_id(session, current_user)
+    service = session.execute(
+        select(Servicio.id, Servicio.status).where(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).one_or_none()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    row = session.get(ServicioUbicacion, service_id) if service.status == "in_progress" else None
+    if row is None:
+        raise HTTPException(status_code=404, detail="Service location not found.")
+    return ServiceLocation(
+        latitude=float(row.latitude),
+        longitude=float(row.longitude),
+        accuracy=None if row.accuracy_meters is None else float(row.accuracy_meters),
+        updated_at=row.updated_at,
     )
 
 
