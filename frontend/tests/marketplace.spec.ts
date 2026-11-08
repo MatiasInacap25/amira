@@ -747,6 +747,22 @@ test("quote modal sends acceptsSharing true when the customer chooses Sí", asyn
   expect(bodies[0]).toMatchObject({ acceptsSharing: true });
 });
 
+test("a normal quote request without a shared trip sends no requestedTripId", async ({ page }) => {
+  const bodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/service-requests", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { requestId: "request-plain", status: "pending" } });
+  });
+  await signInAsPhotoCustomer(page);
+  const dialog = await openImageQuoteDialog(page);
+  await fillRequiredQuote(dialog);
+  await dialog.getByRole("button", { name: "Enviar solicitud" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Solicitud enviada" })).toBeVisible();
+  expect(bodies).toHaveLength(1);
+  expect(bodies[0]).not.toHaveProperty("requestedTripId");
+});
+
 test("a failed photo upload keeps the request sent and says some photos were not attached", async ({ page }) => {
   let created = 0;
   await page.route("**/api/service-requests", async (route) => {

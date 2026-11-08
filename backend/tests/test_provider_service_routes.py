@@ -26,6 +26,7 @@ from amira_api.models import (
     Conductor,
     Cotizacion,
     FormularioServicio,
+    ParadaViaje,
     Perfil,
     RolUsuario,
     Servicio,
@@ -33,6 +34,8 @@ from amira_api.models import (
     TipoServicio,
     Usuario,
     Vehiculo,
+    Viaje,
+    ViajeVehiculo,
 )
 from chat_support import _register_btrim  # also registers the SQLite JSONB compiler
 
@@ -52,6 +55,7 @@ def db():
     tables = (
         "Rol_Usuario", "Usuario", "Perfil", "Conductor", "Vehiculo", "Formulario_servicio", "Chat",
         "Cotizacion", "Servicio", "Servicio_Asignacion", "Pago", "Cuenta_Desembolso", "Desembolso",
+        "Viaje", "Viaje_Vehiculo", "Parada_Viaje",
     )
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
     with engine.begin() as connection:
@@ -345,3 +349,51 @@ def test_currency_accepts_any_iso_code_so_one_non_clp_row_does_not_break_the_lis
             currency="usd", origin_commune=None, destination_commune=None, is_exclusive=False,
             counterpart_name="Pat", assignment_count=0,
         )
+
+
+def _link_service_to_trip(db: Session, scenario: Scenario) -> Viaje:
+    """Publishes a shared trip with the scenario's vehicle and driver and links the assigned service to it."""
+    trip = Viaje(id=uuid4(), profile_id=scenario.company_profile.id, origin="Santiago", destination="Valparaíso",
+                 status="open", is_published=True, accepts_requests=True)
+    db.add(trip)
+    db.flush()
+    db.add(ViajeVehiculo(trip_id=trip.id, vehicle_id=scenario.vehicle.id, driver_id=scenario.employed_driver.id))
+    pickup = ParadaViaje(id=uuid4(), trip_id=trip.id, order=1, address="Calle Uno 123")
+    delivery = ParadaViaje(id=uuid4(), trip_id=trip.id, order=2, address="Av. Dos 456")
+    db.add_all([pickup, delivery])
+    db.flush()
+    service = scenario.company_assigned
+    service.trip_id = trip.id
+    service.vehicle_id = scenario.vehicle.id
+    service.pickup_stop_id = pickup.id
+    service.delivery_stop_id = delivery.id
+    db.commit()
+    return trip
+
+
+def test_provider_detail_shared_trip_id_is_null_for_a_service_without_a_trip(api, scenario: Scenario):
+    response = api(f"/api/provider/services/{scenario.company_assigned.id}", as_auth_id=OWNER_AUTH)
+
+    assert response.status_code == 200
+    assert "sharedTripId" in response.json()
+    assert response.json()["sharedTripId"] is None
+
+
+def test_provider_detail_exposes_the_shared_trip_id_of_a_linked_service(api, db, scenario: Scenario):
+    trip = _link_service_to_trip(db, scenario)
+
+    response = api(f"/api/provider/services/{scenario.company_assigned.id}", as_auth_id=OWNER_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["sharedTripId"] == str(trip.id)
+
+
+def test_customer_detail_never_exposes_the_shared_trip_id(api, db, scenario: Scenario):
+    _link_service_to_trip(db, scenario)
+
+    response = api(f"/api/provider/services/{scenario.company_assigned.id}", as_auth_id=OWNER_AUTH)
+    assert response.json()["sharedTripId"] is not None
+
+    customer = api(f"/api/customer/services/{scenario.company_assigned.id}", as_auth_id=CUSTOMER_AUTH)
+    assert customer.status_code == 200
+    assert customer.json().get("sharedTripId") is None

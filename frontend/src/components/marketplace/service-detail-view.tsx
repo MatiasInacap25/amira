@@ -2,7 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { PublishSharedTripDialog } from "@/components/account/publish-shared-trip-dialog";
 import { CustomerServiceActions } from "@/components/marketplace/customer-service-actions";
 import { DeliveryPhoto } from "@/components/marketplace/delivery-photo";
 import { ServiceActions } from "@/components/marketplace/service-actions";
@@ -154,6 +156,7 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   const provider = roleQuery.data?.provider ?? false;
   const mutations = useProviderServiceMutations(serviceId);
   const customerMutations = useCustomerServiceMutations(serviceId);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ["service-detail", provider ? "provider" : "customer", serviceId],
@@ -268,6 +271,21 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
                         optionsPending={optionsQuery.isPending}
                       />
                     </>
+                  ) : undefined}
+                  sharedTrip={isProviderViewer && detail.canManage ? (
+                    detail.isExclusive ? (
+                      <p className="account-service-empty">El cliente no aceptó compartir el viaje.</p>
+                    ) : detail.sharedTripId ? (
+                      <>
+                        <p className="account-service-empty">Publicado como viaje compartido.</p>
+                        <Link className="button button-secondary" href="/cuenta/viajes-compartidos">Ver mis viajes compartidos</Link>
+                      </>
+                    ) : (
+                      <>
+                        <button className="button button-secondary" onClick={() => setPublishOpen(true)} type="button">Publicar como viaje compartido</button>
+                        <PublishSharedTripDialog onClose={() => setPublishOpen(false)} open={publishOpen} serviceId={serviceId} />
+                      </>
+                    )
                   ) : undefined}
                   customerResolution={showCustomerResolution ? (
                     <CustomerServiceActions

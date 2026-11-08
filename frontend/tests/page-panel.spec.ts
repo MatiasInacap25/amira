@@ -135,3 +135,11 @@ test("signed-out visitor sees the sign-in prompt that returns to /panel", async 
   await expect(panel(page).getByRole("alert")).toContainText("Inicia sesión");
   await expect(panel(page).getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login?next=%2Fpanel");
 });
+
+test("provider panel links to the shared trips page", async ({ page }) => {
+  await installPanelMocks(page, "independent_driver");
+  await signIn(page);
+  await page.goto("/panel");
+
+  await expect(panel(page).getByRole("link", { name: "Viajes compartidos" })).toHaveAttribute("href", "/cuenta/viajes-compartidos");
+});

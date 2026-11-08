@@ -63,6 +63,8 @@ class ServiceDetail(ServiceListItem):
     can_claim: bool
     can_consent: bool
     assignments: list[ServiceAssignment]
+    # Provider-only: the shared trip this service is linked to, or null. Customers always get null.
+    shared_trip_id: UUID | None = None
 
 
 class DeliveryPhotoUrl(PublicResponse):

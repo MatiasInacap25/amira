@@ -369,3 +369,18 @@ test("a failed photo list leaves the rest of the request detail visible", async 
   await expect(page.getByRole("button", { name: "Aceptar y abrir chat" })).toBeEnabled();
   await expect(page.getByRole("img", { name: /Foto \d de la solicitud/ })).toHaveCount(0);
 });
+
+test("a request to join a shared trip is labelled as such in the provider detail", async ({ page }) => {
+  await mockProviderRequest(page, async (route) => route.fulfill({ json: providerRequest({ requestedTripId: "trip-1" }) }));
+  await signInAsSmsVerifiedProvider(page);
+
+  await expect(page.getByText("Solicitud para unirse a un viaje compartido")).toBeVisible();
+});
+
+test("a normal request without a shared trip does not show the join label", async ({ page }) => {
+  await mockProviderRequest(page, async (route) => route.fulfill({ json: providerRequest({ requestedTripId: null }) }));
+  await signInAsSmsVerifiedProvider(page);
+
+  await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible();
+  await expect(page.getByText("Solicitud para unirse a un viaje compartido")).toHaveCount(0);
+});
