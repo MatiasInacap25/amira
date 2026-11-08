@@ -53,6 +53,7 @@ from amira_api.public_schemas import (
     ServiceRequestCreate,
     ServiceRequestCreated,
 )
+from amira_api.service_type_visibility import visible_service_type_clause
 
 router = APIRouter(prefix="/api", tags=["public marketplace"])
 MAX_PAGE_SIZE = 50
@@ -261,7 +262,7 @@ def create_service_request(
         status="pending",
         description=payload.description,
         customer_id=customer_id,
-        is_exclusive=False,
+        is_exclusive=not payload.accepts_sharing,
         cargo_measurements=payload.cargo_measurements,
     )
     session.add(request)
@@ -546,6 +547,7 @@ def assign_provider_service_driver(
 def list_service_types(session: Annotated[Session, Depends(get_db_session)]) -> PublicServiceTypePage:
     rows = session.execute(
         select(TipoServicio.id.label("id"), TipoServicio.slug.label("slug"), TipoServicio.name.label("name"))
+        .where(visible_service_type_clause())
         .order_by(TipoServicio.name.asc(), TipoServicio.id.asc())
     ).mappings().all()
     return PublicServiceTypePage(items=[PublicServiceType(**row) for row in rows])
@@ -564,7 +566,8 @@ def list_services(
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> PublicServicePage:
-    filters = [Perfil.public_activated_at.is_not(None)]
+    # Hidden service types leave the join itself, so a provider whose only type is hidden is not listed.
+    filters = [Perfil.public_activated_at.is_not(None), visible_service_type_clause()]
     query = _clean_filter(q)
 
     if query:

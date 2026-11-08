@@ -36,6 +36,10 @@ The frontend also needs its own switch: set `NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true` 
 
 Both endpoints return `{items, total, limit, offset}`, cap page size at 50 and offset at 5000, and validate filter lengths. Responses intentionally omit account identity, company tax IDs, raw storage keys, full stop addresses, vehicles/drivers, customer requests, chats, payments, and payout references. Route results expose only published origin/destination cities; intermediate stops include sequence and time but no address because the current schema has no separate public-locality field. Service entries are based on `Servicios_Disponibles`; the current schema has no separate visibility status for that association. Logo URLs remain null until a safe public asset URL mechanism is implemented. Departure filters must be timezone-aware ISO-8601 datetimes.
 
+### Hidden service types
+
+`GET /api/service-types` lists the service types offered in the catalog. Types listed in `HIDDEN_SERVICE_TYPE_SLUGS` (`amira_api/service_type_visibility.py`) are hidden: `carga-compartida` (the old "Carga compartida" type, replaced by shared trips as an option of contracted services) is left out of the type list, returns no results from `GET /api/services?serviceType=carga-compartida`, and is not shown in a provider's service names or categories. A provider whose only type is hidden is not listed. The rows stay in `Tipos_Servicio` and every existing reference stays valid; hiding is a code-only change with no migration. On provider profile save, a hidden type cannot be newly selected (422 `Unknown service type.`), while a link the profile already has is kept even when the save omits it.
+
 ## Payments (simulated provider)
 
 Payments go through the `PaymentProvider` port (`src/amira_api/payment_provider.py`). The domain in `payment_service.py` depends only on the port; `simulated_payment_provider.py` is the only adapter and `payment_routes.py` is the composition root that chooses it.

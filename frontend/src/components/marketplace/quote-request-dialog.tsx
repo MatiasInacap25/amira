@@ -145,6 +145,7 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
       description: String(form.get("description") ?? "").trim() || null,
       // The measures input was removed; the API field stays for legacy rows.
       cargoMeasurements: null,
+      acceptsSharing: String(form.get("acceptsSharing") ?? "false") === "true",
     };
 
     setBusy(true);
@@ -226,6 +227,14 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
               {profile.services.map((service) => <option key={service.serviceTypeId} value={service.serviceTypeId}>{service.name}</option>)}
             </select>
           </label>
+          <label className="marketplace-field" htmlFor="quote-accepts-sharing">
+            <span>¿Aceptas compartir el vehículo con otro cliente?</span>
+            <select aria-describedby="quote-accepts-sharing-hint" defaultValue="false" id="quote-accepts-sharing" name="acceptsSharing">
+              <option value="false">No</option>
+              <option value="true">Sí</option>
+            </select>
+          </label>
+          <p className="quote-request-note" id="quote-accepts-sharing-hint">Si aceptas, el proveedor puede sumar la carga de otro cliente en el mismo viaje y publicarlo como viaje compartido.</p>
           <div className="quote-request-grid">
             <RegionCommuneSelect
               communeLabel="Comuna de origen"

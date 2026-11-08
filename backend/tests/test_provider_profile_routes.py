@@ -506,3 +506,47 @@ def test_unpublish_clears_activation(call, db, scenario):
     assert response.json()["published"] is False
     db.refresh(scenario["company"])
     assert scenario["company"].public_activated_at is None
+
+
+SERVICE_SHARED = UUID("a1000000-0000-4000-8000-000000000006")
+
+
+def _add_hidden_service_type(db: Session) -> None:
+    db.add(TipoServicio(id=SERVICE_SHARED, name="Carga compartida", slug="carga-compartida"))
+    db.commit()
+
+
+def test_put_profile_rejects_newly_selecting_hidden_service_type_without_writing(call, db, scenario):
+    company = scenario["company"]
+    _add_hidden_service_type(db)
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_profile_body(
+        service_type_ids=[str(SERVICE_MOVING), str(SERVICE_SHARED)],
+    ))
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unknown service type."
+    assert _service_ids(db, company) == set()
+
+
+def test_put_profile_keeps_existing_hidden_link_when_saving_other_changes(call, db, scenario):
+    company = scenario["company"]
+    _add_hidden_service_type(db)
+    db.add(ServicioDisponible(id=uuid4(), profile_id=company.id, service_type_id=SERVICE_SHARED))
+    db.commit()
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_profile_body(
+        name="Transportes Sur",
+        service_type_ids=[str(SERVICE_MOVING)],
+    ))
+
+    assert response.status_code == 200
+    assert _service_ids(db, company) == {SERVICE_MOVING, SERVICE_SHARED}
+    assert set(response.json()["service_type_ids"]) == {str(SERVICE_MOVING), str(SERVICE_SHARED)}
+
+    response = call("PUT", "/api/provider/profile", as_auth_id=OWNER_AUTH, json=_profile_body(
+        service_type_ids=[str(SERVICE_MOVING), str(SERVICE_SHARED)],
+    ))
+
+    assert response.status_code == 200
+    assert _service_ids(db, company) == {SERVICE_MOVING, SERVICE_SHARED}
