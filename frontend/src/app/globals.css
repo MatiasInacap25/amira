@@ -745,6 +745,14 @@ h1, h2, h3, p { margin-top: 0; }
 .account-service-chat { justify-self: start; }
 .account-service-hint { margin: 0; color: #6a7985; font-size: 12px; line-height: 1.5; }
 .account-service-form-error { margin: 0; color: #9b2c2c; font-size: 13px; font-weight: 600; }
+.driver-location-sharing { display: grid; gap: 6px; }
+.driver-location-status { margin: 0; color: #173f55; font-size: 14px; font-weight: 700; }
+.driver-location-warning { margin: 0; color: #7a4a12; font-size: 13px; line-height: 1.5; }
+.live-location-map { display: grid; gap: 8px; }
+.live-location-map-canvas { width: 100%; height: 280px; border: 1px solid #e4e9ee; border-radius: 10px; }
+.live-location-updated { margin: 0; color: #3d4f5c; font-size: 13px; }
+.live-location-marker { background: none; border: 0; }
+.live-location-marker span { display: block; width: 18px; height: 18px; border-radius: 50%; background: #173f55; border: 3px solid #ffffff; box-shadow: 0 0 0 2px #173f55; }
 .account-service-inline-action { padding: 0; border: 0; background: none; color: #173f55; font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .account-service-inline-action:focus-visible { outline: 2px solid #df6e3e; outline-offset: 2px; }
 .account-service-assignment-form, .account-service-complete-form { display: grid; gap: 14px; }
