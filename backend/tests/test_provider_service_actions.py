@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
+from amira_api.evidence_storage import get_evidence_storage_resolver
 from amira_api.main import app
 from amira_api.models import (
     Chat,
@@ -30,14 +31,17 @@ from amira_api.models import (
     RolUsuario,
     Servicio,
     ServicioAsignacion,
+    ServicioUbicacion,
     TipoServicio,
     Usuario,
     Vehiculo,
 )
+from amira_api.settings import Settings, get_settings
 from test_provider_service_routes import (  # noqa: F401  (pytest fixture re-export)
     CUSTOMER_AUTH,
     EMPLOYED_DRIVER_AUTH,
     INDEPENDENT_AUTH,
+    OTHER_CUSTOMER_AUTH,
     OWNER_AUTH,
     db,
 )
@@ -317,8 +321,68 @@ def test_a_finished_service_on_the_same_day_is_not_a_conflict(call, db, fleet: F
 # --- T6: POST /start --------------------------------------------------------------------------------------------------
 
 
+LOCATION = {"latitude": -33.4489, "longitude": -70.6693, "accuracy": 12.5}
+MOVED = {"latitude": -33.5, "longitude": -70.7, "accuracy": 8}
+
+
+def _start(call, service: Servicio, *, auth, json=LOCATION):
+    return call("POST", _start_url(service), as_auth_id=auth, json=json)
+
+
+def _location_url(service: Servicio) -> str:
+    return f"/api/provider/services/{service.id}/location"
+
+
+def _customer_location_url(service: Servicio) -> str:
+    return f"/api/customer/services/{service.id}/location"
+
+
+def _complete_url(service: Servicio) -> str:
+    return f"/api/provider/services/{service.id}/complete"
+
+
+def _location_rows(db: Session, service: Servicio) -> list[ServicioUbicacion]:
+    db.expire_all()
+    return list(db.execute(select(ServicioUbicacion).where(ServicioUbicacion.service_id == service.id)).scalars())
+
+
+class _PhotoStorage:
+    def __init__(self) -> None:
+        self.uploads: dict[str, tuple[bytes, str]] = {}
+        self.deleted: list[str] = []
+
+    def upload(self, key: str, content: bytes, content_type: str) -> None:
+        self.uploads[key] = (content, content_type)
+
+    def delete(self, key: str) -> None:
+        self.deleted.append(key)
+
+
+@pytest.fixture
+def photo_storage():
+    storage = _PhotoStorage()
+    app.dependency_overrides[get_evidence_storage_resolver] = lambda: (lambda: storage)
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
+    yield storage
+    app.dependency_overrides.pop(get_evidence_storage_resolver, None)
+    app.dependency_overrides.pop(get_settings, None)
+
+
+def _authenticate(auth_id: UUID) -> None:
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=auth_id,
+        email="caller@example.test",
+        session_id=uuid4(),
+        assurance="aal2",
+        authentication_methods=frozenset({"password", "phone"}),
+    )
+
+
+# --- T6: POST /start and the live location (S1) -----------------------------------------------------------------------
+
+
 def test_assigned_driver_starts_the_service_and_is_recorded(call, db, fleet: Fleet):
-    response = call("POST", _start_url(fleet.service_a), as_auth_id=EMPLOYED_DRIVER_AUTH)
+    response = _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH)
 
     assert response.status_code == 200
     body = response.json()
@@ -330,39 +394,245 @@ def test_assigned_driver_starts_the_service_and_is_recorded(call, db, fleet: Fle
 
 
 def test_owner_starts_the_service_and_is_recorded(call, db, fleet: Fleet):
-    response = call("POST", _start_url(fleet.service_a), as_auth_id=OWNER_AUTH)
+    response = _start(call, fleet.service_a, auth=OWNER_AUTH)
 
     assert response.status_code == 200
     db.refresh(fleet.service_a)
     assert fleet.service_a.started_by_user_id == fleet.owner.id
 
 
-def test_start_needs_at_least_one_assignment(call, fleet: Fleet):
-    response = call("POST", _start_url(fleet.service_next_day), as_auth_id=OWNER_AUTH)
+def test_start_needs_at_least_one_assignment(call, db, fleet: Fleet):
+    response = _start(call, fleet.service_next_day, auth=OWNER_AUTH)
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Assign at least one driver and vehicle before starting."
+    db.refresh(fleet.service_next_day)
+    assert fleet.service_next_day.status == "confirmed"
+    assert _location_rows(db, fleet.service_next_day) == []
 
 
 def test_starting_twice_is_409(call, fleet: Fleet):
-    assert call("POST", _start_url(fleet.service_a), as_auth_id=OWNER_AUTH).status_code == 200
+    assert _start(call, fleet.service_a, auth=OWNER_AUTH).status_code == 200
 
-    response = call("POST", _start_url(fleet.service_a), as_auth_id=OWNER_AUTH)
+    response = _start(call, fleet.service_a, auth=OWNER_AUTH)
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Only confirmed services can be started."
 
 
 def test_unassigned_employed_driver_cannot_see_or_start_the_service(call, fleet: Fleet):
-    response = call("POST", _start_url(fleet.service_a), as_auth_id=GUS_AUTH)
+    response = _start(call, fleet.service_a, auth=GUS_AUTH)
 
     assert response.status_code == 404
 
 
 def test_customer_cannot_start_a_service(call, fleet: Fleet):
-    response = call("POST", _start_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH)
+    response = _start(call, fleet.service_a, auth=CUSTOMER_AUTH)
 
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [None, {}, {"latitude": -33.4}],
+    ids=["no-body", "empty-body", "missing-longitude"],
+)
+def test_start_without_coordinates_is_422_and_the_service_stays_confirmed(call, db, fleet: Fleet, payload):
+    response = _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH, json=payload)
+
+    assert response.status_code == 422
+    db.refresh(fleet.service_a)
+    assert fleet.service_a.status == "confirmed"
+    assert fleet.service_a.starts_at is None
+    assert _location_rows(db, fleet.service_a) == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"latitude": 91, "longitude": -70.6},
+        {"latitude": -90.5, "longitude": -70.6},
+        {"latitude": -33.4, "longitude": 181},
+        {"latitude": -33.4, "longitude": -180.01},
+        {"latitude": -33.4, "longitude": -70.6, "accuracy": -1},
+        {"latitude": -33.4, "longitude": -70.6, "accuracy": 100001},
+        {"latitude": "north", "longitude": -70.6},
+    ],
+    ids=["latitude-high", "latitude-low", "longitude-high", "longitude-low",
+         "accuracy-negative", "accuracy-too-large", "latitude-not-a-number"],
+)
+def test_invalid_coordinates_are_422_and_nothing_is_written(call, db, fleet: Fleet, payload):
+    response = _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH, json=payload)
+
+    assert response.status_code == 422
+    db.refresh(fleet.service_a)
+    assert fleet.service_a.status == "confirmed"
+    assert _location_rows(db, fleet.service_a) == []
+
+
+def test_start_with_coordinates_stores_the_location_in_the_same_transaction(call, db, fleet: Fleet):
+    response = _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH)
+
+    assert response.status_code == 200
+    rows = _location_rows(db, fleet.service_a)
+    assert len(rows) == 1
+    assert float(rows[0].latitude) == pytest.approx(-33.4489)
+    assert float(rows[0].longitude) == pytest.approx(-70.6693)
+    assert float(rows[0].accuracy_meters) == pytest.approx(12.5)
+    assert rows[0].updated_at is not None
+
+
+def test_start_without_accuracy_stores_a_null_accuracy(call, db, fleet: Fleet):
+    response = _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH, json={"latitude": -33.4, "longitude": -70.6})
+
+    assert response.status_code == 200
+    rows = _location_rows(db, fleet.service_a)
+    assert len(rows) == 1 and rows[0].accuracy_meters is None
+
+
+def test_existing_start_rule_still_requires_an_assignment_with_coordinates(call, db, fleet: Fleet):
+    response = _start(call, fleet.service_next_day, auth=EMPLOYED_DRIVER_AUTH)
+
+    assert response.status_code == 404
+    db.refresh(fleet.service_next_day)
+    assert fleet.service_next_day.status == "confirmed"
+    assert _location_rows(db, fleet.service_next_day) == []
+
+
+# --- PUT /location ----------------------------------------------------------------------------------------------------
+
+
+def test_assigned_driver_updates_the_position_and_keeps_one_row(call, db, fleet: Fleet):
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+
+    response = call("PUT", _location_url(fleet.service_a), as_auth_id=EMPLOYED_DRIVER_AUTH, json=MOVED)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["latitude"] == -33.5 and body["longitude"] == -70.7 and body["accuracy"] == 8
+    assert body["updatedAt"] is not None
+    rows = _location_rows(db, fleet.service_a)
+    assert len(rows) == 1
+    assert float(rows[0].latitude) == pytest.approx(-33.5)
+
+
+@pytest.mark.parametrize(
+    ("auth", "expected"),
+    [(GUS_AUTH, 404), (OWNER_AUTH, 403), (OUTSIDER_AUTH, 404), (CUSTOMER_AUTH, 403)],
+    ids=["unassigned-employed-driver", "owner-not-assigned", "owner-of-another-profile", "customer"],
+)
+def test_only_the_assigned_driver_can_update_the_position(call, db, fleet: Fleet, auth, expected):
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+
+    response = call("PUT", _location_url(fleet.service_a), as_auth_id=auth, json=MOVED)
+
+    assert response.status_code == expected
+    rows = _location_rows(db, fleet.service_a)
+    assert len(rows) == 1 and float(rows[0].latitude) == pytest.approx(-33.4489)
+
+
+def test_update_is_refused_when_the_service_is_not_in_progress(call, db, fleet: Fleet):
+    response = call("PUT", _location_url(fleet.service_a), as_auth_id=EMPLOYED_DRIVER_AUTH, json=MOVED)
+
+    assert response.status_code == 409
+    assert _location_rows(db, fleet.service_a) == []
+
+
+def test_update_with_invalid_coordinates_is_422(call, db, fleet: Fleet):
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+
+    response = call(
+        "PUT", _location_url(fleet.service_a), as_auth_id=EMPLOYED_DRIVER_AUTH,
+        json={"latitude": 95, "longitude": -70.7},
+    )
+
+    assert response.status_code == 422
+    rows = _location_rows(db, fleet.service_a)
+    assert len(rows) == 1 and float(rows[0].latitude) == pytest.approx(-33.4489)
+
+
+# --- GET /location: provider and customer reads -----------------------------------------------------------------------
+
+
+def test_owner_and_assigned_driver_read_the_position_while_in_progress(call, db, fleet: Fleet):
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+
+    for auth in (OWNER_AUTH, EMPLOYED_DRIVER_AUTH):
+        response = call("GET", _location_url(fleet.service_a), as_auth_id=auth)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["latitude"] == -33.4489 and body["longitude"] == -70.6693 and body["accuracy"] == 12.5
+        assert body["updatedAt"] is not None
+
+
+def test_provider_location_read_is_404_before_start_and_for_viewers_who_cannot_see_the_service(call, fleet: Fleet):
+    assert call("GET", _location_url(fleet.service_a), as_auth_id=EMPLOYED_DRIVER_AUTH).status_code == 404
+
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+
+    assert call("GET", _location_url(fleet.service_a), as_auth_id=GUS_AUTH).status_code == 404
+    assert call("GET", _location_url(fleet.service_a), as_auth_id=OUTSIDER_AUTH).status_code == 404
+    assert call("GET", _location_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH).status_code == 403
+
+
+def test_customer_owner_reads_the_position_and_another_customer_gets_404(call, db, fleet: Fleet):
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+    client_role = db.execute(select(RolUsuario).where(RolUsuario.code == "client")).scalar_one()
+    other = Usuario(id=uuid4(), auth_user_id=OTHER_CUSTOMER_AUTH, first_name="Otra", last_name="Clienta",
+                    email="otra@example.test", role_id=client_role.id)
+    db.add(other)
+    db.commit()
+
+    owner_read = call("GET", _customer_location_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH)
+    other_read = call("GET", _customer_location_url(fleet.service_a), as_auth_id=OTHER_CUSTOMER_AUTH)
+
+    assert owner_read.status_code == 200
+    assert owner_read.json()["latitude"] == -33.4489
+    assert other_read.status_code == 404
+
+
+def test_customer_location_read_is_404_before_start(call, fleet: Fleet):
+    response = call("GET", _customer_location_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH)
+
+    assert response.status_code == 404
+
+
+# --- POST /complete: the location is deleted ---------------------------------------------------------------------------
+
+
+def test_completion_deletes_the_position_and_later_updates_and_reads_fail(call, db, fleet: Fleet, photo_storage):
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+    assert len(_location_rows(db, fleet.service_a)) == 1
+    _authenticate(EMPLOYED_DRIVER_AUTH)
+
+    completed = TestClient(app).post(
+        _complete_url(fleet.service_a), files={"photo": ("evidence.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 64, "image/jpeg")}
+    )
+
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert _location_rows(db, fleet.service_a) == []
+    assert call("PUT", _location_url(fleet.service_a), as_auth_id=EMPLOYED_DRIVER_AUTH, json=MOVED).status_code == 409
+    assert call("GET", _location_url(fleet.service_a), as_auth_id=OWNER_AUTH).status_code == 404
+    assert call("GET", _customer_location_url(fleet.service_a), as_auth_id=CUSTOMER_AUTH).status_code == 404
+
+
+def test_existing_completion_rules_still_need_an_assigned_driver_and_a_photo(call, db, fleet: Fleet, photo_storage):
+    assert _start(call, fleet.service_a, auth=EMPLOYED_DRIVER_AUTH).status_code == 200
+    _authenticate(EMPLOYED_DRIVER_AUTH)
+
+    without_photo = TestClient(app).post(_complete_url(fleet.service_a))
+
+    assert without_photo.status_code == 422
+    db.refresh(fleet.service_a)
+    assert fleet.service_a.status == "in_progress"
+    assert len(_location_rows(db, fleet.service_a)) == 1
+    _authenticate(OWNER_AUTH)
+    not_assigned = TestClient(app).post(
+        _complete_url(fleet.service_a), files={"photo": ("evidence.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 64, "image/jpeg")}
+    )
+    assert not_assigned.status_code == 403
 
 
 def test_requested_drivers_are_locked_in_id_order_before_the_same_day_check(call, db, fleet: Fleet):

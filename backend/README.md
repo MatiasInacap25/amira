@@ -68,6 +68,19 @@ A service the viewer cannot see answers 404. Responses name the counterpart (pro
 
 Optional settings and defaults: `SERVICE_EVIDENCE_MAX_BYTES` (8 MiB), `SERVICE_EVIDENCE_URL_TTL_SECONDS` (300), `SERVICE_CLAIM_WINDOW_HOURS` (24). Without the Supabase settings, the delivery-photo endpoints answer 503.
 
+### Live service location (in-progress services)
+
+While a service is `in_progress`, the assigned driver's browser sends its GPS position and the customer of that service can follow it. Only the current position is stored, in `Servicio_Ubicacion` (one row per service, primary key `ID_Servicio`, cascade on service delete). There is no trail.
+
+- `POST /api/provider/services/{serviceId}/start` now requires a JSON body: `{"latitude": -33.4489, "longitude": -70.6693, "accuracy": 12.5}`. `accuracy` is optional (meters). Without valid coordinates it answers 422 and the service stays `confirmed`. On success the status change and the first position are written in the same transaction.
+- `PUT /api/provider/services/{serviceId}/location` takes the same body and upserts the row. Only a driver assigned through `Servicio_Asignacion` can update, and only while the service is `in_progress`. Answers: 404 for a service the viewer cannot see, 403 for a viewer who can see it but is not an assigned driver (the profile owner included), 409 when the service is not in progress, 422 for invalid coordinates. Success returns the stored position.
+- `GET /api/provider/services/{serviceId}/location` (owner and assigned drivers) and `GET /api/customer/services/{serviceId}/location` (the customer who owns the service) return `{latitude, longitude, accuracy, updatedAt}`. They answer 404 when the service is not in progress or has no position yet, and anyone who cannot see the service gets the same 404 as the service detail. A non-customer account gets 403 on the customer route.
+- Validation: latitude -90..90, longitude -180..180, accuracy 0..100000 meters. Values are stored with the database checks too.
+- Deletion: `POST .../complete` deletes the row in the same transaction. After completion, updates answer 409 and reads answer 404.
+- Privacy: the position is personal data. The table has RLS enabled and no `anon`/`authenticated` privileges, and it is only reachable through these endpoints. Viewers see only the position, never the trail.
+
+The frontend must send the position on start and then about every 15 seconds while the page is open. A web page cannot track in the background.
+
 ### Claims, consent and payout release
 
 A customer can act on a completed service once: `POST /api/customer/services/{serviceId}/claims` with `{reason}` (trimmed, 1 to 1000 characters) opens a claim and moves the service to `disputed`; `POST /api/customer/services/{serviceId}/consent` (no body) records that the customer is satisfied. Both lock the service row. A claim is refused after the claim window (`SERVICE_CLAIM_WINDOW_HOURS` from completion) and after consent; consent is refused while a claim is open. Claim resolution and refunds are out of scope.

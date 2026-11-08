@@ -541,6 +541,30 @@ class ServicioAsignacion(Base):
     vehicle: Mapped[Vehiculo] = relationship()
 
 
+class ServicioUbicacion(Base):
+    """Current position of an in-progress service: at most one row, deleted when the service completes."""
+
+    __tablename__ = "Servicio_Ubicacion"
+    __table_args__ = (
+        CheckConstraint('"Latitud" BETWEEN -90 AND 90', name="ck_service_location_latitude_range"),
+        CheckConstraint('"Longitud" BETWEEN -180 AND 180', name="ck_service_location_longitude_range"),
+        CheckConstraint(
+            '"Precision_Metros" IS NULL OR "Precision_Metros" >= 0',
+            name="ck_service_location_accuracy_nonnegative",
+        ),
+    )
+
+    service_id: Mapped[UUID] = mapped_column(
+        "ID_Servicio", Uuid(as_uuid=True), ForeignKey("Servicio.ID", ondelete="CASCADE"), primary_key=True
+    )
+    latitude: Mapped[Decimal] = mapped_column("Latitud", Numeric(9, 6), nullable=False)
+    longitude: Mapped[Decimal] = mapped_column("Longitud", Numeric(9, 6), nullable=False)
+    accuracy_meters: Mapped[Decimal | None] = mapped_column("Precision_Metros", Numeric(10, 2))
+    updated_at: Mapped[datetime] = mapped_column(
+        "Fecha_Actualizacion", DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Viaje(Base):
     __tablename__ = "Viaje"
 
