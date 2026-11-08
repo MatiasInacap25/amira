@@ -99,12 +99,15 @@ def link_join_request_stops(
     trip_id: UUID,
     pickup_address: str,
     delivery_address: str,
+    is_exclusive: bool,
 ) -> tuple[Viaje, Vehiculo, ParadaViaje, ParadaViaje]:
     """Insert the joined service's pickup and delivery stops before the trip destination, under the trip row lock.
 
     The route becomes: existing stops in order, then pickup, then delivery, then the original destination, numbered
-    1..n. Returns the trip, its vehicle and the new pickup and delivery stops.
+    1..n. Returns the trip, its vehicle and the new pickup and delivery stops. An exclusive service never gets stops.
     """
+    if is_exclusive:
+        raise SharedTripConflict("El cliente no aceptó compartir este viaje.")
     trip = session.execute(select(Viaje).where(Viaje.id == trip_id).with_for_update()).scalar_one_or_none()
     if trip is None:
         raise SharedTripConflict("El viaje compartido ya no está disponible; el pago no se aplicó.")

@@ -248,6 +248,15 @@ def create_service_request(
                 detail=[{"loc": ["body", field], "msg": "Selecciona una comuna válida del catálogo.", "type": "value_error"}],
             )
 
+    if payload.requested_trip_id is not None and not payload.accepts_sharing:
+        raise HTTPException(
+            status_code=422,
+            detail=[{
+                "loc": ["body", "acceptsSharing"],
+                "msg": "Para sumarte a un viaje compartido debes aceptar compartir el vehículo.",
+                "type": "value_error",
+            }],
+        )
     if payload.requested_trip_id is not None:
         trip = session.execute(
             select(Viaje.id, Viaje.profile_id, Viaje.is_published, Viaje.accepts_requests).where(

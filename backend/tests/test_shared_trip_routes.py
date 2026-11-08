@@ -499,6 +499,29 @@ def test_join_refused_for_a_trip_of_another_provider(api, scenario: Scenario, db
     assert db.query(FormularioServicio).filter(FormularioServicio.origin == "Calle Retiro 5").count() == 0
 
 
+def test_join_refused_when_the_customer_does_not_accept_sharing(api, scenario: Scenario, db: Session):
+    trip = _trip(db, profile=scenario.company, vehicle=scenario.vehicle, driver=scenario.driver)
+    db.commit()
+
+    response = api("POST", "/api/service-requests", as_auth_id=CUSTOMER_AUTH,
+                   json=_join_body(scenario, trip, acceptsSharing=False))
+
+    assert response.status_code == 422, response.text
+    assert db.query(FormularioServicio).filter(FormularioServicio.origin == "Calle Retiro 5").count() == 0
+
+
+def test_join_refused_when_the_sharing_choice_is_missing(api, scenario: Scenario, db: Session):
+    trip = _trip(db, profile=scenario.company, vehicle=scenario.vehicle, driver=scenario.driver)
+    body = _join_body(scenario, trip)
+    body.pop("acceptsSharing")
+    db.commit()
+
+    response = api("POST", "/api/service-requests", as_auth_id=CUSTOMER_AUTH, json=body)
+
+    assert response.status_code == 422, response.text
+    assert db.query(FormularioServicio).filter(FormularioServicio.origin == "Calle Retiro 5").count() == 0
+
+
 def test_request_without_a_trip_is_stored_without_one(api, scenario: Scenario, db: Session):
     body = _join_body(scenario, _trip(db, profile=scenario.company, vehicle=scenario.vehicle, driver=scenario.driver))
     body.pop("requestedTripId")

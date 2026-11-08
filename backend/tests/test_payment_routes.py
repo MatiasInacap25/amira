@@ -30,6 +30,7 @@ from amira_api.models import (
 from amira_api.payment_provider import SIMULATED_PROVIDER_NAME
 from amira_api.payment_routes import get_payment_provider, get_simulated_provider
 from amira_api.settings import Settings, get_settings
+from amira_api.shared_trip_service import SharedTripConflict, link_join_request_stops
 from amira_api.simulated_payment_provider import SimulatedPaymentProvider
 from chat_support import (
     CUSTOMER_AUTH,
@@ -714,6 +715,38 @@ def test_approved_join_request_is_linked_to_its_trip_with_its_own_stops(pay, sce
     ]
     assert service.pickup_stop_id == stops[1].id
     assert service.delivery_stop_id == stops[2].id
+
+
+def test_exclusive_request_with_a_trip_is_paid_without_being_linked(pay, scenario, db: Session):
+    trip = _published_trip(db, scenario)
+    form = db.get(FormularioServicio, scenario.chat_a.form_id)
+    form.requested_trip_id = trip.id
+    form.is_exclusive = True
+    db.commit()
+    started = _start(pay, _quote(pay, scenario)).json()
+
+    response = _complete(pay, started["paymentId"], _token(started["checkoutUrl"]), approve=True)
+
+    assert response.status_code == 200, response.text
+    service = db.query(Servicio).one()
+    assert service.is_exclusive is True
+    assert (service.trip_id, service.vehicle_id, service.pickup_stop_id, service.delivery_stop_id) == (
+        None, None, None, None,
+    )
+    assert db.query(ParadaViaje).filter(ParadaViaje.trip_id == trip.id).count() == 2
+
+
+def test_stop_insertion_refuses_an_exclusive_service(scenario, db: Session):
+    trip = _published_trip(db, scenario)
+
+    with pytest.raises(SharedTripConflict):
+        link_join_request_stops(
+            db, trip_id=trip.id, pickup_address="Calle Retiro 5", delivery_address="Calle Entrega 9",
+            is_exclusive=True,
+        )
+    db.rollback()
+
+    assert db.query(ParadaViaje).filter(ParadaViaje.trip_id == trip.id).count() == 2
 
 
 def test_approval_of_a_request_without_a_trip_leaves_the_service_unlinked(pay, scenario, db: Session):

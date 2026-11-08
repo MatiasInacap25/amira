@@ -142,14 +142,16 @@ def confirm_payment(
         raise PaymentConflict("La solicitud no tiene un prestador asignado.")
 
     trip_link = None
-    if form.requested_trip_id is not None:
+    if form.requested_trip_id is not None and not form.is_exclusive:
         # A join request links to its trip inside this transaction: the trip row lock and the stop inserts commit with the service.
+        # An exclusive request (the customer refused sharing) is paid as a normal request and is not linked.
         try:
             trip_link = link_join_request_stops(
                 session,
                 trip_id=form.requested_trip_id,
                 pickup_address=form.origin or "",
                 delivery_address=form.destination or "",
+                is_exclusive=form.is_exclusive,
             )
         except SharedTripConflict as error:
             payment.status = REJECTED
