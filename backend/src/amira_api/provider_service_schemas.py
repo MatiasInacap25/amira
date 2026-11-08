@@ -72,6 +72,24 @@ class DeliveryPhotoUrl(PublicResponse):
     expires_at: datetime
 
 
+class ServiceLocationInput(BaseModel):
+    """GPS position sent by the driver's browser. Bounds reject bad input before any row is written."""
+
+    model_config = ConfigDict(extra="forbid", alias_generator=_to_camel, populate_by_name=True)
+
+    latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
+    # Meters. Anything above 100 km is not a useful GPS accuracy, so it is refused.
+    accuracy: float | None = Field(default=None, ge=0, le=100000, allow_inf_nan=False)
+
+
+class ServiceLocation(PublicResponse):
+    latitude: float
+    longitude: float
+    accuracy: float | None
+    updated_at: datetime
+
+
 class AssignmentDriverOption(PublicResponse):
     driver_id: UUID
     first_name: str

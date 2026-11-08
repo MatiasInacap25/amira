@@ -54,7 +54,7 @@ def db():
     event.listen(engine, "connect", _register_btrim)
     tables = (
         "Rol_Usuario", "Usuario", "Perfil", "Conductor", "Vehiculo", "Formulario_servicio", "Chat",
-        "Cotizacion", "Servicio", "Servicio_Asignacion", "Pago", "Cuenta_Desembolso", "Desembolso",
+        "Cotizacion", "Servicio", "Servicio_Asignacion", "Servicio_Ubicacion", "Pago", "Cuenta_Desembolso", "Desembolso",
         "Viaje", "Viaje_Vehiculo", "Parada_Viaje",
     )
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
