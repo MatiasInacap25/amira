@@ -3,15 +3,49 @@ import { test } from "node:test";
 import {
   LOCATION_INTERVAL_MS,
   LocationError,
+  POSITION_MAX_AGE_MS,
   geolocationErrorMessage,
+  isFreshPosition,
+  isNewerPosition,
   isValidCoordinates,
   requestDriverLocation,
   shouldSendLocation,
+  shouldSendPosition,
   toLocationPayload,
 } from "../../src/lib/geolocation.ts";
 
 test("the sharing interval is about every 15 seconds", () => {
   assert.equal(LOCATION_INTERVAL_MS, 15000);
+});
+
+test("a position is fresh only while its age is within the freshness limit", () => {
+  const now = 1_000_000;
+  assert.equal(POSITION_MAX_AGE_MS, 30000);
+  assert.equal(isFreshPosition(now, now), true);
+  assert.equal(isFreshPosition(now - POSITION_MAX_AGE_MS, now), true);
+  assert.equal(isFreshPosition(now - POSITION_MAX_AGE_MS - 1, now), false);
+  assert.equal(isFreshPosition(now - 60000, now), false);
+});
+
+test("a position timestamp in the future or not a number is never fresh", () => {
+  const now = 1_000_000;
+  assert.equal(isFreshPosition(now + 1, now), false);
+  assert.equal(isFreshPosition(Number.NaN, now), false);
+  assert.equal(isFreshPosition(undefined, now), false);
+});
+
+test("a position is newer than the last sent one only when its timestamp advances", () => {
+  assert.equal(isNewerPosition(2000, null), true);
+  assert.equal(isNewerPosition(2000, 1000), true);
+  assert.equal(isNewerPosition(1000, 1000), false);
+  assert.equal(isNewerPosition(500, 1000), false);
+});
+
+test("a position is sent only when it is both fresh and newer than the last sent one", () => {
+  const now = 1_000_000;
+  assert.equal(shouldSendPosition(now - 1000, null, now), true);
+  assert.equal(shouldSendPosition(now - 1000, now - 1000, now), false, "an already sent position is never resent");
+  assert.equal(shouldSendPosition(now - 60000, null, now), false, "a stale position is never sent as current");
 });
 
 test("accepts coordinates inside the valid ranges, with an optional accuracy", () => {

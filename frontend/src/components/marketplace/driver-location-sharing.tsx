@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  geolocationErrorMessage,
+  isFreshPosition,
   isValidCoordinates,
   LOCATION_INTERVAL_MS,
   type LocationPayload,
+  SHARING_STOPPED_MESSAGE,
   shouldSendLocation,
+  shouldSendPosition,
   toLocationPayload,
 } from "@/lib/geolocation";
 
@@ -18,14 +20,14 @@ type DriverLocationSharingProps = {
 };
 
 /**
- * Watches the driver's position while the service is in progress and sends the latest one about every 15 seconds.
- * Watch events only update the latest position, so the request rate is set by the interval, not by the browser.
- * Watching stops on unmount, which happens when the service leaves the in-progress state.
+ * Watches the driver's position while the service is in progress and sends the latest fresh one about every 15 seconds.
+ * Only positions obtained recently and not sent before are sent. A watch error stops sharing, drops the cached position,
+ * and keeps a warning until a new fresh position arrives. Watching stops on unmount, when the service leaves in progress.
  */
 export function DriverLocationSharing({ sendLocation }: DriverLocationSharingProps) {
-  // A browser without geolocation is known before any effect runs, so the notice is the initial state.
+  // A browser without geolocation is known before any effect runs, so the warning is the initial state.
   const [message, setMessage] = useState<string | null>(() =>
-    globalThis.navigator?.geolocation ? null : geolocationErrorMessage("unavailable"),
+    globalThis.navigator?.geolocation ? null : SHARING_STOPPED_MESSAGE,
   );
   const sendRef = useRef(sendLocation);
 
@@ -38,20 +40,26 @@ export function DriverLocationSharing({ sendLocation }: DriverLocationSharingPro
     if (!geolocation) return;
 
     let active = true;
-    let latest: LocationPayload | null = null;
+    // Cached position with its browser timestamp. Dropped on a watch error, so nothing stale is sent as current.
+    let latest: { payload: LocationPayload; timestamp: number } | null = null;
     let lastSentAt: number | null = null;
+    let lastSentTimestamp: number | null = null;
     let sending = false;
+    let lost = false;
 
     const sendLatest = async () => {
       const now = Date.now();
-      if (!latest || sending || !shouldSendLocation(lastSentAt, now)) return;
+      if (!latest || lost || sending || !shouldSendLocation(lastSentAt, now)) return;
+      if (!shouldSendPosition(latest.timestamp, lastSentTimestamp, now)) return;
+      const { payload, timestamp } = latest;
       sending = true;
       lastSentAt = now;
+      lastSentTimestamp = timestamp;
       try {
-        await sendRef.current(latest);
-        if (active) setMessage(null);
+        await sendRef.current(payload);
+        if (active && !lost) setMessage(null);
       } catch {
-        if (active) setMessage(UPDATE_FAILED_MESSAGE);
+        if (active && !lost) setMessage(UPDATE_FAILED_MESSAGE);
       } finally {
         sending = false;
       }
@@ -60,12 +68,16 @@ export function DriverLocationSharing({ sendLocation }: DriverLocationSharingPro
     const watchId = geolocation.watchPosition(
       (position) => {
         const payload = toLocationPayload(position);
-        if (!isValidCoordinates(payload)) return;
-        latest = payload;
+        if (!isValidCoordinates(payload) || !isFreshPosition(position.timestamp, Date.now())) return;
+        lost = false;
+        latest = { payload, timestamp: position.timestamp };
+        if (active) setMessage(null);
         void sendLatest();
       },
-      (error) => {
-        if (active) setMessage(geolocationErrorMessage(error.code));
+      () => {
+        lost = true;
+        latest = null;
+        if (active) setMessage(SHARING_STOPPED_MESSAGE);
       },
       { enableHighAccuracy: true, maximumAge: 0 },
     );

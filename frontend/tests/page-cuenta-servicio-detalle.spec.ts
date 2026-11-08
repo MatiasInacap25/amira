@@ -876,3 +876,101 @@ test("assigned driver completes with a delivery photo and sharing and the map st
   await page.waitForTimeout(200);
   expect(locationRequests).toHaveLength(locationCountAtCompletion);
 });
+
+// Replaces navigator.geolocation with a controllable watcher so tests can emit positions and watch errors on demand.
+async function installFakeDriverWatch(page: Page) {
+  await page.addInitScript(() => {
+    const watchers = new Map<number, { success: (position: unknown) => void; error: (error: unknown) => void }>();
+    const position = (timestamp: number) => ({ coords: { latitude: -33.4489, longitude: -70.6693, accuracy: 12.5 }, timestamp });
+    let nextId = 1;
+    const fake = {
+      watchPosition(success: (position: unknown) => void, error: (error: unknown) => void) {
+        const id = nextId++;
+        watchers.set(id, { success, error });
+        return id;
+      },
+      clearWatch(id: number) {
+        watchers.delete(id);
+      },
+      getCurrentPosition(success: (position: unknown) => void) {
+        success(position(Date.now()));
+      },
+    };
+    Object.defineProperty(navigator, "geolocation", { configurable: true, get: () => fake });
+    Object.defineProperty(window, "emitDriverPosition", {
+      value: (timestamp: number) => watchers.forEach((watcher) => watcher.success(position(timestamp))),
+    });
+    Object.defineProperty(window, "emitDriverWatchError", {
+      value: (code: number) => watchers.forEach((watcher) => watcher.error({ code, message: "fake" })),
+    });
+  });
+}
+
+async function emitDriverPosition(page: Page, timestamp: number) {
+  await page.evaluate((ts) => (window as unknown as { emitDriverPosition: (t: number) => void }).emitDriverPosition(ts), timestamp);
+}
+
+async function emitDriverWatchError(page: Page, code: number) {
+  await page.evaluate((c) => (window as unknown as { emitDriverWatchError: (c: number) => void }).emitDriverWatchError(c), code);
+}
+
+async function openInProgressDriverWithFakeWatch(page: Page, locationRequests: string[]) {
+  await page.clock.install({ time: new Date("2026-11-07T12:00:00Z") });
+  await installFakeDriverWatch(page);
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: inProgressDetail("provider") }));
+  await page.route("**/api/provider/services/service-1/location", async (route) => {
+    locationRequests.push(route.request().method());
+    await route.fulfill({ json: locationResponse() });
+  });
+  await mockMapTiles(page);
+  await signInTo(page, "independent_driver");
+  await page.goto("/cuenta/servicios/service-1");
+  // The fake watcher only has listeners once the sharing component has mounted.
+  await expect(page.getByText("Compartiendo tu ubicación con el cliente")).toBeVisible();
+}
+
+test("after a watch error the driver stops sending and keeps the warning until a fresh position arrives", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests);
+  const warning = page.getByRole("alert").filter({ hasText: "Tu ubicación no se está compartiendo con el cliente" });
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+
+  await emitDriverWatchError(page, 2);
+  await expect(warning).toBeVisible();
+  await page.clock.runFor(30000);
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(1);
+  await expect(warning).toBeVisible();
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBeGreaterThan(1);
+  await expect(warning).toHaveCount(0);
+});
+
+test("a position older than the freshness limit is never sent as current", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests);
+
+  await emitDriverPosition(page, (await page.evaluate(() => Date.now())) - 60000);
+  await page.clock.runFor(15000);
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(0);
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+});
+
+test("normal sharing keeps sending about every 15 seconds while the position is fresh", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests);
+
+  for (let step = 0; step < 9; step += 1) {
+    await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+    await page.clock.runFor(5000);
+  }
+  await expect.poll(() => locationRequests.length).toBeGreaterThanOrEqual(3);
+  await page.waitForTimeout(200);
+  expect(locationRequests.length).toBeLessThanOrEqual(4);
+});

@@ -53,9 +53,32 @@ export function shouldSendLocation(lastSentAt: number | null, now: number, inter
   return lastSentAt === null || now - lastSentAt >= intervalMs;
 }
 
+/** A browser position older than this is never sent as the driver's current location. */
+export const POSITION_MAX_AGE_MS = 30000;
+
+/** True when the browser timestamp is a number, not in the future, and no older than the freshness limit. */
+export function isFreshPosition(positionTimestamp: number | undefined, now: number, maxAgeMs: number = POSITION_MAX_AGE_MS): boolean {
+  if (!isFiniteNumber(positionTimestamp)) return false;
+  const age = now - positionTimestamp;
+  return age >= 0 && age <= maxAgeMs;
+}
+
+/** True when nothing was sent yet or this position was obtained after the last sent one, so it is never resent. */
+export function isNewerPosition(positionTimestamp: number, lastSentTimestamp: number | null): boolean {
+  return lastSentTimestamp === null || positionTimestamp > lastSentTimestamp;
+}
+
+/** A position may be sent only when it is fresh and newer than the last sent position. */
+export function shouldSendPosition(positionTimestamp: number, lastSentTimestamp: number | null, now: number): boolean {
+  return isFreshPosition(positionTimestamp, now) && isNewerPosition(positionTimestamp, lastSentTimestamp);
+}
+
 const PERMISSION_DENIED_MESSAGE = "No puede iniciar el servicio sin compartir tu ubicación. Permite el acceso a la ubicación para este sitio en la configuración de tu navegador y vuelve a intentarlo.";
 const POSITION_UNAVAILABLE_MESSAGE = "No pudimos obtener tu ubicación. Revisa que el GPS o la red estén activos e inténtalo nuevamente.";
 const TIMEOUT_MESSAGE = "Tardamos demasiado en obtener tu ubicación. Inténtalo nuevamente.";
+
+/** Shown while the driver's location is not being shared during an in-progress service; it stays until a fresh position arrives. */
+export const SHARING_STOPPED_MESSAGE = "Tu ubicación no se está compartiendo con el cliente. Revisa que el GPS o la red estén activos y permite el acceso a la ubicación para este sitio en la configuración de tu navegador.";
 
 export function geolocationErrorMessage(code: LocationErrorCode | number): string {
   if (code === 1) return PERMISSION_DENIED_MESSAGE;
