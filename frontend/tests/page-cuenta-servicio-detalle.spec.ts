@@ -914,12 +914,16 @@ async function emitDriverWatchError(page: Page, code: number) {
   await page.evaluate((c) => (window as unknown as { emitDriverWatchError: (c: number) => void }).emitDriverWatchError(c), code);
 }
 
-async function openInProgressDriverWithFakeWatch(page: Page, locationRequests: string[]) {
+async function openInProgressDriverWithFakeWatch(page: Page, locationRequests: string[], failingAttempts = 0) {
   await page.clock.install({ time: new Date("2026-11-07T12:00:00Z") });
   await installFakeDriverWatch(page);
   await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: inProgressDetail("provider") }));
   await page.route("**/api/provider/services/service-1/location", async (route) => {
     locationRequests.push(route.request().method());
+    if (locationRequests.length <= failingAttempts) {
+      await route.fulfill({ status: 500, json: { detail: "temporary failure" } });
+      return;
+    }
     await route.fulfill({ json: locationResponse() });
   });
   await mockMapTiles(page);
@@ -960,6 +964,49 @@ test("a position older than the freshness limit is never sent as current", async
 
   await emitDriverPosition(page, await page.evaluate(() => Date.now()));
   await expect.poll(() => locationRequests.length).toBe(1);
+});
+
+test("a position whose send failed is retried on the next tick while it is still fresh", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests, 1);
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+  await expect(page.getByRole("alert").filter({ hasText: "No pudimos compartir tu ubicación" })).toBeVisible();
+
+  await page.clock.runFor(15000);
+  await expect.poll(() => locationRequests.length).toBe(2);
+  await expect(page.getByRole("alert").filter({ hasText: "No pudimos compartir tu ubicación" })).toHaveCount(0);
+});
+
+test("after a failed send, watch events do not resend; only the 15 second tick retries", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests, 1);
+
+  await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  await expect.poll(() => locationRequests.length).toBe(1);
+
+  for (let step = 0; step < 2; step += 1) {
+    await page.clock.runFor(5000);
+    await emitDriverPosition(page, await page.evaluate(() => Date.now()));
+  }
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(1);
+
+  await page.clock.runFor(5000);
+  await expect.poll(() => locationRequests.length).toBe(2);
+});
+
+test("a position whose send failed is not retried once it is stale", async ({ page }) => {
+  const locationRequests: string[] = [];
+  await openInProgressDriverWithFakeWatch(page, locationRequests, 1);
+
+  await emitDriverPosition(page, (await page.evaluate(() => Date.now())) - 25000);
+  await expect.poll(() => locationRequests.length).toBe(1);
+
+  await page.clock.runFor(15000);
+  await page.waitForTimeout(200);
+  expect(locationRequests).toHaveLength(1);
 });
 
 test("normal sharing keeps sending about every 15 seconds while the position is fresh", async ({ page }) => {

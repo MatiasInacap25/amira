@@ -42,23 +42,29 @@ export function DriverLocationSharing({ sendLocation }: DriverLocationSharingPro
     let active = true;
     // Cached position with its browser timestamp. Dropped on a watch error, so nothing stale is sent as current.
     let latest: { payload: LocationPayload; timestamp: number } | null = null;
+    // Throttle base: the last successful send. A failed send does not reset it.
     let lastSentAt: number | null = null;
     let lastSentTimestamp: number | null = null;
+    // Set by a failed send. Only the interval tick retries; watch events do not resend while it is set.
+    let retryPending = false;
     let sending = false;
     let lost = false;
 
-    const sendLatest = async () => {
+    const sendLatest = async (fromTick: boolean) => {
       const now = Date.now();
       if (!latest || lost || sending || !shouldSendLocation(lastSentAt, now)) return;
+      if (!fromTick && retryPending) return;
       if (!shouldSendPosition(latest.timestamp, lastSentTimestamp, now)) return;
       const { payload, timestamp } = latest;
       sending = true;
-      lastSentAt = now;
-      lastSentTimestamp = timestamp;
       try {
         await sendRef.current(payload);
+        lastSentAt = Date.now();
+        lastSentTimestamp = timestamp;
+        retryPending = false;
         if (active && !lost) setMessage(null);
       } catch {
+        retryPending = true;
         if (active && !lost) setMessage(UPDATE_FAILED_MESSAGE);
       } finally {
         sending = false;
@@ -72,7 +78,7 @@ export function DriverLocationSharing({ sendLocation }: DriverLocationSharingPro
         lost = false;
         latest = { payload, timestamp: position.timestamp };
         if (active) setMessage(null);
-        void sendLatest();
+        void sendLatest(false);
       },
       () => {
         lost = true;
@@ -81,7 +87,7 @@ export function DriverLocationSharing({ sendLocation }: DriverLocationSharingPro
       },
       { enableHighAccuracy: true, maximumAge: 0 },
     );
-    const timer = window.setInterval(() => void sendLatest(), LOCATION_INTERVAL_MS);
+    const timer = window.setInterval(() => void sendLatest(true), LOCATION_INTERVAL_MS);
 
     return () => {
       active = false;
