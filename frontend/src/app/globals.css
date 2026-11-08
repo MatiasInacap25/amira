@@ -1045,3 +1045,78 @@ h1, h2, h3, p { margin-top: 0; }
 .quote-dialog-notice { margin: 0; padding: 11px 13px; border: 1px solid #ead3cc; border-radius: 8px; background: #fff8f5; color: #8a4035; font-size: 13px; line-height: 1.5; }
 .provider-request-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .provider-request-photos img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid #e0e8e8; border-radius: 8px; }
+
+.vehicle-manager { display: grid; gap: 24px; margin-top: 8px; }
+.vehicle-manager h2 { margin: 0 0 12px; font-size: 18px; }
+.vehicle-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.vehicle-card { display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: center; padding: 12px; border: 1px solid #e0e8e8; border-radius: 8px; background: #fff; }
+.vehicle-card img { display: block; width: 120px; height: 90px; object-fit: cover; border: 1px solid #e0e8e8; border-radius: 6px; }
+.vehicle-card p { margin: 4px 0 10px; color: #4a6370; font-size: 13px; line-height: 1.5; }
+@media (max-width: 480px) { .vehicle-card { grid-template-columns: 1fr; } .vehicle-card img { width: 100%; height: auto; aspect-ratio: 4 / 3; } }
+
+/* Shared trips: provider publishing, provider trip list and the join action on routes. */
+.shared-trip-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.shared-trip-dialog {
+  width: min(480px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+}
+
+.shared-trip-dialog-note,
+.shared-trip-dialog-empty {
+  margin: 8px 0 12px;
+}
+
+.shared-trip-dialog-form,
+.shared-trip-dialog-result {
+  display: grid;
+  gap: 12px;
+}
+
+.shared-trip-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.shared-trips-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.shared-trip-item {
+  padding: 14px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 10px;
+}
+
+.shared-trip-status {
+  font-weight: 600;
+}
+
+.route-join-button,
+.provider-request-join {
+  margin-top: 8px;
+}
+
+@media (max-width: 480px) {
+  .shared-trip-dialog-actions .button {
+    flex: 1 1 auto;
+  }
+}

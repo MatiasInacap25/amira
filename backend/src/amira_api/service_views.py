@@ -98,6 +98,7 @@ def service_rows(*conditions) -> Select:
             _origin_commune.name.label("origin_commune"),
             _destination_commune.name.label("destination_commune"),
             Servicio.is_exclusive.label("is_exclusive"),
+            Servicio.trip_id.label("shared_trip_id"),
             Servicio.description.label("description"),
             Servicio.created_at.label("created_at"),
             Servicio.starts_at.label("started_at"),
@@ -213,6 +214,7 @@ def shape_detail(
         can_claim=can_claim,
         can_consent=can_consent,
         assignments=assignments,
+        shared_trip_id=row["shared_trip_id"] if viewer_role == "provider" else None,
     )
 
 

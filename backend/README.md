@@ -36,6 +36,10 @@ The frontend also needs its own switch: set `NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true` 
 
 Both endpoints return `{items, total, limit, offset}`, cap page size at 50 and offset at 5000, and validate filter lengths. Responses intentionally omit account identity, company tax IDs, raw storage keys, full stop addresses, vehicles/drivers, customer requests, chats, payments, and payout references. Route results expose only published origin/destination cities; intermediate stops include sequence and time but no address because the current schema has no separate public-locality field. Service entries are based on `Servicios_Disponibles`; the current schema has no separate visibility status for that association. Logo URLs remain null until a safe public asset URL mechanism is implemented. Departure filters must be timezone-aware ISO-8601 datetimes.
 
+### Hidden service types
+
+`GET /api/service-types` lists the service types offered in the catalog. Types listed in `HIDDEN_SERVICE_TYPE_SLUGS` (`amira_api/service_type_visibility.py`) are hidden: `carga-compartida` (the old "Carga compartida" type, replaced by shared trips as an option of contracted services) is left out of the type list, returns no results from `GET /api/services?serviceType=carga-compartida`, and is not shown in a provider's service names or categories. A provider whose only type is hidden is not listed. The rows stay in `Tipos_Servicio` and every existing reference stays valid; hiding is a code-only change with no migration. On provider profile save, a hidden type cannot be newly selected (422 `Unknown service type.`), while a link the profile already has is kept even when the save omits it.
+
 ## Payments (simulated provider)
 
 Payments go through the `PaymentProvider` port (`src/amira_api/payment_provider.py`). The domain in `payment_service.py` depends only on the port; `simulated_payment_provider.py` is the only adapter and `payment_routes.py` is the composition root that chooses it.
@@ -146,6 +150,20 @@ Optional settings and defaults: `REQUEST_IMAGE_URL_TTL_SECONDS` (300). The size 
 - `POST /api/requests/{requestId}/images`: multipart with a required `photo`. Only the customer who owns the request may upload; other callers get 404. The type is detected from the bytes. An oversize photo gets 413, another type 415, and a sixth image 409. The count is checked under the request's row lock. The object is stored under `requests/{requestId}/{imageId}.{ext}` with a server-generated id, never the client's filename. If the database write fails, the object is deleted. The response is `{imageId}`.
 - `GET /api/requests/{requestId}/images`: returns `{items: [{imageId, url, expiresAt}]}`. The owning customer, and exactly the providers who can open `GET /api/provider/requests/{requestId}`, may read it. Anyone else gets the same response that route gives them.
 
+### Provider vehicles (private Supabase Storage bucket)
+
+A provider (company owner or independent driver) registers the vehicles it can later assign to a shared trip. Each vehicle has one photo in a private bucket, read back only through short-lived signed URLs. The bucket is named `vehicle-images` and already exists in the Supabase project; set `VEHICLE_IMAGES_BUCKET=vehicle-images` in the backend environment. The bucket name has no default: when `VEHICLE_IMAGES_BUCKET` is unset or blank, the endpoints answer 503 to the owner and write nothing. It uses the same `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as the other buckets.
+
+Optional settings and defaults: `VEHICLE_IMAGE_URL_TTL_SECONDS` (300). The photo size cap is `CHAT_ATTACHMENT_MAX_BYTES` (5 MiB).
+
+Only the owner of a provider profile may use these routes; company-employed drivers and customers get 403. Another provider's vehicle is never visible: list omits it and delete answers 404 with the same body as a missing vehicle.
+
+- `POST /api/provider/vehicles`: multipart with required `plate`, `brand`, `model` and `photo`, and optional `year` (1886 to 2200) and `maximum_weight` (above 0, kg). Plate uniqueness ignores case and surrounding spaces; a duplicate answers 409. The photo type is detected from the bytes (415 otherwise) and the size is capped (413). The object is stored under `vehicles/{profileId}/{vehicleId}.{ext}` with a server-generated id. No open transaction is held during the upload; if the database write fails, the object is deleted. Response: `{vehicleId}`, status 201.
+- `GET /api/provider/vehicles`: returns `{items: [{vehicleId, plate, brand, model, year, maximumWeight, url, expiresAt}]}`, where `url` is a signed link for the photo.
+- `DELETE /api/provider/vehicles/{vehicleId}`: deletes the vehicle and its photo (204). It answers 409 while any contracted service, service assignment or shared trip references the vehicle.
+
+Schema: the photo is required (`Vehiculo.Imagen_Storage_Key` is not null). No migration is needed for these routes.
+
 ### Unread counts
 
 Each participant has a read time, `Chat_participantes.Ultima_Lectura` (migration `20261019_0002`, default `now()`, so existing chats start read). A message is unread for a participant when another participant sent it after that time; the caller's own messages and quotations never count.
@@ -153,6 +171,23 @@ Each participant has a read time, `Chat_participantes.Ultima_Lectura` (migration
 - `GET /api/chats` items carry `unreadCount`, computed in one grouped query for the whole page.
 - `GET /api/chats/unread` returns `{total}`, the sum over the caller's chats.
 - `POST /api/chats/{chatId}/read` sets the read time to the database `now()` and never moves it backwards. It answers 204; non-participants get 404. It publishes `chat.read` to the reader's own streams only, so their other tabs update.
+
+## Shared trips
+
+A shared trip is an option of a contracted service, not a service type. The customer's sharing choice (`es_exclusivo`, false when the customer accepts sharing) decides whether the provider may publish the service's route as a trip. The trip is a `Viaje` with one `Viaje_Vehiculo` (vehicle and driver), an origin stop and a destination stop. Every service on the trip carries the trip vehicle and its own pickup and delivery stops, as the composite foreign keys require. Capacity is not calculated: the provider decides per request.
+
+Ownership uses the verified JWT and the provider-profile helper of the other provider routes. A service, vehicle or driver that is not the caller's answers 404. A customer account answers 403.
+
+- `POST /api/provider/services/{serviceId}/shared-trip`: body `{vehicleId, driverId}`. The provider publishes a paid service. The trip copies origin, destination, communes and the requested date, and is published and accepting requests. The vehicle must belong to the caller's profile. The driver must be a company's employed driver (`Conductor` of that employer profile, role `company_driver`) or the caller's own driver record. Response: `{tripId}`, status 201. Refused with 409 when the service is exclusive (the customer did not accept sharing), already has a trip, has no requested date, or has no origin or destination. Each refusal leaves the rows unchanged.
+- `POST /api/provider/shared-trips/{tripId}/close`: stops new requests (`acceptsRequests` false). Services already linked and requests already accepted stay linked. Response: `{tripId, acceptsRequests}`, status 200.
+- `GET /api/provider/shared-trips?limit=20&offset=0`: the caller's trips only, ordered by departure. Items: `{tripId, status: "open" | "closed", origin, destination, departureAt, joinedServices}`, where `joinedServices` counts every service linked to the trip, the first service included. Returns `{items, total, limit, offset}`.
+- `GET /api/provider/drivers`: the caller's drivers, usable on a trip. Items: `{driverId, name}`.
+- `POST /api/service-requests` takes an optional `requestedTripId`. When present, the request is for that trip: `originCommuneCode`/`origin` are the customer's pickup and `destinationCommuneCode`/`destination` the delivery. The customer must accept sharing: `acceptsSharing` must be `true`, otherwise the request answers 422 (`loc: ["body", "acceptsSharing"]`) and writes nothing, including when the field is omitted (its default is `false`). The trip must belong to the requested `profileId` (404 otherwise) and be published and accepting requests (409 otherwise). Without `requestedTripId` the request behaves as before. Provider inbox items expose `requestedTripId`.
+- Payment is the second guard. A paid request is linked to its trip only when it carries a `requestedTripId` and is not exclusive (`es_exclusivo` false). An exclusive request is paid as a normal request and is not linked, and the stop insertion (`link_join_request_stops`) refuses an exclusive service on its own, so no stops are added for it. Linking still happens under the trip row lock, in the same transaction as the payment.
+- `GET /api/shared-routes` items carry `tripId` and `departureAt`, so the frontend can start a join request.
+- `GET /api/provider/services/{serviceId}` (provider detail) carries `sharedTripId`: the trip the service is linked to, or `null` when it has none. Customers always get `null`; the field is read-only and changes no other behavior.
+
+Payment of a join request (`payment_service.confirm_payment`) runs in the same transaction as the approval. It locks the trip row, inserts the pickup and delivery stops before the destination, renumbers the route `1..n` in two phases to keep `(trip, order)` unique, and links the new service with the trip, the trip vehicle and its stops. Closing the trip does not block a request already accepted. If the trip no longer exists or has no vehicle, the payment is recorded as rejected and nothing is linked, like the other closed-quotation cases.
 
 ## Checks
 

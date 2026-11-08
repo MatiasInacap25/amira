@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy.orm import Session
 
-from amira_api.models import Cotizacion
+from amira_api.models import Cotizacion, FormularioServicio
 from chat_support import (
     CUSTOMER_AUTH,
     DRIVER_AUTH,
@@ -43,6 +43,19 @@ def _create(api, scenario: Scenario, *, auth=PROVIDER_AUTH, body=None, chat=None
 
 def _timeline(api, scenario: Scenario, *, auth=CUSTOMER_AUTH, query: str = "", chat=None) -> list[dict]:
     return api(f"/api/chats/{(chat or scenario.chat_a).id}/messages{query}", as_auth_id=auth).json()["timeline"]
+
+
+@pytest.mark.parametrize("accepts_sharing", [True, False])
+def test_quotation_copies_the_sharing_choice_of_the_request(api, scenario, db: Session, accepts_sharing):
+    request = db.get(FormularioServicio, scenario.chat_a.form_id)
+    request.is_exclusive = not accepts_sharing
+    db.commit()
+
+    response = _create(api, scenario)
+
+    assert response.status_code == 201
+    quotation = db.get(Cotizacion, UUID(response.json()["quotationId"]))
+    assert quotation.is_exclusive is (not accepts_sharing)
 
 
 def test_provider_creates_a_pending_quotation_with_requested_validity(api, scenario):

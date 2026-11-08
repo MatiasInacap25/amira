@@ -20,6 +20,8 @@ type Props = {
   profile: Pick<ProviderProfile, "profileId" | "providerName" | "services">;
   selectedServiceId: string;
   onClose: () => void;
+  // Set when the customer joins a shared trip: origin and destination become the pickup and delivery along its route.
+  requestedTrip?: { tripId: string; origin: string; destination: string } | null;
 };
 
 type AttachedPhoto = { file: File; previewUrl: string };
@@ -39,7 +41,8 @@ function localDateToday(now = new Date()) {
 
 const schedulePairingMessage = "Indica la fecha y la hora deseadas, o deja ambas vacías.";
 
-export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }: Props) {
+export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose, requestedTrip = null }: Props) {
+  const joiningTrip = requestedTrip !== null;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -145,6 +148,10 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
       description: String(form.get("description") ?? "").trim() || null,
       // The measures input was removed; the API field stays for legacy rows.
       cargoMeasurements: null,
+      // A join request already means the customer accepts sharing, so the question is not asked in that mode.
+      acceptsSharing: joiningTrip || String(form.get("acceptsSharing") ?? "false") === "true",
+      // Only a join request carries the trip; a normal quote request never sends the field.
+      ...(requestedTrip ? { requestedTripId: requestedTrip.tripId } : {}),
     };
 
     setBusy(true);
@@ -205,8 +212,11 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
     >
       <div className="quote-dialog-header">
         <div>
-          <p className="eyebrow">SOLICITUD DE COTIZACIÓN</p>
+          <p className="eyebrow">{requestedTrip ? "SUMARME A UN VIAJE" : "SOLICITUD DE COTIZACIÓN"}</p>
           <h2 id="quote-dialog-title">Cuéntanos qué necesitas</h2>
+          {requestedTrip && (
+            <p className="quote-request-note">Viaje: {requestedTrip.origin} a {requestedTrip.destination}. Indica dónde recogemos y entregamos tu carga a lo largo de la ruta. El transportista decide si la incorpora.</p>
+          )}
         </div>
         <button aria-label="Cerrar solicitud" className="quote-dialog-close" disabled={busy} onClick={onClose} type="button">×</button>
       </div>
@@ -226,25 +236,37 @@ export function QuoteRequestDialog({ open, profile, selectedServiceId, onClose }
               {profile.services.map((service) => <option key={service.serviceTypeId} value={service.serviceTypeId}>{service.name}</option>)}
             </select>
           </label>
+          {!joiningTrip && (
+            <>
+              <label className="marketplace-field" htmlFor="quote-accepts-sharing">
+                <span>¿Aceptas compartir el vehículo con otro cliente?</span>
+                <select aria-describedby="quote-accepts-sharing-hint" defaultValue="false" id="quote-accepts-sharing" name="acceptsSharing">
+                  <option value="false">No</option>
+                  <option value="true">Sí</option>
+                </select>
+              </label>
+              <p className="quote-request-note" id="quote-accepts-sharing-hint">Si aceptas, el proveedor puede sumar la carga de otro cliente en el mismo viaje y publicarlo como viaje compartido.</p>
+            </>
+          )}
           <div className="quote-request-grid">
             <RegionCommuneSelect
-              communeLabel="Comuna de origen"
+              communeLabel={joiningTrip ? "Comuna de recogida" : "Comuna de origen"}
               idPrefix="quote-origin"
               onChange={setOriginLocation}
-              regionLabel="Región de origen"
+              regionLabel={joiningTrip ? "Región de recogida" : "Región de origen"}
               required
               value={originLocation}
             />
-            <label className="marketplace-field" htmlFor="quote-origin-address"><span>Dirección de origen</span><input autoComplete="street-address" id="quote-origin-address" maxLength={300} name="origin" required /></label>
+            <label className="marketplace-field" htmlFor="quote-origin-address"><span>{joiningTrip ? "Dirección de recogida" : "Dirección de origen"}</span><input autoComplete="street-address" id="quote-origin-address" maxLength={300} name="origin" required /></label>
             <RegionCommuneSelect
-              communeLabel="Comuna de destino"
+              communeLabel={joiningTrip ? "Comuna de entrega" : "Comuna de destino"}
               idPrefix="quote-destination"
               onChange={setDestinationLocation}
-              regionLabel="Región de destino"
+              regionLabel={joiningTrip ? "Región de entrega" : "Región de destino"}
               required
               value={destinationLocation}
             />
-            <label className="marketplace-field" htmlFor="quote-destination-address"><span>Dirección de destino</span><input autoComplete="street-address" id="quote-destination-address" maxLength={300} name="destination" required /></label>
+            <label className="marketplace-field" htmlFor="quote-destination-address"><span>{joiningTrip ? "Dirección de entrega" : "Dirección de destino"}</span><input autoComplete="street-address" id="quote-destination-address" maxLength={300} name="destination" required /></label>
             <label className="marketplace-field" htmlFor="quote-date"><span>Fecha deseada</span><input aria-invalid={scheduleError ? true : undefined} id="quote-date" min={localDateToday()} name="requestedDate" onChange={() => setScheduleError("")} type="date" /></label>
             <label className="marketplace-field" htmlFor="quote-time"><span>Hora deseada</span><input aria-invalid={scheduleError ? true : undefined} id="quote-time" name="requestedTime" onChange={() => setScheduleError("")} type="time" /></label>
             <label className="marketplace-field" htmlFor="quote-weight"><span>Peso estimado (kg) (opcional)</span><input id="quote-weight" min="0" name="estimatedWeight" step="0.01" type="number" /></label>

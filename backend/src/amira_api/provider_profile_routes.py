@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
@@ -17,6 +17,7 @@ from amira_api.db import get_db_session
 from amira_api.invitation_routes import _owned_provider
 from amira_api.models import Commune, Perfil, ServicioDisponible, TipoServicio
 from amira_api.provider_profile_schemas import ProviderProfileUpdate, ProviderProfileView
+from amira_api.service_type_visibility import hidden_service_type_clause, visible_service_type_clause
 
 router = APIRouter(prefix="/api/provider/profile", tags=["provider-profile"])
 
@@ -76,12 +77,23 @@ def update_provider_profile(
         raise HTTPException(status_code=422, detail="Unknown commune.")
 
     service_type_ids = list(dict.fromkeys(payload.service_type_ids))
+    # A hidden type the profile already has is kept: the form does not offer it, so a save that omits it must not drop
+    # the link, and sending it back is allowed. Newly selecting a hidden type is refused like an unknown type.
+    kept_hidden_ids = list(session.execute(
+        select(TipoServicio.id)
+        .join(ServicioDisponible, ServicioDisponible.service_type_id == TipoServicio.id)
+        .where(ServicioDisponible.profile_id == profile.id, hidden_service_type_clause())
+    ).scalars())
     if service_type_ids:
         known = set(session.execute(
-            select(TipoServicio.id).where(TipoServicio.id.in_(service_type_ids))
+            select(TipoServicio.id).where(
+                TipoServicio.id.in_(service_type_ids),
+                or_(visible_service_type_clause(), TipoServicio.id.in_(kept_hidden_ids)),
+            )
         ).scalars())
         if known != set(service_type_ids):
             raise HTTPException(status_code=422, detail="Unknown service type.")
+    service_type_ids += [service_type_id for service_type_id in kept_hidden_ids if service_type_id not in service_type_ids]
 
     if payload.name is not None:
         profile.name = payload.name

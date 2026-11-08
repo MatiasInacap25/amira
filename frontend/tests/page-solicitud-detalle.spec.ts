@@ -153,7 +153,7 @@ test("pending request shows route, service, requested dates, first-name customer
   await expect(fact(page, "Origen")).toHaveText("Santiago, Metropolitana de Santiago");
   await expect(fact(page, "Destino")).toHaveText("Valparaíso, Valparaíso");
   await expect(fact(page, "Cliente")).toHaveText("Camila");
-  await expect(fact(page, "Modalidad")).toHaveText("Servicio compartido");
+  await expect(fact(page, "Modalidad")).toHaveText("El cliente acepta compartir");
   await expect(fact(page, "Fecha solicitada")).toHaveText(dateFormatter.format(new Date("2026-10-12T12:00:00Z")));
   await expect(fact(page, "Recibida")).toHaveText(dateFormatter.format(new Date("2026-10-01T12:00:00Z")));
   await expect(page.getByText("Verás el apellido del cliente después de aceptar la solicitud.")).toBeVisible();
@@ -204,7 +204,7 @@ test("request without a commune falls back to the free-text address and says no 
   await signInAsSmsVerifiedProvider(page);
 
   await expect(fact(page, "Origen")).toHaveText("Calle Uno 123");
-  await expect(fact(page, "Modalidad")).toHaveText("Servicio exclusivo");
+  await expect(fact(page, "Modalidad")).toHaveText("El cliente no acepta compartir");
   await expect(fact(page, "Volumen estimado")).toHaveText("3.5 m³");
   await expect(cargoTerms(page).filter({ hasText: "Peso estimado" })).toHaveCount(0);
 });
@@ -368,4 +368,19 @@ test("a failed photo list leaves the rest of the request detail visible", async 
   await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Aceptar y abrir chat" })).toBeEnabled();
   await expect(page.getByRole("img", { name: /Foto \d de la solicitud/ })).toHaveCount(0);
+});
+
+test("a request to join a shared trip is labelled as such in the provider detail", async ({ page }) => {
+  await mockProviderRequest(page, async (route) => route.fulfill({ json: providerRequest({ requestedTripId: "trip-1" }) }));
+  await signInAsSmsVerifiedProvider(page);
+
+  await expect(page.getByText("Solicitud para unirse a un viaje compartido")).toBeVisible();
+});
+
+test("a normal request without a shared trip does not show the join label", async ({ page }) => {
+  await mockProviderRequest(page, async (route) => route.fulfill({ json: providerRequest({ requestedTripId: null }) }));
+  await signInAsSmsVerifiedProvider(page);
+
+  await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible();
+  await expect(page.getByText("Solicitud para unirse a un viaje compartido")).toHaveCount(0);
 });

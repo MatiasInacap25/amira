@@ -311,3 +311,44 @@ def test_shared_routes_reject_malformed_commune_codes() -> None:
     assert run_get("/api/shared-routes", [], originCommuneCode="131").status_code == 422
     assert run_get("/api/shared-routes", [], destinationCommuneCode="0510A").status_code == 422
 
+
+def _literal_sql(statement) -> str:
+    return str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})).lower()
+
+
+def test_services_hidden_service_type_filter_matches_no_rows() -> None:
+    sessions = []
+    response = run_get(
+        "/api/services",
+        [FakeResult(scalar=0), FakeResult(rows=[])],
+        sessions=sessions,
+        serviceType="carga-compartida",
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0, "limit": 20, "offset": 0}
+    assert "\"slug\" != 'carga-compartida'" in _literal_sql(sessions[0].statements[0])
+
+
+def test_services_listing_leaves_hidden_service_types_out_of_provider_rows() -> None:
+    sessions = []
+    run_get("/api/services", [FakeResult(scalar=0), FakeResult(rows=[])], sessions=sessions)
+
+    assert "\"slug\" != 'carga-compartida'" in _literal_sql(sessions[0].statements[0])
+    assert "\"slug\" != 'carga-compartida'" in _literal_sql(sessions[0].statements[1])
+
+
+def test_services_other_service_types_still_filter_as_before() -> None:
+    sessions = []
+    response = run_get(
+        "/api/services",
+        [FakeResult(scalar=0), FakeResult(rows=[])],
+        sessions=sessions,
+        serviceType="mudanza",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+    assert "\"slug\" = 'mudanza'" in _literal_sql(sessions[0].statements[0])
+    assert "\"slug\" = 'mudanza'" in _literal_sql(sessions[0].statements[1])
+

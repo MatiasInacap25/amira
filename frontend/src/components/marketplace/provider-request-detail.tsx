@@ -153,11 +153,12 @@ export function ProviderRequestDetail({ requestId }: { requestId: string }) {
 
                   <div className="provider-request-panel">
                     <h2>Resumen</h2>
+                    {item.requestedTripId && <p className="provider-request-join">Solicitud para unirse a un viaje compartido</p>}
                     <dl className="provider-request-facts">
                       <div><dt>Origen</dt><dd>{route.origin}</dd></div>
                       <div><dt>Destino</dt><dd>{route.destination}</dd></div>
                       <div><dt>Cliente</dt><dd>{customerDisplayName(item)}</dd></div>
-                      <div><dt>Modalidad</dt><dd>{item.isExclusive ? "Servicio exclusivo" : "Servicio compartido"}</dd></div>
+                      <div><dt>Modalidad</dt><dd>{item.isExclusive ? "El cliente no acepta compartir" : "El cliente acepta compartir"}</dd></div>
                       <div><dt>Fecha solicitada</dt><dd>{formatDate(item.requestedAt)}</dd></div>
                       <div><dt>Recibida</dt><dd>{formatDate(item.createdAt)}</dd></div>
                     </dl>

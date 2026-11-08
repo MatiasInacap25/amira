@@ -17,12 +17,14 @@ type ServiceDetailProps = {
   deliveryPhoto?: ReactNode;
   // Customer-only slot: claim window, consent and claim actions.
   customerResolution?: ReactNode;
+  // Provider-only slot: publish as a shared trip, or the reason it cannot be published.
+  sharedTrip?: ReactNode;
 };
 
 const NO_VALUE_LABEL = "No indicado";
 
 /** Body of a service. The viewer's role decides how the other party is labelled. */
-export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution }: ServiceDetailProps) {
+export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution, sharedTrip }: ServiceDetailProps) {
   const counterpartLabel = service.viewerRole === "customer" ? "Prestador" : "Cliente";
   return (
     <article aria-labelledby="account-service-detail-title" className="account-service-detail">
@@ -99,6 +101,13 @@ export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhot
         <section aria-labelledby="account-service-actions-title" className="account-service-section">
           <h2 id="account-service-actions-title">Acciones</h2>
           {actions}
+        </section>
+      )}
+
+      {sharedTrip && (
+        <section aria-labelledby="account-service-shared-trip-title" className="account-service-section">
+          <h2 id="account-service-shared-trip-title">Viaje compartido</h2>
+          {sharedTrip}
         </section>
       )}
 

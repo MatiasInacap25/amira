@@ -12,7 +12,7 @@ from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.chat_access import caller_account, caller_chats
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
-from amira_api.models import Chat, Cotizacion, Pago
+from amira_api.models import Chat, Cotizacion, FormularioServicio, Pago
 from amira_api.quotation_schemas import Quotation, QuotationCreate
 from amira_api.realtime import ChatEventKind, publish_chat_event
 from amira_api.quotation_service import PENDING, chat_is_settled, effective_status, quotation_view
@@ -45,6 +45,9 @@ def create_quotation(
     if chat_is_settled(session, chat_id):
         raise HTTPException(status_code=409, detail=CHAT_SETTLED_DETAIL)
 
+    is_exclusive = session.execute(
+        select(FormularioServicio.is_exclusive).where(FormularioServicio.id == row["request_id"])
+    ).scalar_one()
     now = utc_now()
     superseded_ids = session.execute(
         select(Cotizacion.id).where(Cotizacion.chat_id == chat_id, Cotizacion.status == PENDING)
@@ -71,7 +74,7 @@ def create_quotation(
         description=payload.description,
         created_at=now,
         expires_at=now + timedelta(hours=payload.validity_hours),
-        is_exclusive=False,
+        is_exclusive=is_exclusive,
     )
     session.add(quotation)
     publish_chat_event(

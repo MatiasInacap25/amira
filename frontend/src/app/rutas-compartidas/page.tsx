@@ -7,7 +7,8 @@ import { useState, type FormEvent } from "react";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { MarketplaceSkeleton, ROUTE_RESULTS_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
-import { getSharedRoutes, type SharedRouteFilters } from "@/lib/marketplace-api";
+import { QuoteRequestDialog } from "@/components/marketplace/quote-request-dialog";
+import { getProviderProfile, getSharedRoutes, type ProviderProfile, type SharedRoute, type SharedRouteFilters } from "@/lib/marketplace-api";
 
 const initialFilters: SharedRouteFilters = { originCommuneCode: "", destinationCommuneCode: "", departureFrom: "", departureTo: "", offset: 0 };
 const emptyLocation: RegionCommuneValue = { regionCode: "", communeCode: "" };
@@ -25,6 +26,9 @@ export default function SharedRoutesPage() {
   const [dateError, setDateError] = useState("");
   const [originLocation, setOriginLocation] = useState<RegionCommuneValue>(emptyLocation);
   const [destinationLocation, setDestinationLocation] = useState<RegionCommuneValue>(emptyLocation);
+  const [joinTarget, setJoinTarget] = useState<{ route: SharedRoute; profile: ProviderProfile } | null>(null);
+  const [joiningTripId, setJoiningTripId] = useState("");
+  const [joinError, setJoinError] = useState("");
   const routesQuery = useQuery({
     queryKey: ["shared-routes", query],
     queryFn: ({ signal }) => getSharedRoutes(query, signal),
@@ -47,6 +51,20 @@ export default function SharedRoutesPage() {
     };
     setFilters(nextFilters);
     setQuery(nextFilters);
+  }
+
+  // Joining opens the quote dialog for the trip's provider, with the trip attached to the request.
+  async function startJoin(route: SharedRoute) {
+    setJoinError("");
+    setJoiningTripId(route.tripId);
+    try {
+      const profile = await getProviderProfile(route.profileId);
+      setJoinTarget({ route, profile });
+    } catch {
+      setJoinError("No pudimos abrir la solicitud para este viaje. Inténtalo nuevamente.");
+    } finally {
+      setJoiningTripId("");
+    }
   }
 
   function movePage(offset: number) {
@@ -142,6 +160,9 @@ export default function SharedRoutesPage() {
                       </div>
                     )}
                     <p className="route-confirmation-note">No es una reserva: el transportista debe confirmar espacio, carga compatible y condiciones del viaje.</p>
+                    <button className="button button-secondary route-join-button" disabled={joiningTripId === route.tripId} onClick={() => void startJoin(route)} type="button">
+                      {joiningTripId === route.tripId ? "Abriendo…" : "Sumarme a este viaje"}
+                    </button>
                   </article>
                 ))}
               </div>
@@ -156,8 +177,19 @@ export default function SharedRoutesPage() {
               </nav>
             )}
           </section>
-          <p className="marketplace-transparency">Consultar una ruta no reserva espacio ni inicia una solicitud. Amira no procesa pagos ni confirma reservas.</p>
+          {joinError && <p className="marketplace-field-error" role="alert">{joinError}</p>}
+          <p className="marketplace-transparency">Sumarte a un viaje envía una solicitud al transportista, que debe confirmarla. Amira no procesa pagos ni confirma reservas.</p>
         </div>
+        {joinTarget && (
+          <QuoteRequestDialog
+            key={joinTarget.route.tripId}
+            onClose={() => setJoinTarget(null)}
+            open
+            profile={joinTarget.profile}
+            requestedTrip={{ tripId: joinTarget.route.tripId, origin: joinTarget.route.origin, destination: joinTarget.route.destination }}
+            selectedServiceId=""
+          />
+        )}
       </main>
       <MarketplaceFooter />
     </>

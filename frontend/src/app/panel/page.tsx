@@ -101,6 +101,8 @@ export default function PanelPage() {
           <ul className="panel-action-list">
             <li><Link className="panel-action" href="/mensajes">Mensajes <ArrowRight aria-hidden="true" size={16} /></Link></li>
             <li><Link className="panel-action" href="/cuenta/servicios">Servicios <ArrowRight aria-hidden="true" size={16} /></Link></li>
+            <li><Link className="panel-action" href="/cuenta/vehiculos">Vehículos <ArrowRight aria-hidden="true" size={16} /></Link></li>
+            <li><Link className="panel-action" href="/cuenta/viajes-compartidos">Viajes compartidos <ArrowRight aria-hidden="true" size={16} /></Link></li>
             <li><Link className="panel-action" href="/cuenta/perfil">Configuración del perfil <ArrowRight aria-hidden="true" size={16} /></Link></li>
             {role === "company_owner" && (
               <li><Link className="panel-action" href="/cuenta/invitaciones">Invitaciones <ArrowRight aria-hidden="true" size={16} /></Link></li>

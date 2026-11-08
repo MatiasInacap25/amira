@@ -20,6 +20,8 @@ from amira_api.realtime import chat_broker, start_chat_listener
 from amira_api.realtime_routes import router as realtime_router
 from amira_api.request_image_routes import router as request_image_router
 from amira_api.settings import get_settings, warn_if_dev_sms_mfa_bypass_active
+from amira_api.shared_trip_routes import router as shared_trip_router
+from amira_api.vehicle_routes import router as vehicle_router
 
 settings = get_settings()
 warn_if_dev_sms_mfa_bypass_active(settings)
@@ -51,6 +53,8 @@ app.include_router(public_router)
 app.include_router(quotation_router)
 app.include_router(payment_router)
 app.include_router(request_image_router)
+app.include_router(vehicle_router)
+app.include_router(shared_trip_router)
 
 app.add_middleware(
     CORSMiddleware,
