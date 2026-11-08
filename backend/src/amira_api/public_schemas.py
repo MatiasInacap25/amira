@@ -138,6 +138,8 @@ class ServiceRequestCreate(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     cargo_measurements: str | None = Field(default=None, max_length=2000)
     accepts_sharing: bool = False
+    # Joining a shared trip: origin and destination are then the customer's pickup and delivery addresses.
+    requested_trip_id: UUID | None = None
 
     @field_validator("requested_at")
     @classmethod
@@ -180,6 +182,7 @@ class ProviderRequestItem(PublicResponse):
     destination_commune_name: str | None = None
     destination_region_name: str | None = None
     is_exclusive: bool = False
+    requested_trip_id: UUID | None = None
     customer_first_name: str
     # Shared with the provider only after acceptance; see the customer name policy in the inbox task.
     customer_last_name: str | None = None

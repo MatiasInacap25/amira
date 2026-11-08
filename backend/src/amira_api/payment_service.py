@@ -16,6 +16,7 @@ from amira_api.models import Chat, Cotizacion, Pago, Servicio
 from amira_api.payment_provider import PaymentProvider
 from amira_api.quotation_service import PENDING, chat_is_settled, effective_status
 from amira_api.realtime import ChatEventKind, publish_chat_event
+from amira_api.shared_trip_service import SharedTripConflict, link_join_request_stops
 
 APPROVED = "approved"
 REJECTED = "rejected"
@@ -140,6 +141,23 @@ def confirm_payment(
     if form.profile_id is None:
         raise PaymentConflict("La solicitud no tiene un prestador asignado.")
 
+    trip_link = None
+    if form.requested_trip_id is not None and not form.is_exclusive:
+        # A join request links to its trip inside this transaction: the trip row lock and the stop inserts commit with the service.
+        # An exclusive request (the customer refused sharing) is paid as a normal request and is not linked.
+        try:
+            trip_link = link_join_request_stops(
+                session,
+                trip_id=form.requested_trip_id,
+                pickup_address=form.origin or "",
+                delivery_address=form.destination or "",
+                is_exclusive=form.is_exclusive,
+            )
+        except SharedTripConflict as error:
+            payment.status = REJECTED
+            session.commit()
+            raise PaymentConflict(str(error)) from None
+
     payment.status = APPROVED
     quotation.status = "paid"
     quotation.accepted_at = now
@@ -161,6 +179,15 @@ def confirm_payment(
             kind=ChatEventKind.QUOTATION_CHANGED,
             ref_id=superseded_id,
         )
+    trip_fields = {}
+    if trip_link is not None:
+        trip, vehicle, pickup, delivery = trip_link
+        trip_fields = {
+            "trip_id": trip.id,
+            "vehicle_id": vehicle.id,
+            "pickup_stop_id": pickup.id,
+            "delivery_stop_id": delivery.id,
+        }
     session.add(
         Servicio(
             id=uuid4(),
@@ -175,6 +202,7 @@ def confirm_payment(
             payment_confirmed_at=now,
             form_id=form.id,
             accepted_quotation_id=quotation.id,
+            **trip_fields,
         )
     )
     publish_chat_event(

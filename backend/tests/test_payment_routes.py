@@ -1,6 +1,6 @@
 """Payments through the PaymentProvider port: simulated checkout, server-to-server webhook confirmation, and gates."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
@@ -15,10 +15,22 @@ from amira_api import payment_service
 from amira_api.auth import get_current_user
 from amira_api.clock import utc_now
 from amira_api.main import app
-from amira_api.models import Cotizacion, Pago, Servicio
+from amira_api.models import (
+    Base,
+    Conductor,
+    Cotizacion,
+    FormularioServicio,
+    ParadaViaje,
+    Pago,
+    Servicio,
+    Vehiculo,
+    Viaje,
+    ViajeVehiculo,
+)
 from amira_api.payment_provider import SIMULATED_PROVIDER_NAME
 from amira_api.payment_routes import get_payment_provider, get_simulated_provider
 from amira_api.settings import Settings, get_settings
+from amira_api.shared_trip_service import SharedTripConflict, link_join_request_stops
 from amira_api.simulated_payment_provider import SimulatedPaymentProvider
 from chat_support import (
     CUSTOMER_AUTH,
@@ -646,3 +658,106 @@ def test_retrying_the_same_approval_returns_the_same_body(pay, scenario, db: Ses
     assert second.status_code == 200
     assert second.json() == first.json()
     assert db.query(Servicio).count() == 1
+
+
+# Shared trips: a join request paid after its trip was published links the service and its own stops.
+
+def _trip_tables(db: Session) -> None:
+    Base.metadata.create_all(
+        db.get_bind(),
+        tables=[Base.metadata.tables[name] for name in ("Vehiculo", "Conductor", "Viaje", "Viaje_Vehiculo", "Parada_Viaje")],
+        checkfirst=True,
+    )
+
+
+def _published_trip(db: Session, scenario: Scenario) -> Viaje:
+    _trip_tables(db)
+    vehicle = Vehiculo(id=uuid4(), profile_id=scenario.provider_profile.id, plate="AB1234", brand="Ford",
+                       model="Transit", image_storage_key="vehicles/1.jpg")
+    driver = Conductor(id=uuid4(), user_id=scenario.driver_owner.id, employer_profile_id=None, driver_type_id=uuid4())
+    trip = Viaje(id=uuid4(), profile_id=scenario.provider_profile.id, origin="Av. Origen 100",
+                 destination="Calle Destino 200", origin_commune_code="13101", destination_commune_code="05101",
+                 status="scheduled", departure_at=datetime(2030, 10, 20, 9, tzinfo=timezone.utc),
+                 is_published=True, accepts_requests=True)
+    db.add_all([vehicle, driver, trip])
+    db.flush()
+    db.add(ViajeVehiculo(trip_id=trip.id, vehicle_id=vehicle.id, driver_id=driver.id))
+    db.add_all([
+        ParadaViaje(id=uuid4(), trip_id=trip.id, order=1, address="Av. Origen 100"),
+        ParadaViaje(id=uuid4(), trip_id=trip.id, order=2, address="Calle Destino 200"),
+    ])
+    db.commit()
+    return trip
+
+
+def test_approved_join_request_is_linked_to_its_trip_with_its_own_stops(pay, scenario, db: Session):
+    trip = _published_trip(db, scenario)
+    vehicle = db.query(Vehiculo).one()
+    form = db.get(FormularioServicio, scenario.chat_a.form_id)
+    form.requested_trip_id = trip.id
+    form.origin = "Calle Retiro 5"
+    form.destination = "Calle Entrega 9"
+    db.commit()
+    started = _start(pay, _quote(pay, scenario)).json()
+
+    response = _complete(pay, started["paymentId"], _token(started["checkoutUrl"]), approve=True)
+
+    assert response.status_code == 200, response.text
+    service = db.query(Servicio).one()
+    assert service.trip_id == trip.id
+    assert service.vehicle_id == vehicle.id
+    stops = db.query(ParadaViaje).filter(ParadaViaje.trip_id == trip.id).order_by(ParadaViaje.order).all()
+    assert [(stop.order, stop.address) for stop in stops] == [
+        (1, "Av. Origen 100"),
+        (2, "Calle Retiro 5"),
+        (3, "Calle Entrega 9"),
+        (4, "Calle Destino 200"),
+    ]
+    assert service.pickup_stop_id == stops[1].id
+    assert service.delivery_stop_id == stops[2].id
+
+
+def test_exclusive_request_with_a_trip_is_paid_without_being_linked(pay, scenario, db: Session):
+    trip = _published_trip(db, scenario)
+    form = db.get(FormularioServicio, scenario.chat_a.form_id)
+    form.requested_trip_id = trip.id
+    form.is_exclusive = True
+    db.commit()
+    started = _start(pay, _quote(pay, scenario)).json()
+
+    response = _complete(pay, started["paymentId"], _token(started["checkoutUrl"]), approve=True)
+
+    assert response.status_code == 200, response.text
+    service = db.query(Servicio).one()
+    assert service.is_exclusive is True
+    assert (service.trip_id, service.vehicle_id, service.pickup_stop_id, service.delivery_stop_id) == (
+        None, None, None, None,
+    )
+    assert db.query(ParadaViaje).filter(ParadaViaje.trip_id == trip.id).count() == 2
+
+
+def test_stop_insertion_refuses_an_exclusive_service(scenario, db: Session):
+    trip = _published_trip(db, scenario)
+
+    with pytest.raises(SharedTripConflict):
+        link_join_request_stops(
+            db, trip_id=trip.id, pickup_address="Calle Retiro 5", delivery_address="Calle Entrega 9",
+            is_exclusive=True,
+        )
+    db.rollback()
+
+    assert db.query(ParadaViaje).filter(ParadaViaje.trip_id == trip.id).count() == 2
+
+
+def test_approval_of_a_request_without_a_trip_leaves_the_service_unlinked(pay, scenario, db: Session):
+    _trip_tables(db)
+    started = _start(pay, _quote(pay, scenario)).json()
+
+    response = _complete(pay, started["paymentId"], _token(started["checkoutUrl"]), approve=True)
+
+    assert response.status_code == 200, response.text
+    service = db.query(Servicio).one()
+    assert (service.trip_id, service.vehicle_id, service.pickup_stop_id, service.delivery_stop_id) == (
+        None, None, None, None,
+    )
+    assert db.query(ParadaViaje).count() == 0
