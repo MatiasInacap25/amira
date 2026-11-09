@@ -101,7 +101,11 @@ def test_marking_a_chat_read_sets_its_count_to_zero_for_the_reader_only(api, sce
 
 
 def test_marking_read_never_moves_the_last_read_time_backwards(api, scenario, db: Session):
-    future = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    # Freeze SQLite CURRENT_TIMESTAMP as well as the future comparison value.
+    db.connection().connection.driver_connection.create_function(
+        "current_timestamp", 0, lambda: "2026-11-07 12:00:00"
+    )
+    future = datetime(2026, 11, 8, tzinfo=timezone.utc)
     participant = db.execute(
         select(ChatParticipante).where(
             ChatParticipante.chat_id == scenario.chat_a.id, ChatParticipante.user_id == scenario.customer.id
