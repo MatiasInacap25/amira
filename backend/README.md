@@ -259,3 +259,23 @@ uv run pytest --cov=amira_api --cov-branch --cov-report=term-missing
 ```
 
 Tests use local fakes; database integration tests require an explicitly configured local test database.
+
+## Opt-in black-box suite
+
+The black-box suite starts a real Uvicorn subprocess and a local JWKS server. It
+seeds and truncates account-linked rows in an **already migrated disposable**
+PostgreSQL database, exclusively `127.0.0.1:55432/postgres` with TLS. Never point
+it at a developer or hosted database. The localhost redirect guard in
+`tests/postgres_support.py` applies as well; URL query overrides are refused.
+
+```bash
+AMIRA_BLACKBOX_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/postgres uv run pytest tests/blackbox -v
+```
+
+Without `AMIRA_BLACKBOX_DATABASE_URL`, all black-box tests skip before creating
+sockets or connecting to PostgreSQL. `uv run pytest` remains the default runner.
+The harness uses generated signing keys and local-only simulator secrets, does
+not load the repository `.env`, and never imports application code for assertions.
+A local in-memory Storage fake accepts uploads and signed-URL requests; it does
+not prove Supabase bucket policies, real signed-URL expiry or production delivery.
+Specifications and the live `/openapi.json` are the oracle.
