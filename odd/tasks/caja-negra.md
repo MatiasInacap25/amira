@@ -36,8 +36,8 @@ Objective: verify Amira's behavior against its specifications only, through the 
 | T1 | S1, S2 | delegated (Codex) | done: 2 passed; opt-out 2 skipped; baseline failure confirmed | efead07 |
 | T2 | S3, S4 (public browse, auth/account) | delegated (Codex) | done: accumulated 61 passed | 41b2992 |
 | T3 | S3, S4 (requests, quotations, payments) | delegated (Codex) | done: accumulated 97 passed, 1 xfailed | 8264a9f |
-| T4 | S3, S4 (services lifecycle, claims, payouts) | delegated (Codex) | done: accumulated 138 passed, 1 xfailed | hash recorded in next task |
-| T5 | S3, S4 (chat, provider profile, vehicles, invitations, shared trips) | delegated (Codex) | pending | |
+| T4 | S3, S4 (services lifecycle, claims, payouts) | delegated (Codex) | done: accumulated 138 passed, 1 xfailed | a5d6bc3 |
+| T5 | S3, S4 (chat, provider profile, vehicles, invitations, shared trips) | delegated (Codex) | done: accumulated 195 passed, 1 xfailed | hash recorded in next task |
 | T6 | S5 | delegated (Codex) | pending | |
 | T7 | S6, S7 | delegated (Codex) | pending | |
 
@@ -55,3 +55,5 @@ Route evidence: user explicitly asked for Codex (`gpt-6.1-sol`) as executor; Cla
 - L5 (T3): Request creation, strict validation/no writes, request accept/reject replay and IDOR, quotation boundaries and actors, rejection before payment, real simulated checkout approval/rejection, webhook guard and checkout ownership. Initial observation: replaying a consumed checkout returns 200 approved (same service) instead of rejecting the single-use link (README payments); isolated as strict xfail D1, leaving successful payment assertions active. Accumulated rerun: 97 passed, 1 xfailed. T2 commit `41b2992`.
 
 - L6 (T4): Extended the local JWKS HTTP server with an in-memory Storage fake (upload/sign/delete only, no external storage). Real API lifecycle now reaches assigned → started with GPS → completed with delivery evidence. Verified coordinates inclusive bounds, invalid start atomicity, driver-only location writes, owner/customer reads, position deletion, 8 MiB file cap, MIME sniffing, claim boundaries/mutual exclusion/window, and actual local payout subprocess eligibility/idempotence/net commission (10001 gross → 9001 net). Accumulated suite: 138 passed, 1 xfailed (13.72 s), XML `/tmp/amira-bb-t4.xml`. Storage fake does not prove real Supabase policy/expiry. T3 commit `8264a9f`.
+
+- L7 (T5): Added chat/timeline/unread/attachment/SSE authentication checks, provider draft/publication visibility and strict saves, vehicle ownership/duplicate plate/deletion/size/type limits, request images (five allowed/sixth refused), invitation validation/list/revoke scoping, shared-trip publication/closing/default exclusivity/join guards and a second paid customer linked to the same trip with separate chat/service and ordered stops. Corrected initial test assumptions using served OpenAPI: image POST success is 201, invitation revoke success is 200; README read-images policy delegates non-owner clients to provider-request 403 (upload remains 404). These are not production defects. Accumulated suite: 195 passed, 1 xfailed (16.37 s), XML `/tmp/amira-bb-t5.xml`. T4 commit `a5d6bc3`.
