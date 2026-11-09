@@ -39,8 +39,8 @@ Objective: raise statement + branch coverage of backend `amira_api` and frontend
 
 | ID | Specs | Route | Status | Commit |
 |----|-------|-------|--------|--------|
-| T1 | S1, S2 | delegated (Codex) | done; backend 92.43% combined, 94.00% lines, 84.58% branches | pending commit |
-| T2 | S3 | delegated (Codex) | pending | |
+| T1 | S1, S2 | delegated (Codex) | done; backend 92.43% combined, 94.00% lines, 84.58% branches | 29585a6 |
+| T2 | S3 | delegated (Codex) | done; backend 93.82% combined | pending commit |
 | T3 | S4 | delegated (Codex) | pending | |
 | T4 | S5 | delegated (Codex) | pending | |
 | T5 | S6 | delegated (Codex) | pending | |
@@ -55,3 +55,5 @@ Route evidence: the user explicitly asked for Codex (`gpt-6.1-sol`) to execute; 
 - L3: Baseline backend (`uv run --with pytest-cov pytest --cov=amira_api --cov-branch`): 4047 stmts, 243 miss, 804 branches, 98 partial, **92 %**; 856 passed, 1 failed (S2 time-bomb), 3 skipped (Postgres). Baseline frontend `src/lib`: 88.91 % lines, 96.15 % branches, 83.78 % funcs.
 
 - L4 (T1): Reproduced S2 (422 instead of 201), froze request-schema validation at 2026-11-07 for public-provider/shared-trip fixtures only. Other historical dates are comparison fixtures or explicit frozen clocks. Frontend E2E 2099 dates lie outside authorized surfaces and remain documented risks. Focused: 78 passed; full: 857 passed, 3 skipped; uv lock --check passed. Backend 4047 statements, 243 misses, 804 branches, 98 partial, 92.43% combined. Frontend baseline 88.91% lines / 96.15% branches / 83.78% functions. Added pytest-cov 7.1.0 and coverage configuration.
+
+- L5 (T2): Added critical infrastructure/authentication and money failure tests; focused 44 passed, 1 strict xfail; full 901 passed, 3 skipped, 1 strict xfail. TLS override reproduced at db.py:33 (caller connect_args replaces required SSL); no production fix. Remaining critical gaps are payment_service.py:175 (defensive superseded-event loop: public quotation creation already supersedes earlier pending quotations) and release_payouts.py:48 (module invocation guard; main tested directly without running a process that might access external settings). Coverage details retained for T6 report. T1 commit 29585a6.
