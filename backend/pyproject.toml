@@ -18,7 +18,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.3,<9"]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-cov>=7.1.0",
+]
 
 [build-system]
 requires = ["setuptools>=75"]
@@ -30,3 +33,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.coverage.run]
+source = ["amira_api"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
