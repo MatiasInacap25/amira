@@ -175,3 +175,61 @@ def token(server, seed):
 @pytest.fixture
 def headers(token):
     return lambda actor="customer", **claims: {"Authorization": "Bearer " + token(actor, **claims)}
+
+
+@pytest.fixture
+def request_body(seed):
+    from datetime import datetime, timedelta, timezone
+    return {"profileId": seed['owner']['profile'], "serviceTypeId": seed['service_type'],
+            "originCommuneCode": "13101", "destinationCommuneCode": "05101",
+            "origin": "Pickup street 123", "destination": "Delivery street 456",
+            "requestedAt": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
+            "description": "Furniture transport", "acceptsSharing": True}
+
+
+@pytest.fixture
+def create_request(api, headers, request_body):
+    def create(**changes):
+        response = api.post('/api/service-requests', headers=headers(), json=request_body | changes)
+        assert response.status_code == 201, response.text
+        return response.json()['requestId']
+    return create
+
+
+@pytest.fixture
+def accepted_chat(api, headers, create_request):
+    request_id = create_request()
+    response = api.post(f'/api/provider/requests/{request_id}/accept', headers=headers('owner'))
+    assert response.status_code == 200, response.text
+    return {'request': request_id, 'chat': response.json()['chatId']}
+
+
+@pytest.fixture
+def quote_body(request_body):
+    return {'amount': 10001, 'serviceAt': request_body['requestedAt'], 'description': 'Transport quotation', 'validityHours': 48}
+
+
+@pytest.fixture
+def quotation(api, headers, accepted_chat, quote_body):
+    response = api.post(f"/api/chats/{accepted_chat['chat']}/quotations", headers=headers('owner'), json=quote_body)
+    assert response.status_code == 201, response.text
+    return accepted_chat | {'quotation': response.json()['quotationId']}
+
+
+@pytest.fixture
+def checkout(api, headers, quotation):
+    from urllib.parse import parse_qs, urlparse
+    response = api.post(f"/api/quotations/{quotation['quotation']}/payments", headers=headers())
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert urlparse(body['checkoutUrl']).netloc == '127.0.0.1:3179'
+    return quotation | {'payment': body['paymentId'], 'checkout_token': parse_qs(urlparse(body['checkoutUrl']).query)['token'][0]}
+
+
+@pytest.fixture
+def paid_service(api, headers, checkout):
+    response = api.post(f"/api/payments/simulated/{checkout['payment']}/complete", headers=headers(),
+                        json={'token': checkout['checkout_token'], 'approve': True})
+    assert response.status_code == 200, response.text
+    assert response.json()['status'] == 'approved'
+    return checkout | {'service': response.json()['serviceId']}

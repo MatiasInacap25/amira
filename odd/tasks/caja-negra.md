@@ -34,8 +34,8 @@ Objective: verify Amira's behavior against its specifications only, through the 
 | ID | Specs | Route | Status | Commit |
 |----|-------|-------|--------|--------|
 | T1 | S1, S2 | delegated (Codex) | done: 2 passed; opt-out 2 skipped; baseline failure confirmed | efead07 |
-| T2 | S3, S4 (public browse, auth/account) | delegated (Codex) | done: accumulated 61 passed | hash recorded in next task |
-| T3 | S3, S4 (requests, quotations, payments) | delegated (Codex) | pending | |
+| T2 | S3, S4 (public browse, auth/account) | delegated (Codex) | done: accumulated 61 passed | 41b2992 |
+| T3 | S3, S4 (requests, quotations, payments) | delegated (Codex) | done: accumulated 97 passed, 1 xfailed | hash recorded in next task |
 | T4 | S3, S4 (services lifecycle, claims, payouts) | delegated (Codex) | pending | |
 | T5 | S3, S4 (chat, provider profile, vehicles, invitations, shared trips) | delegated (Codex) | pending | |
 | T6 | S5 | delegated (Codex) | pending | |
@@ -51,3 +51,5 @@ Route evidence: user explicitly asked for Codex (`gpt-6.1-sol`) as executor; Cla
 - L3 (2026-11-09): User confirmed no concurrent executor remains and authorized reconciling the duplicate README section. T1 harness: real HTTP smoke 2 passed; opt-out 2 skipped. Default suite: 856 passed, 1 failed, 5 skipped; existing test `test_quote_request_uses_server_account_actor_and_creates_only_request` uses past `requestedAt=2026-11-08T10:00:00-03:00` and returns 422 instead of 201. No production code read or changed; baseline run excluding black-box tests pending. No new dependency.
 
 - L4 (T2): Public catalog boundary partitions, CUT codes, timezone filters, UUID classes, privacy and hidden types; authentication decision table and account identity; email proof validation. Accumulated suite: 61 passed (2.66 s), XML `/tmp/amira-bb-t2.xml`. Baseline without black-box directory: 856 passed, 1 failed, 3 skipped (11.86 s), identical existing past-date failure; adding this opt-in directory does not cause it. T1 commit `efead07`.
+
+- L5 (T3): Request creation, strict validation/no writes, request accept/reject replay and IDOR, quotation boundaries and actors, rejection before payment, real simulated checkout approval/rejection, webhook guard and checkout ownership. Initial observation: replaying a consumed checkout returns 200 approved (same service) instead of rejecting the single-use link (README payments); isolated as strict xfail D1, leaving successful payment assertions active. Accumulated rerun: 97 passed, 1 xfailed. T2 commit `41b2992`.
