@@ -17,6 +17,22 @@ from test_company_invitations import (
 )
 
 
+NOW = datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def fixed_invitation_clock(monkeypatch):
+    import test_company_invitations
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW.astimezone(tz) if tz else NOW.replace(tzinfo=None)
+
+    monkeypatch.setattr(routes, "datetime", FixedDatetime)
+    monkeypatch.setattr(test_company_invitations, "datetime", FixedDatetime)
+
+
 @pytest.mark.parametrize("configured", [False, True])
 def test_invitation_adapter_factories(configured):
     settings = Settings(resend_api_key="test-key", invitation_sender_email="sender@example.test",
@@ -63,7 +79,7 @@ def managed_session(invitation=None):
 
 @pytest.mark.parametrize("state", ["pending", "accepted", "revoked", "expired"])
 def test_list_invitations_exposes_each_lifecycle_state(state):
-    now = datetime.now(timezone.utc)
+    now = NOW
     invitation = NS(id=uuid4(), target_email="driver@example.test", created_at=now,
         expires_at=now + timedelta(days=-1 if state == "expired" else 1),
         accepted_at=now if state == "accepted" else None, revoked_at=now if state == "revoked" else None)
@@ -77,7 +93,7 @@ def test_list_invitations_exposes_each_lifecycle_state(state):
 @pytest.mark.parametrize("operation", ["revoke", "reissue"])
 @pytest.mark.parametrize("state", ["missing", "accepted", "pending"])
 def test_invitation_management_guards_and_success(operation, state):
-    now = datetime.now(timezone.utc)
+    now = NOW
     invitation = None if state == "missing" else NS(id=uuid4(), target_email="driver@example.test", expires_at=now + timedelta(days=1),
         accepted_at=now if state == "accepted" else None, revoked_at=None)
     session, _, _ = managed_session(invitation)
