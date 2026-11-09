@@ -42,8 +42,8 @@ Objective: raise statement + branch coverage of backend `amira_api` and frontend
 | T1 | S1, S2 | delegated (Codex) | done; backend 92.43% combined, 94.00% lines, 84.58% branches | 29585a6 |
 | T2 | S3 | delegated (Codex) | done; backend 93.82% combined | e928a3b |
 | T3 | S4 | delegated (Codex) | done; backend 97.38% combined | ef44ca6 |
-| T4 | S5 | delegated (Codex) | done; backend 99.63% combined | pending commit |
-| T5 | S6 | delegated (Codex) | pending | |
+| T4 | S5 | delegated (Codex) | done; backend 99.65% combined | 2f2fe7a |
+| T5 | S6 | delegated (Codex) | done; frontend 97.77% lines / 98.96% branches overall; scoped pure logic 100% / 99.35% | pending commit |
 | T6 | S7 | delegated (Codex) | pending | |
 
 Route evidence: the user explicitly asked for Codex (`gpt-6.1-sol`) to execute; Claude designs, orchestrates and verifies (project CLAUDE.md orchestrator role, HERDR_ENV=1).
@@ -63,3 +63,5 @@ Route evidence: the user explicitly asked for Codex (`gpt-6.1-sol`) to execute; 
 - L7 (T4): Focused 52 passed; full 1071 passed, 3 skipped, 1 strict xfail. All S5 modules meet at least 95% branch coverage. Added storage composition/cleanup/rollback, unknown-account and inconsistent-chat guards, delivery-photo signing failures, no-date assignment, empty-commune catalogs, payload size limit, listener retry and malformed URL handling, lifespan cancellation, and stream expiry-at-timeout tests. New tests use events and controlled cancellation instead of sleeps. T3 commit ef44ca6.
 
 - L8 (T4 verification correction): The first measurement still had the STREAM_CLOSED exit untested (realtime_routes 91.67% branches); added deterministic queue-overflow coverage and reran focused + full checks. realtime_routes now 100% branch; all S5 targets verified from JSON, rather than rounded combined coverage.
+
+- L9 (T5): Focused node runner 2 files passed; complete command 22 files passed (includes the loader helper). Direct access file: 26 passed, 1 executed TODO; pure file: 9 passed. Frontend overall coverage 97.77% lines / 98.96% branches / 99.12% functions; src/lib excluding browser SDK wiring: 100% lines / 99.35% branches / 100% functions (1143/1143 lines, 456/459 branches, 109/109 functions). Every scoped module meets 95%. Reproduced Headers loss at auth/account-api.ts:42 with a fetch stub (Accept becomes null); retained test.todo BUG. Supabase client wiring is excluded from the pure-logic target, not from the raw all-files report. Baseline and final JSON collected from native test:coverage reporter events. T4 commit 2f2fe7a (amended only before T5).
