@@ -5,7 +5,7 @@ import pytest
 
 @pytest.mark.parametrize('length,status', [(0, 422), (1, 201), (2000, 201), (2001, 422)])
 def test_message_length_boundaries(api, headers, accepted_chat, db, length, status):
-    """OpenAPI ChatMessageCreate: content length 1..2000; caja-negra.md S3 boundary partitioning."""
+    """OpenAPI ChatMessageCreate: content length 1..2000; odd/tasks/caja-negra.md S3 boundary partitioning."""
     response = api.post(f"/api/chats/{accepted_chat['chat']}/messages", headers=headers(), json={'content': 'x' * length})
     assert response.status_code == status, response.text
     assert db.execute('SELECT count(*) FROM "Mensajes"').fetchone()[0] == (1 if status == 201 else 0)
@@ -13,7 +13,7 @@ def test_message_length_boundaries(api, headers, accepted_chat, db, length, stat
 
 @pytest.mark.parametrize('actor', ['other', 'outsider', 'driver'])
 def test_chat_participant_idor(api, headers, accepted_chat, db, actor):
-    """README.md#chat-attachments-private-supabase-storage-bucket; caja-negra.md S3 participant IDOR."""
+    """README.md#chat-attachments-private-supabase-storage-bucket; odd/tasks/caja-negra.md S3 participant IDOR."""
     base = f"/api/chats/{accepted_chat['chat']}"
     assert api.get(base + '/messages', headers=headers(actor)).status_code == 404
     assert api.post(base + '/messages', headers=headers(actor), json={'content': 'Hello'}).status_code == 404

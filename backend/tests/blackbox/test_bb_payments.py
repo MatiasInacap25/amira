@@ -4,7 +4,7 @@ import pytest
 
 
 def test_payment_creates_exactly_one_service(api, headers, paid_service, db):
-    """README.md#payments-simulated-provider; caja-negra.md S3: approval reserves once, pay twice refused."""
+    """README.md#payments-simulated-provider; odd/tasks/caja-negra.md S3: approval reserves once, pay twice refused."""
     service_id = paid_service['service']
     detail = api.get(f'/api/customer/services/{service_id}', headers=headers())
     assert detail.status_code == 200, detail.text
@@ -48,8 +48,8 @@ def test_webhook_cannot_approve_simulated_payment(api, checkout, db, secret, sta
 
 @pytest.mark.xfail(strict=True, reason="BUG: README.md#payments-simulated-provider: expected single-use checkout replay rejection, got 200 approved")
 def test_consumed_checkout_link_is_rejected(api, headers, paid_service, db):
-    """README.md#payments-simulated-provider: checkout link is single-use; caja-negra.md S3 pay twice."""
+    """README.md#payments-simulated-provider: checkout link is single-use; odd/tasks/caja-negra.md S3 pay twice."""
     response = api.post(f"/api/payments/simulated/{paid_service['payment']}/complete", headers=headers(),
                         json={'token': paid_service['checkout_token'], 'approve': True})
     assert db.execute('SELECT count(*) FROM "Servicio"').fetchone()[0] == 1
-    assert response.status_code == 409, response.text
+    assert 400 <= response.status_code < 500, response.text

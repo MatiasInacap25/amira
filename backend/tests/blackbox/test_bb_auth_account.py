@@ -9,7 +9,7 @@ def test_authentication_decision_table(api, headers, case):
     """README.md#development-only-sms-mfa-bypass: signature/issuer/audience/expiry/role/email/anonymous checks."""
     changes = {
         'expired': {'exp': int(time.time()) - 120}, 'issuer': {'iss': 'http://127.0.0.1/other'},
-        'audience': {'aud': 'wrong'}, 'aal1': {'aal': 'aal1', 'amr': [{'method': 'password'}]},
+        'audience': {'aud': 'wrong'}, 'aal1': {'aal': 'aal1', 'amr': [{'method': 'password', 'timestamp': int(time.time())}]},
         'anonymous': {'is_anonymous': True}, 'role': {'role': 'anon'}, 'email': {'email': ''},
     }
     auth = {} if case == 'none' else {'Authorization': 'Bearer malformed'} if case == 'malformed' else headers(**changes[case])

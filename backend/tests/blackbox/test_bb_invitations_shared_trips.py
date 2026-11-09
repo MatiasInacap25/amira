@@ -9,7 +9,7 @@ INVITATIONS = '/api/company/profiles/me/driver-invitations'
 
 @pytest.mark.parametrize('body', [{}, {'email': 'x'}, {'email': 'not-an-email'}, {'email': 'driver@example.invalid', 'actor': 'forged'}])
 def test_invitation_validation(api, headers, db, body):
-    """OpenAPI InvitationCreate: email, length, additionalProperties=false; caja-negra.md S3 invalid input."""
+    """OpenAPI InvitationCreate: email, length, additionalProperties=false; odd/tasks/caja-negra.md S3 invalid input."""
     response = api.post(INVITATIONS, headers=headers('owner'), json=body)
     assert response.status_code == 422, response.text
     assert db.execute('SELECT count(*) FROM "DriverInvitation"').fetchone()[0] == 0
@@ -17,7 +17,7 @@ def test_invitation_validation(api, headers, db, body):
 
 @pytest.mark.parametrize('actor', ['customer', 'driver'])
 def test_invitation_company_owner_only(api, headers, actor):
-    """OpenAPI company/profiles/me driver-invitations; caja-negra.md S3 wrong-role decision table."""
+    """OpenAPI company/profiles/me driver-invitations; odd/tasks/caja-negra.md S3 wrong-role decision table."""
     assert api.get(INVITATIONS, headers=headers(actor)).status_code == 403
 
 
@@ -31,7 +31,7 @@ def test_invitation_accept_token_validation(api, headers, db, body):
 
 
 def test_invitation_lists_are_scoped(api, headers, seed, db):
-    """caja-negra.md S3 owner/non-owner IDOR; OpenAPI InvitationList and revoke operation."""
+    """odd/tasks/caja-negra.md S3 owner/non-owner IDOR; OpenAPI InvitationList and revoke operation."""
     invitation_id = db.execute('INSERT INTO "DriverInvitation" (company_profile_id,target_email,token_hash,created_by_user_id,expires_at) VALUES (%s,\'invitee@blackbox.invalid\',\'blackbox-hash\',%s,now()+interval \'7 days\') RETURNING id', (seed['owner']['profile'], seed['owner']['id'])).fetchone()[0]
     owner = api.get(INVITATIONS, headers=headers('owner'))
     assert owner.status_code == 200

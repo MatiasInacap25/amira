@@ -55,7 +55,7 @@ def test_live_location_boundaries_and_authorization(api, headers, running_servic
 
 
 def test_complete_before_start_is_refused(api, headers, assigned_service, photo, db):
-    """caja-negra.md S3: completing before start is an invalid transition."""
+    """odd/tasks/caja-negra.md S3: completing before start is an invalid transition."""
     response = api.post(f"/api/provider/services/{assigned_service['service']}/complete", headers=headers('driver'), files={'photo': ('proof.png', photo, 'image/png')})
     assert response.status_code == 409, response.text
     assert db.execute('SELECT "Estado" FROM "Servicio" WHERE "ID"=%s', (assigned_service['service'],)).fetchone()[0] == 'confirmed'

@@ -1,6 +1,5 @@
 """Customer claims, satisfaction consent and real local payout job."""
 
-import os
 import subprocess
 import sys
 from decimal import Decimal
