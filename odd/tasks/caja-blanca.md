@@ -44,7 +44,7 @@ Objective: raise statement + branch coverage of backend `amira_api` and frontend
 | T3 | S4 | delegated (Codex) | done; backend 97.38% combined | ef44ca6 |
 | T4 | S5 | delegated (Codex) | done; backend 99.65% combined | 2f2fe7a |
 | T5 | S6 | delegated (Codex) | done; frontend 97.77% lines / 98.96% branches overall; scoped pure logic 100% / 99.35% | 1c94c83 |
-| T6 | S7 | delegated (Codex) | done; backend 99.65% combined (99.78% lines / 99.00% branches); frontend 97.77% lines / 98.96% branches | pending commit |
+| T6 | S7 | delegated (Codex) | done; backend 99.65% combined (99.78% lines / 99.00% branches); frontend 97.77% lines / 98.96% branches | a3d9d28 |
 
 Route evidence: the user explicitly asked for Codex (`gpt-6.1-sol`) to execute; Claude designs, orchestrates and verifies (project CLAUDE.md orchestrator role, HERDR_ENV=1).
 
@@ -67,3 +67,7 @@ Route evidence: the user explicitly asked for Codex (`gpt-6.1-sol`) to execute; 
 - L9 (T5): Focused node runner 2 files passed; complete command 22 files passed (includes the loader helper). Direct access file: 26 passed, 1 executed TODO; pure file: 9 passed. Frontend overall coverage 97.77% lines / 98.96% branches / 99.12% functions; src/lib excluding browser SDK wiring: 100% lines / 99.35% branches / 100% functions (1143/1143 lines, 456/459 branches, 109/109 functions). Every scoped module meets 95%. Reproduced Headers loss at auth/account-api.ts:42 with a fetch stub (Accept becomes null); retained test.todo BUG. Supabase client wiring is excluded from the pure-logic target, not from the raw all-files report. Baseline and final JSON collected from native test:coverage reporter events. T4 commit 2f2fe7a (amended only before T5).
 
 - L10 (T6): Wrote docs/testing/informe-caja-blanca.md in neutral professional Spanish with all S7 sections, measured baseline/final module tables, the 215 new backend cases and 36 frontend cases (including expected failures), reproducible commands, defect reproductions and explicit uncovered-line explanations. Final determinism audit freezes invitation fixtures and SQLite CURRENT_TIMESTAMP for the unread monotonicity case previously using 2030. Focused: 68 passed; full backend: 1071 passed, 3 skipped, 1 strict xfail; full frontend: 22 files passed, with 1 executed TODO in direct access tests. No production files changed. T5 commit 1c94c83. Correction to L5 locator: TLS override occurs at db.py:34-35; payment_routes.py:60 also remains uncovered and is explicitly justified in the report. E2E future dates remain outside authorized edit surfaces.
+
+- L11 (final handoff): T6 commit a3d9d28c0071ec1e8735f5f0d651ee6ade4e37bc. All six task commits are local on test/caja-blanca; no push. This final hash-only bookkeeping update is intentionally uncommitted to avoid a seventh task commit or a self-referential amended hash. Existing untracked backend/.coverage remains uncommitted. Final checks: git diff --check and unchanged production-source diff passed; S5/S6 thresholds checked against measured JSON.
+
+- L12 (Claude verification): no diff in backend/src or frontend/src; backend 1071 passed, 3 skipped, 1 xfailed, TOTAL 99%; frontend 207 pass, 1 todo, 97.77% lines / 98.96% branches; uv lock --check OK. D2 and D3 confirmed latent (no current caller triggers them).
