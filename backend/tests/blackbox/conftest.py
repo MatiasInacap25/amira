@@ -61,7 +61,31 @@ def server(database_url):
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
     jwk.update(kid="blackbox-local", alg="RS256", use="sig")
 
+    objects = {}
+
     class JWKSHandler(BaseHTTPRequestHandler):
+        def respond(self, status, body):
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_POST(self):
+            data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            if self.path.startswith('/storage/v1/object/sign/'):
+                self.respond(200, {"signedURL": '/object/sign/local-fixture?token=blackbox'})
+            elif self.path.startswith('/storage/v1/object/'):
+                objects[self.path] = data
+                self.respond(200, {"Key": self.path.removeprefix('/storage/v1/object/')})
+            else:
+                self.respond(404, {"error": "Local fake only supports Storage and JWKS"})
+
+        def do_DELETE(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.respond(200, [])
+
         def do_GET(self):
             payload = json.dumps({"keys": [jwk]}).encode()
             self.send_response(200)
@@ -86,11 +110,11 @@ def server(database_url):
            "SUPABASE_JWT_ISSUER": issuer, "SUPABASE_JWT_AUDIENCE": "authenticated",
            "SUPABASE_JWKS_URL": issuer + "/.well-known/jwks.json",
            "SUPABASE_URL": f"http://127.0.0.1:{jwks.server_port}",
-           "SUPABASE_SERVICE_ROLE_KEY": "", "DEV_SKIP_SMS_MFA": "false",
+           "SUPABASE_SERVICE_ROLE_KEY": "blackbox-local-storage-only", "DEV_SKIP_SMS_MFA": "false",
            "PAYMENT_SIMULATOR_SECRET": "blackbox-local-simulator-only",
            "PAYMENT_WEBHOOK_SECRET": "blackbox-local-webhook-only",
            "FRONTEND_BASE_URL": "http://127.0.0.1:3179",
-           "REQUEST_IMAGES_BUCKET": "", "VEHICLE_IMAGES_BUCKET": "",
+           "REQUEST_IMAGES_BUCKET": "request-images", "VEHICLE_IMAGES_BUCKET": "vehicle-images",
            "RESEND_API_KEY": "", "PYTHONUNBUFFERED": "1"}
     # An empty temporary cwd prevents pydantic dotenv loading the repository's .env.
     with tempfile.TemporaryDirectory(prefix="amira-bb-") as cwd, tempfile.TemporaryFile(mode="w+") as log:
@@ -112,7 +136,7 @@ def server(database_url):
             if process.poll() is not None:
                 log.seek(0)
                 pytest.fail("uvicorn failed: " + log.read())
-            yield client, key, issuer, env
+            yield client, key, issuer, env, objects
         finally:
             client.close()
             process.terminate()
@@ -233,3 +257,34 @@ def paid_service(api, headers, checkout):
     assert response.status_code == 200, response.text
     assert response.json()['status'] == 'approved'
     return checkout | {'service': response.json()['serviceId']}
+
+
+@pytest.fixture
+def assigned_service(api, headers, paid_service, seed):
+    response = api.put(f"/api/provider/services/{paid_service['service']}/assignments", headers=headers('owner'),
+                      json={'assignments': [{'driverId': seed['driver']['driver'], 'vehicleId': seed['vehicle']}]})
+    assert response.status_code == 200, response.text
+    return paid_service
+
+
+@pytest.fixture
+def running_service(api, headers, assigned_service):
+    response = api.post(f"/api/provider/services/{assigned_service['service']}/start", headers=headers('driver'),
+                       json={'latitude': -33.4489, 'longitude': -70.6693, 'accuracy': 12.5})
+    assert response.status_code == 200, response.text
+    return assigned_service
+
+
+@pytest.fixture
+def photo():
+    import base64
+    return base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1cAAAAASUVORK5CYII=')
+
+
+@pytest.fixture
+def completed_service(api, headers, running_service, photo):
+    response = api.post(f"/api/provider/services/{running_service['service']}/complete", headers=headers('driver'),
+                        files={'photo': ('evidence.png', photo, 'image/png')})
+    assert response.status_code == 200, response.text
+    assert response.json()['status'] == 'completed'
+    return running_service

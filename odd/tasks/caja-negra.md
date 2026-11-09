@@ -35,8 +35,8 @@ Objective: verify Amira's behavior against its specifications only, through the 
 |----|-------|-------|--------|--------|
 | T1 | S1, S2 | delegated (Codex) | done: 2 passed; opt-out 2 skipped; baseline failure confirmed | efead07 |
 | T2 | S3, S4 (public browse, auth/account) | delegated (Codex) | done: accumulated 61 passed | 41b2992 |
-| T3 | S3, S4 (requests, quotations, payments) | delegated (Codex) | done: accumulated 97 passed, 1 xfailed | hash recorded in next task |
-| T4 | S3, S4 (services lifecycle, claims, payouts) | delegated (Codex) | pending | |
+| T3 | S3, S4 (requests, quotations, payments) | delegated (Codex) | done: accumulated 97 passed, 1 xfailed | 8264a9f |
+| T4 | S3, S4 (services lifecycle, claims, payouts) | delegated (Codex) | done: accumulated 138 passed, 1 xfailed | hash recorded in next task |
 | T5 | S3, S4 (chat, provider profile, vehicles, invitations, shared trips) | delegated (Codex) | pending | |
 | T6 | S5 | delegated (Codex) | pending | |
 | T7 | S6, S7 | delegated (Codex) | pending | |
@@ -53,3 +53,5 @@ Route evidence: user explicitly asked for Codex (`gpt-6.1-sol`) as executor; Cla
 - L4 (T2): Public catalog boundary partitions, CUT codes, timezone filters, UUID classes, privacy and hidden types; authentication decision table and account identity; email proof validation. Accumulated suite: 61 passed (2.66 s), XML `/tmp/amira-bb-t2.xml`. Baseline without black-box directory: 856 passed, 1 failed, 3 skipped (11.86 s), identical existing past-date failure; adding this opt-in directory does not cause it. T1 commit `efead07`.
 
 - L5 (T3): Request creation, strict validation/no writes, request accept/reject replay and IDOR, quotation boundaries and actors, rejection before payment, real simulated checkout approval/rejection, webhook guard and checkout ownership. Initial observation: replaying a consumed checkout returns 200 approved (same service) instead of rejecting the single-use link (README payments); isolated as strict xfail D1, leaving successful payment assertions active. Accumulated rerun: 97 passed, 1 xfailed. T2 commit `41b2992`.
+
+- L6 (T4): Extended the local JWKS HTTP server with an in-memory Storage fake (upload/sign/delete only, no external storage). Real API lifecycle now reaches assigned → started with GPS → completed with delivery evidence. Verified coordinates inclusive bounds, invalid start atomicity, driver-only location writes, owner/customer reads, position deletion, 8 MiB file cap, MIME sniffing, claim boundaries/mutual exclusion/window, and actual local payout subprocess eligibility/idempotence/net commission (10001 gross → 9001 net). Accumulated suite: 138 passed, 1 xfailed (13.72 s), XML `/tmp/amira-bb-t4.xml`. Storage fake does not prove real Supabase policy/expiry. T3 commit `8264a9f`.
