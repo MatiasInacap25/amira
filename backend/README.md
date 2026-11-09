@@ -250,6 +250,16 @@ The logical ERD does not settle provider status vocabularies, canonical profile-
 
 The engine normalizes PostgreSQL URLs to Psycopg 3, requires TLS, and bounds the pool, connection timeout, and statement timeout. The public-browse migration enables RLS and revokes `PUBLIC`, `anon`, and `authenticated` privileges for all 26 application tables and `alembic_version`. It seeds clearly labeled `[DEMO]` rows with a synthetic non-login account mapping and `.invalid` email; it creates no Supabase Auth user, identity-verification, payment, or payout record.
 
+## Unit test coverage
+
+From this directory, run:
+
+```bash
+uv run pytest --cov=amira_api --cov-branch --cov-report=term-missing
+```
+
+Tests use local fakes; database integration tests require an explicitly configured local test database.
+
 ## Opt-in black-box suite
 
 The black-box suite starts a real Uvicorn subprocess and a local JWKS server. It
