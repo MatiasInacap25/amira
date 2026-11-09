@@ -33,7 +33,7 @@ Objective: verify Amira's behavior against its specifications only, through the 
 
 | ID | Specs | Route | Status | Commit |
 |----|-------|-------|--------|--------|
-| T1 | S1, S2 | delegated (Codex) | pending | |
+| T1 | S1, S2 | delegated (Codex) | harness verified: 2 passed; opt-out 2 skipped; default baseline failure under investigation | commit recorded in next task |
 | T2 | S3, S4 (public browse, auth/account) | delegated (Codex) | pending | |
 | T3 | S3, S4 (requests, quotations, payments) | delegated (Codex) | pending | |
 | T4 | S3, S4 (services lifecycle, claims, payouts) | delegated (Codex) | pending | |
@@ -47,3 +47,5 @@ Route evidence: user explicitly asked for Codex (`gpt-6.1-sol`) as executor; Cla
 
 - L1 (2026-11-09, user): "si, sigue con la caja negra" (continuation of: "usa codex para hacer las pruebas, tu disena el plan detallado y depues que codex lo ejecute con sol 6.1, los resultados dejalos en un informe" / "un informe detallado").
 - L2: Disposable DB prepared by Claude: container `amira_blackbox_db` (image `public.ecr.aws/supabase/postgres:17.11.0.006`), `127.0.0.1:55432`, user/password `postgres`, SSL enabled with a self-signed cert (the app forces `sslmode=require`), `alembic upgrade head` applied successfully up to `20261108_0001`. The developer's local Supabase DB (port 54322) is out of bounds.
+
+- L3 (2026-11-09): User confirmed no concurrent executor remains and authorized reconciling the duplicate README section. T1 harness: real HTTP smoke 2 passed; opt-out 2 skipped. Default suite: 856 passed, 1 failed, 5 skipped; existing test `test_quote_request_uses_server_account_actor_and_creates_only_request` uses past `requestedAt=2026-11-08T10:00:00-03:00` and returns 422 instead of 201. No production code read or changed; baseline run excluding black-box tests pending. No new dependency.
