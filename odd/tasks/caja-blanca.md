@@ -41,8 +41,8 @@ Objective: raise statement + branch coverage of backend `amira_api` and frontend
 |----|-------|-------|--------|--------|
 | T1 | S1, S2 | delegated (Codex) | done; backend 92.43% combined, 94.00% lines, 84.58% branches | 29585a6 |
 | T2 | S3 | delegated (Codex) | done; backend 93.82% combined | e928a3b |
-| T3 | S4 | delegated (Codex) | done; backend 97.38% combined | pending commit |
-| T4 | S5 | delegated (Codex) | pending | |
+| T3 | S4 | delegated (Codex) | done; backend 97.38% combined | ef44ca6 |
+| T4 | S5 | delegated (Codex) | done; backend 99.63% combined | pending commit |
 | T5 | S6 | delegated (Codex) | pending | |
 | T6 | S7 | delegated (Codex) | pending | |
 
@@ -59,3 +59,7 @@ Route evidence: the user explicitly asked for Codex (`gpt-6.1-sol`) to execute; 
 - L5 (T2): Added critical infrastructure/authentication and money failure tests; focused 44 passed, 1 strict xfail; full 901 passed, 3 skipped, 1 strict xfail. TLS override reproduced at db.py:33 (caller connect_args replaces required SSL); no production fix. Remaining critical gaps are payment_service.py:175 (defensive superseded-event loop: public quotation creation already supersedes earlier pending quotations) and release_payouts.py:48 (module invocation guard; main tested directly without running a process that might access external settings). Coverage details retained for T6 report. T1 commit 29585a6.
 
 - L6 (T3): Focused 118 passed; full 1019 passed, 3 skipped, 1 strict xfail. Branch targets met: account_routes 96.97%, account_schemas 100%, invitation_routes 96.34%, fallback_routes 100%. Tests cover every recovered account field, profile and driver insert conflicts, one-time legacy completion, invitation transport failures and company conversion, PostgreSQL advisory-lock acquire/release with a mocked connection, and failed atomic fallback updates. No real external transport or database used. T2 commit e928a3b.
+
+- L7 (T4): Focused 52 passed; full 1071 passed, 3 skipped, 1 strict xfail. All S5 modules meet at least 95% branch coverage. Added storage composition/cleanup/rollback, unknown-account and inconsistent-chat guards, delivery-photo signing failures, no-date assignment, empty-commune catalogs, payload size limit, listener retry and malformed URL handling, lifespan cancellation, and stream expiry-at-timeout tests. New tests use events and controlled cancellation instead of sleeps. T3 commit ef44ca6.
+
+- L8 (T4 verification correction): The first measurement still had the STREAM_CLOSED exit untested (realtime_routes 91.67% branches); added deterministic queue-overflow coverage and reran focused + full checks. realtime_routes now 100% branch; all S5 targets verified from JSON, rather than rounded combined coverage.
