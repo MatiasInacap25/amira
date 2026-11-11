@@ -360,7 +360,7 @@ test("company owner can retain company account when linked-driver configuration 
 test("callback rejects external next destinations and returns to the login flow", async ({ page }) => {
   await page.goto("/auth/callback?error=access_denied&next=https%3A%2F%2Fevil.test%2Fsteal");
   await expect(page).toHaveURL(/\/login\?message=confirmation$/);
-  await expect(page.getByRole("heading", { name: "Qué bueno verte" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inicia sesión" })).toBeVisible();
 });
 
 test("confirmed callback persists a verified session through the account redirect", async ({ page }) => {

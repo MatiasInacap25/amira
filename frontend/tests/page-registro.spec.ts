@@ -59,10 +59,10 @@ async function fillRegistrationForm(
 test("registration page presents its title and Spanish copy", async ({ page }) => {
   await page.goto("/registro");
   await expect(page).toHaveTitle("Crear cuenta | Amira");
-  await expect(page.getByRole("heading", { level: 1, name: "El movimiento empieza con una cuenta segura." })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Tu cuenta para cotizar u ofrecer transporte de carga" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: "Crea tu cuenta" })).toBeVisible();
   await expect(page.getByText("Regístrate con tu correo y confirma la dirección antes de completar tu perfil.")).toBeVisible();
-  await expect(page.getByText("CONECTA. COTIZA. COORDINA.")).toBeVisible();
+  await expect(page.getByText(/Como transportista, publicas tus servicios/)).toBeVisible();
 });
 
 test("registration page links back to the landing page", async ({ page }) => {
@@ -76,7 +76,7 @@ test("registration switch link opens the login form", async ({ page }) => {
   await expect(page.getByText("¿Ya tienes una cuenta?")).toBeVisible();
   await page.getByRole("link", { name: "Inicia sesión" }).click();
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "Qué bueno verte" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inicia sesión" })).toBeVisible();
 });
 
 test("customer registration shows the identity fields and hides the provider role choice", async ({ page }) => {

@@ -13,3 +13,6 @@
 
 # Supabase local state
 /supabase/.temp/
+
+# taste-skill local gate state and history
+/frontend/.taste-skill/

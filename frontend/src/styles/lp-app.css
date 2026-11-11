@@ -1,0 +1,301 @@
+/* taste-skill look for the app pages that opt in (/servicios, /rutas-compartidas, /login, /registro).
+   Visual only: every rule re-dresses the existing markup and classes under a scope class, so the pages keep their
+   behaviour, ids and text, and every other route keeps globals.css as it is.
+   Scopes: header.lp-app-header and footer.lp-app-footer (MarketplaceHeader/Footer variant "lp"), main.lp-app
+   (search pages) and main.lp-auth (AuthPanel). Tokens: lp-tokens.css. */
+
+.lp-app, .lp-app-header, .lp-app-footer, .lp-auth {
+  color: var(--lp-ink);
+  font-family: var(--lp-font), system-ui, sans-serif;
+}
+
+/* ---------------------------------------------------------------- shared controls */
+
+.lp-app .button, .lp-auth .auth-submit, .lp-auth .auth-secondary-action {
+  min-height: 48px;
+  padding: 0 24px;
+  border-radius: var(--lp-r-sm);
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  transition: transform .16s ease, background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+.lp-app .button:hover:not(:disabled), .lp-auth .auth-submit:hover:not(:disabled), .lp-auth .auth-secondary-action:hover:not(:disabled) { transform: translateY(-1px); box-shadow: none; }
+.lp-app .button:active:not(:disabled), .lp-auth .auth-submit:active:not(:disabled), .lp-auth .auth-secondary-action:active:not(:disabled) { transform: translateY(0) scale(.98); }
+.lp-app .button-primary, .lp-auth .auth-submit { border: 1px solid transparent; background: var(--lp-action); color: var(--lp-action-ink); }
+.lp-app .button-primary:hover:not(:disabled), .lp-auth .auth-submit:hover:not(:disabled) { background: var(--lp-action-hover); }
+.lp-app .button-secondary, .lp-auth .auth-secondary-action { border: 1px solid var(--lp-line); background: var(--lp-card); color: var(--lp-ink); }
+.lp-app .button-secondary:hover:not(:disabled), .lp-auth .auth-secondary-action:hover:not(:disabled) { border-color: var(--lp-ink); background: var(--lp-card); }
+.lp-app .button:disabled { opacity: .55; cursor: not-allowed; }
+
+.lp-app :focus-visible, .lp-app-header :focus-visible, .lp-app-footer :focus-visible, .lp-auth :focus-visible { outline: 2px solid var(--lp-action); outline-offset: 3px; }
+
+.lp-app .marketplace-field, .lp-auth .auth-field { gap: 8px; color: var(--lp-ink); font-size: 14px; font-weight: 500; }
+.lp-app .marketplace-field input, .lp-app .marketplace-field select, .lp-auth .auth-field input, .lp-auth .auth-field select {
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--lp-line);
+  border-radius: var(--lp-r-sm);
+  background-color: var(--lp-card);
+  color: var(--lp-ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  box-shadow: none;
+}
+.lp-app .marketplace-field select, .lp-auth .auth-field select {
+  padding-right: 40px;
+  appearance: none;
+  background: var(--lp-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2338525f' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center / 12px;
+  cursor: pointer;
+}
+.lp-app .marketplace-field input:focus, .lp-app .marketplace-field select:focus, .lp-auth .auth-field input:focus, .lp-auth .auth-field select:focus { border-color: var(--lp-ink); box-shadow: 0 0 0 3px rgba(23, 57, 75, .1); outline: none; }
+.lp-app .marketplace-field input::placeholder, .lp-auth .auth-field input::placeholder { color: var(--lp-muted); opacity: .75; }
+.lp-app .marketplace-field select:disabled { opacity: .6; cursor: not-allowed; }
+.lp-app .marketplace-field input[aria-invalid="true"], .lp-auth .auth-field input[aria-invalid="true"] { border-color: var(--lp-action); }
+.lp-app .marketplace-input-icon > svg { top: 16px; left: 14px; color: var(--lp-muted); }
+.lp-app .marketplace-input-icon input { padding-left: 40px; }
+.lp-app .marketplace-field-status { color: var(--lp-muted); font-size: 14px; font-weight: 400; }
+.lp-app .marketplace-field-error, .lp-app .filter-validation { color: var(--lp-action); font-size: 14px; font-weight: 500; }
+
+/* ---------------------------------------------------------------- header (variant "lp") */
+
+.site-header.lp-app-header { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--lp-line); background: var(--lp-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.lp-app-header .header-inner { width: min(100% - 2 * var(--lp-gut), 1280px); min-height: var(--lp-nav); gap: 32px; }
+.lp-app-header .brand { gap: 10px; color: var(--lp-ink); font-size: 22px; font-weight: 500; letter-spacing: -0.04em; }
+.lp-app-header .desktop-nav { justify-content: flex-start; gap: 28px; }
+.lp-app-header .desktop-nav a, .lp-app-header .login-link, .lp-app-header .header-auth-links .header-nav-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--lp-ink);
+  font-size: 15px;
+  font-weight: 500;
+  transform: none;
+  white-space: nowrap;
+}
+.lp-app-header .desktop-nav a::after, .lp-app-header .login-link::after, .lp-app-header .header-auth-links .header-nav-button::after {
+  position: absolute; left: 0; right: 0; bottom: 8px; height: 1px; background: currentColor; content: ""; transform: scaleX(0); transform-origin: left; transition: transform .2s ease;
+}
+.lp-app-header .desktop-nav a:hover, .lp-app-header .login-link:hover, .lp-app-header .header-auth-links .header-nav-button:hover { background: none; color: var(--lp-ink); transform: none; }
+.lp-app-header .desktop-nav a:hover::after, .lp-app-header .login-link:hover::after, .lp-app-header .header-auth-links .header-nav-button:hover::after { transform: scaleX(1); }
+.lp-app-header .header-actions { gap: 24px; }
+.lp-app-header .header-auth-links { gap: 24px; }
+.lp-app-header .header-cta { min-height: 44px; padding: 0 24px; border: 1px solid transparent; border-radius: var(--lp-r-sm); background: var(--lp-action); box-shadow: none; color: var(--lp-action-ink); font-size: 16px; font-weight: 500; transition: transform .16s ease, background-color .16s ease; }
+.lp-app-header .header-cta:hover { background: var(--lp-action-hover); box-shadow: none; transform: translateY(-1px); }
+.lp-app-header .header-cta:active { transform: translateY(0) scale(.98); }
+.lp-app-header .mobile-menu-toggle { width: 44px; height: 44px; border: 1px solid var(--lp-line); border-radius: var(--lp-r-sm); background: var(--lp-card); color: var(--lp-ink); }
+.lp-app-header .mobile-nav { gap: 0; padding: 8px var(--lp-gut) 24px; border-top: 1px solid var(--lp-line); background: var(--lp-bg); }
+.lp-app-header .mobile-nav a, .lp-app-header .mobile-nav button.header-nav-button {
+  min-height: 56px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--lp-line);
+  border-radius: 0;
+  background: none;
+  color: var(--lp-ink);
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 500;
+}
+.lp-app-header .mobile-nav a:nth-last-child(-n+4), .lp-app-header .mobile-nav a:nth-last-child(-n+2) { color: var(--lp-ink); }
+.lp-app-header .profile-menu-toggle { width: 44px; height: 44px; border-color: var(--lp-line); color: var(--lp-ink); }
+
+/* 761 to 1023: the bar keeps the logo, the main button and the menu; its words move into the menu, which already
+   lists them (globals.css switches at 760). */
+@media (max-width: 1023px) {
+  .lp-app-header .desktop-nav, .lp-app-header .header-auth-links { display: none; }
+  .lp-app-header .mobile-menu-toggle { display: grid; place-items: center; }
+  .lp-app-header .mobile-nav { display: grid; }
+  .lp-app-header .header-inner { gap: 16px; justify-content: space-between; }
+}
+
+/* ---------------------------------------------------------------- footer (variant "lp") */
+
+.marketplace-footer.lp-app-footer { padding: 48px var(--lp-gut); border-top: 1px solid var(--lp-line); background: var(--lp-surface); color: var(--lp-ink); }
+.lp-app-footer .marketplace-footer-inner { width: min(100%, 1280px); gap: 32px; }
+.lp-app-footer .brand { gap: 10px; color: var(--lp-ink); font-size: 22px; font-weight: 500; letter-spacing: -0.04em; }
+.lp-app-footer p { max-width: 560px; color: var(--lp-muted); font-size: 14px; line-height: 1.6; }
+.lp-app-footer .text-link { color: var(--lp-ink); font-size: 15px; font-weight: 500; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 4px; }
+.lp-app-footer .text-link:hover { text-decoration-color: currentColor; }
+
+/* ---------------------------------------------------------------- search pages: head */
+
+.marketplace-main.lp-app { min-height: calc(100vh - var(--lp-nav)); background: var(--lp-bg); }
+.lp-app .skip-link { font-family: inherit; }
+.lp-app .marketplace-hero { overflow: visible; padding: 72px var(--lp-gut) 48px; background: var(--lp-bg); }
+.lp-app .marketplace-hero::after { display: none; }
+.lp-app .marketplace-hero-inner { display: grid; width: min(100%, 1280px); grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--lp-gap); align-items: end; }
+.lp-app .marketplace-hero .eyebrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; margin: 0 0 20px; color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: .04em; }
+.lp-app .eyebrow-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lp-action); box-shadow: none; }
+.lp-app .marketplace-hero h1 { grid-column: 1 / span 7; grid-row: 2 / span 2; max-width: none; margin: 0; color: var(--lp-ink); font-size: clamp(40px, 4.4vw, 60px); font-weight: 500; letter-spacing: -0.045em; line-height: 1.04; text-wrap: balance; }
+.lp-app .marketplace-hero-inner > p:not(.eyebrow) { grid-column: 8 / span 5; grid-row: 2; max-width: none; margin: 0; color: var(--lp-muted); font-size: 18px; line-height: 1.6; }
+.lp-app .marketplace-back-link { grid-column: 8 / span 5; grid-row: 3; justify-self: start; min-height: 44px; margin-top: 8px; color: var(--lp-ink); font-size: 15px; font-weight: 500; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 4px; }
+.lp-app .marketplace-back-link:hover { color: var(--lp-ink); text-decoration-color: currentColor; }
+.lp-app .marketplace-back-link svg { transition: transform .16s ease; }
+.lp-app .marketplace-back-link:hover svg { transform: translateX(-3px); }
+
+/* ---------------------------------------------------------------- search pages: filters */
+
+.lp-app .marketplace-content { width: min(100% - 2 * var(--lp-gut), 1280px); padding: 0 0 96px; }
+.lp-app .marketplace-filter { padding: 32px; border: 0; border-radius: var(--lp-r-lg); background: var(--lp-surface); box-shadow: none; }
+.lp-app .filter-heading { align-items: center; gap: 16px; margin-bottom: 24px; }
+.lp-app .filter-icon { width: 44px; height: 44px; border: 0; border-radius: var(--lp-r-md); background: var(--lp-card); color: var(--lp-ink); }
+.lp-app .filter-heading h2 { margin: 0; color: var(--lp-ink); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+.lp-app .filter-heading p { margin: 2px 0 0; color: var(--lp-muted); font-size: 15px; }
+.lp-app .filter-fields { gap: 16px 24px; align-items: end; }
+.lp-app .service-filter-fields { grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)) auto; }
+.lp-app .route-filter-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.lp-app .filter-submit { min-width: 0; white-space: nowrap; }
+.lp-app .filter-validation { margin-top: 16px; }
+
+/* ---------------------------------------------------------------- search pages: results */
+
+.lp-app .marketplace-results { margin-top: 72px; scroll-margin-top: calc(var(--lp-nav) + 24px); }
+.lp-app .results-heading { min-height: 0; align-items: end; margin-bottom: 32px; padding: 0; border: 0; }
+.lp-app .results-heading .eyebrow { margin: 0 0 8px; color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: .04em; }
+.lp-app .results-heading h2 { margin: 0; color: var(--lp-ink); font-size: clamp(30px, 3vw, 40px); font-weight: 500; letter-spacing: -0.035em; line-height: 1.1; }
+.lp-app .results-count { margin: 0; color: var(--lp-muted); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lp-app .service-results-grid, .lp-app .route-results-grid { gap: var(--lp-gap); }
+.lp-app .marketplace-card { border: 1px solid var(--lp-line); border-radius: var(--lp-r-lg); background: var(--lp-card); box-shadow: none; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.lp-app .marketplace-card:hover { border-color: rgba(23, 57, 75, .24); box-shadow: 0 12px 32px rgba(23, 57, 75, .08); transform: translateY(-2px); }
+.lp-app .service-result-card { min-height: 300px; padding: 24px; }
+.lp-app .shared-route-card { padding: 28px; }
+.lp-app .service-result-top, .lp-app .route-result-top { gap: 16px; }
+.lp-app .provider-mark { width: 44px; height: 44px; border: 0; border-radius: var(--lp-r-md); background: var(--lp-surface); color: var(--lp-ink); }
+.lp-app .service-result-category, .lp-app .route-published-label { max-width: 70%; padding: 4px 12px; border: 0; border-radius: var(--lp-r-md); background: var(--lp-surface); color: var(--lp-ink); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.lp-app .route-published-label { background: #fbe6dc; color: #8a3418; }
+.lp-app .marketplace-card h3 { margin: 20px 0 8px; color: var(--lp-ink); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.3; }
+.lp-app .shared-route-card h3 { font-size: 24px; letter-spacing: -0.03em; }
+.lp-app .service-result-description { color: var(--lp-ink); font-size: 16px; line-height: 1.55; }
+.lp-app .service-result-location, .lp-app .route-departure { gap: 8px; margin-top: 16px; color: var(--lp-muted); font-size: 15px; }
+.lp-app .service-result-location svg, .lp-app .route-departure svg { color: var(--lp-action); }
+.lp-app .service-result-note { padding-top: 20px; color: var(--lp-muted); font-size: 14px; line-height: 1.5; }
+.lp-app .service-result-actions { gap: 12px; margin-top: 20px; }
+.lp-app .service-result-actions .button { min-height: 44px; padding: 0 16px; font-size: 15px; }
+.lp-app .route-provider { color: var(--lp-muted); font-size: 15px; }
+.lp-app .route-provider strong { color: var(--lp-ink); font-weight: 500; }
+.lp-app .route-provider-link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 4px; }
+.lp-app .route-provider-link:hover { text-decoration-color: currentColor; }
+.lp-app .route-stops { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--lp-line); }
+.lp-app .route-stops h4 { margin: 0 0 12px; color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.lp-app .route-stops ol { gap: 10px; color: var(--lp-action); }
+.lp-app .route-stops li { font-size: 15px; }
+.lp-app .route-stops li span { color: var(--lp-ink); font-weight: 500; }
+.lp-app .route-stops li time { color: var(--lp-muted); font-size: 14px; }
+.lp-app .route-confirmation-note { margin-top: 20px; padding: 14px 16px; border: 0; border-radius: var(--lp-r-md); background: var(--lp-surface); color: var(--lp-ink); font-size: 14px; line-height: 1.5; }
+.lp-app .route-join-button { width: 100%; min-height: 48px; margin-top: 16px; }
+
+.lp-app .marketplace-state { min-height: 240px; gap: 8px; padding: 40px 32px; border: 1px solid var(--lp-line); border-radius: var(--lp-r-lg); background: var(--lp-card); color: var(--lp-muted); }
+.lp-app .marketplace-state h3 { margin: 8px 0 0; color: var(--lp-ink); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+.lp-app .marketplace-state p { max-width: 520px; color: var(--lp-muted); font-size: 16px; line-height: 1.6; }
+.lp-app .marketplace-error { border-color: rgba(184, 72, 36, .3); background: #fffaf7; }
+.lp-app .empty-icon { width: 48px; height: 48px; border-radius: var(--lp-r-md); background: var(--lp-surface); color: var(--lp-ink); }
+
+.lp-app .pagination-controls { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--lp-line); }
+.lp-app .pagination-controls .button { min-height: 44px; padding: 0 16px; font-size: 15px; }
+.lp-app .pagination-controls > span { color: var(--lp-muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.lp-app .marketplace-transparency { max-width: 72ch; margin: 40px 0 0; color: var(--lp-muted); font-size: 14px; line-height: 1.6; text-align: left; }
+
+@media (max-width: 1279px) {
+  .lp-app .service-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lp-app .service-filter-fields .filter-submit { grid-column: 1 / -1; }
+}
+
+@media (max-width: 1023px) {
+  .lp-app .marketplace-hero { padding-top: 48px; }
+  .lp-app .marketplace-hero h1, .lp-app .marketplace-hero-inner > p:not(.eyebrow), .lp-app .marketplace-back-link { grid-column: 1 / -1; grid-row: auto; }
+  .lp-app .marketplace-hero-inner > p:not(.eyebrow) { margin-top: 20px; }
+  .lp-app .route-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lp-app .route-filter-fields .filter-submit { grid-column: 1 / -1; }
+  .lp-app .service-results-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lp-app .route-results-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 639px) {
+  .lp-app .marketplace-hero { padding: 32px var(--lp-gut) 32px; }
+  .lp-app .marketplace-hero-inner > p:not(.eyebrow) { font-size: 17px; }
+  .lp-app .marketplace-filter { padding: 20px; }
+  .lp-app .service-filter-fields, .lp-app .route-filter-fields { grid-template-columns: minmax(0, 1fr); }
+  .lp-app .filter-submit { width: 100%; }
+  .lp-app .marketplace-results { margin-top: 48px; }
+  .lp-app .results-heading { margin-bottom: 24px; }
+  .lp-app .service-results-grid { grid-template-columns: minmax(0, 1fr); }
+  .lp-app .service-result-card, .lp-app .shared-route-card { padding: 20px; }
+  .lp-app .pagination-controls { flex-wrap: wrap; justify-content: center; }
+  .marketplace-footer.lp-app-footer { padding: 32px var(--lp-gut); }
+}
+
+/* ---------------------------------------------------------------- auth (/login, /registro) */
+
+.auth-shell.lp-auth { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); background: var(--lp-bg); }
+.lp-auth .auth-brand-panel { gap: 32px; padding: 40px 48px; background: var(--lp-inv-bg); color: var(--lp-inv-ink); }
+.lp-auth .auth-brand-panel::before, .lp-auth .auth-brand-panel::after { display: none; }
+.lp-auth .auth-brand { gap: 10px; color: var(--lp-inv-ink); font-size: 22px; font-weight: 500; letter-spacing: -0.04em; }
+.lp-auth .auth-brand .lp-mark { fill: var(--lp-inv-ink); }
+.lp-auth .auth-brand-copy { max-width: 480px; margin: 0; }
+.lp-auth .auth-kicker { margin: 0 0 16px; color: #f0a37f; font-size: 13px; font-weight: 500; letter-spacing: .04em; }
+.lp-auth .auth-brand-copy h1 { margin: 0 0 20px; color: var(--lp-inv-ink); font-size: clamp(36px, 3.6vw, 52px); font-weight: 500; letter-spacing: -0.04em; line-height: 1.06; text-wrap: balance; }
+.lp-auth .auth-brand-copy > p:last-child { color: var(--lp-inv-muted); font-size: 18px; line-height: 1.6; }
+.lp-auth .auth-brand-photo { position: relative; flex: 1; min-height: 200px; overflow: hidden; border-radius: var(--lp-r-lg); }
+.lp-auth .auth-brand-photo img { object-fit: cover; }
+.lp-auth .auth-brand-foot { gap: 10px; color: var(--lp-inv-muted); font-size: 14px; }
+.lp-auth .auth-brand-foot svg { color: #f0a37f; }
+
+.lp-auth .auth-form-panel { padding: 48px var(--lp-gut); background: var(--lp-bg); }
+.lp-auth .auth-form-wrap { width: min(100%, 480px); }
+.lp-auth .auth-back-link { min-height: 44px; margin-bottom: 40px; color: var(--lp-ink); font-size: 15px; font-weight: 500; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 4px; }
+.lp-auth .auth-back-link:hover { color: var(--lp-ink); text-decoration-color: currentColor; }
+.lp-auth .auth-heading { margin-bottom: 32px; }
+.lp-auth .auth-heading .auth-kicker { margin-bottom: 12px; color: var(--lp-muted); }
+.lp-auth .auth-heading h2 { margin: 0 0 12px; color: var(--lp-ink); font-size: clamp(32px, 3vw, 40px); font-weight: 500; letter-spacing: -0.035em; line-height: 1.1; }
+.lp-auth .auth-heading > p:last-child { color: var(--lp-muted); font-size: 16px; line-height: 1.6; }
+.lp-auth .auth-form { gap: 20px; }
+.lp-auth .auth-name-fields { gap: 16px; }
+.lp-auth .auth-help { color: var(--lp-muted); font-size: 13px; font-weight: 400; }
+.lp-auth .auth-field-error { color: var(--lp-action); font-size: 14px; font-weight: 500; }
+.lp-auth .auth-reveal { top: 2px; right: 2px; width: 44px; height: 44px; border-radius: var(--lp-r-sm); color: var(--lp-muted); }
+.lp-auth .auth-reveal:hover { background: var(--lp-surface); color: var(--lp-ink); }
+.lp-auth .auth-checkbox { gap: 12px; color: var(--lp-ink); font-size: 15px; font-weight: 400; line-height: 1.5; }
+.lp-auth .auth-checkbox input { width: 20px; height: 20px; accent-color: var(--lp-action); }
+.lp-auth .auth-submit { width: 100%; gap: 10px; margin-top: 4px; }
+.lp-auth .auth-submit:disabled, .lp-auth .auth-secondary-action:disabled { opacity: .55; }
+.lp-auth .auth-secondary-action { min-height: 48px; }
+.lp-auth .auth-notice, .lp-auth .auth-error { margin: 0 0 20px; padding: 14px 16px; border: 0; border-left: 3px solid var(--lp-ink); border-radius: var(--lp-r-sm); background: var(--lp-surface); color: var(--lp-ink); font-size: 15px; line-height: 1.5; }
+.lp-auth .auth-error { border-left-color: var(--lp-action); background: #fbe6dc; color: #6e2a14; }
+.lp-auth .auth-loading, .lp-auth .auth-step-actions > p { color: var(--lp-muted); font-size: 15px; }
+.lp-auth .auth-switch { margin-top: 28px; color: var(--lp-muted); font-size: 15px; }
+.lp-auth .auth-switch a { color: var(--lp-ink); font-weight: 500; text-decoration: underline; text-underline-offset: 4px; }
+.lp-auth .auth-privacy { margin-top: 32px; color: var(--lp-muted); font-size: 13px; }
+.lp-auth .marketplace-field { gap: 8px; color: var(--lp-ink); font-size: 14px; font-weight: 500; }
+.lp-auth .marketplace-field select { height: 48px; padding: 0 40px 0 14px; border: 1px solid var(--lp-line); border-radius: var(--lp-r-sm); appearance: none; background: var(--lp-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2338525f' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center / 12px; color: var(--lp-ink); font: inherit; font-size: 16px; }
+
+@media (max-width: 1023px) {
+  .auth-shell.lp-auth { grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); }
+  .lp-auth .auth-brand-panel { padding: 32px; }
+  .lp-auth .auth-form-panel { padding: 40px 32px; }
+}
+
+/* Under 761 the brand panel is hidden, as globals.css already does for the auth pages. */
+@media (max-width: 760px) {
+  .auth-shell.lp-auth { grid-template-columns: minmax(0, 1fr); }
+  .lp-auth .auth-brand-panel { display: none; }
+  .lp-auth .auth-form-panel { align-items: start; padding: 24px var(--lp-gut) 40px; }
+  .lp-auth .auth-back-link { margin-bottom: 24px; }
+}
+
+@media (max-width: 380px) {
+  .lp-auth .auth-name-fields { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-app *, .lp-app-header *, .lp-auth * { transition: none !important; }
+}

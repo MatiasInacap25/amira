@@ -135,6 +135,23 @@ test("anonymous visitors keep the public search links in the desktop header and 
   }
 });
 
+test("anonymous visitors see no provider-only Mis servicios link in the header or the mobile menu", async ({ page }) => {
+  await page.goto("/servicios");
+  await expect(desktopNav(page).getByRole("link", { name: "Buscar servicios" })).toBeVisible();
+  await expect(desktopNav(page).getByRole("link", { name: "Mis servicios" })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  await expect(mobileNav(page).getByRole("link", { name: "Buscar servicios" })).toBeVisible();
+  await expect(mobileNav(page).getByRole("link", { name: "Mis servicios" })).toHaveCount(0);
+});
+
+test("customers see no provider-only Mis servicios link in the header", async ({ page }) => {
+  await signInWithRole(page, "client", "/servicios");
+  await expect(desktopNav(page).getByRole("link", { name: "Buscar servicios" })).toBeVisible();
+  await expect(desktopNav(page).getByRole("link", { name: "Mis servicios" })).toHaveCount(0);
+});
+
 test("customers keep the public search links in the desktop header", async ({ page }) => {
   await signInWithRole(page, "client", "/servicios");
 
