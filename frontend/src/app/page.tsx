@@ -10,7 +10,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Geist } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -19,9 +18,10 @@ import { ProfileMenu, useSignOut } from "@/components/marketplace/profile-menu";
 import { useNavAccountRole, useNavUserId, useProviderNavAccountScope, usesPanelNavigation } from "@/components/marketplace/site-navigation";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { getServiceTypes } from "@/lib/marketplace-api";
+import { LpMark as Mark } from "@/components/marketplace/lp-mark";
+import { geist } from "./fonts";
+import "@/styles/lp-tokens.css";
 import "./landing.css";
-
-const geist = Geist({ subsets: ["latin"], variable: "--lp-font", display: "swap" });
 
 // Presentational copy keyed by catalog slug. Names and availability come from GET /api/service-types.
 const serviceCopy: Record<string, string> = {
@@ -87,17 +87,6 @@ const faqs = [
     answer: "Amira aún no media en estos casos. Guarda la cotización y los acuerdos por escrito y pregunta al transportista qué cobertura ofrece.",
   },
 ] as const;
-
-function Mark() {
-  return (
-    <svg aria-hidden="true" className="lp-mark" viewBox="0 0 24 24">
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="18" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="18" r="3" fill="var(--lp-action)" />
-    </svg>
-  );
-}
 
 function Arrow() {
   return (

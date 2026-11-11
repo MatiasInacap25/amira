@@ -2,30 +2,8 @@
    Built to taste-skill's system: one .lp-wrap (1280, gutters 80/48/24), a 12-column grid with a 24px gap,
    sections of one screen, one button pair, one radius family (soft: 8/12/20), Amira's own colours. */
 
+/* Tokens: src/styles/lp-tokens.css, shared with the redesigned app pages. */
 .lp {
-  --lp-bg: #f4f7f7;
-  --lp-surface: #eaf1f2;
-  --lp-card: #ffffff;
-  --lp-ink: #17394b;
-  --lp-muted: #38525f;
-  --lp-line: rgba(23, 57, 75, .14);
-  --lp-action: #b84824;
-  --lp-action-hover: #9f3c1d;
-  --lp-action-ink: #ffffff;
-  --lp-inv-bg: #17394b;
-  --lp-inv-surface: #264556;
-  --lp-inv-ink: #f4f7f7;
-  --lp-inv-muted: #c4d0d4;
-  --lp-r-sm: 8px;
-  --lp-r-md: 12px;
-  --lp-r-lg: 20px;
-  --lp-nav: 72px;
-  --lp-gut: 80px;
-  --lp-padt: 120px;
-  --lp-padb: 72px;
-  --lp-gap: 24px;
-  --lp-h1: 52px;
-  --lp-h2: 48px;
   background: var(--lp-bg);
   color: var(--lp-ink);
   font-family: var(--lp-font), system-ui, sans-serif;
@@ -78,7 +56,6 @@
 .lp-skip { position: absolute; left: 0; top: 12px; z-index: 2; padding: 12px 16px; border-radius: var(--lp-r-sm); background: var(--lp-ink); color: var(--lp-bg); font-weight: 500; text-decoration: none; transform: translateY(-200%); }
 .lp-skip:focus { transform: none; }
 .lp-logo { display: inline-flex; flex: none; align-items: center; gap: 10px; color: var(--lp-ink); font-size: 22px; font-weight: 500; letter-spacing: -0.04em; text-decoration: none; }
-.lp-mark { width: 24px; height: 24px; fill: var(--lp-ink); }
 .lp-nav__links { display: flex; flex: 1; align-items: center; gap: 28px; }
 .lp-nav__links a, .lp-nav__plain { position: relative; color: var(--lp-ink); font-size: 15px; font-weight: 500; text-decoration: none; white-space: nowrap; }
 .lp-nav__links a::after, .lp-nav__plain::after { position: absolute; left: 0; right: 0; bottom: -4px; height: 1px; background: currentColor; content: ""; transform: scaleX(0); transform-origin: left; transition: transform .2s ease; }

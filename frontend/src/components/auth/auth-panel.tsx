@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Truck } from "lucide-react";
+import { geist } from "@/app/fonts";
+import "@/styles/lp-tokens.css";
+import "@/styles/lp-app.css";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
+import { LpMark } from "@/components/marketplace/lp-mark";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { accountApiFetch, authenticatedApiFetch } from "@/lib/auth/account-api";
@@ -516,16 +521,19 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
   const title = step === "loading" ? "Cargando tu sesión" : step === "email-pending" ? "Confirma tu correo" : step === "enroll" ? "Verifica tu teléfono" : step === "verify" ? "Ingresa tu código SMS" : step === "account" ? "Completa tu cuenta" : mode === "login" ? "Qué bueno verte" : "Crea tu cuenta";
 
   return (
-    <main className="auth-shell">
+    <main className={`auth-shell lp-auth ${geist.variable}`}>
       <section aria-label="Amira, acceso a tu cuenta" className="auth-brand-panel">
         <Link aria-label="Amira, volver al inicio" className="auth-brand" href="/">
-          <span className="auth-brand-mark"><Truck aria-hidden="true" size={22} /></span>
+          <LpMark />
           <span>amira<span>.</span></span>
         </Link>
         <div className="auth-brand-copy">
           <p className="auth-kicker">CONECTA. COTIZA. COORDINA.</p>
           <h1>El movimiento empieza con una cuenta segura.</h1>
           <p>Encuentra servicios de transporte o prepara tu perfil para ofrecerlos, con la confianza de verificar cada acceso.</p>
+        </div>
+        <div className="auth-brand-photo">
+          <Image alt="" fill priority sizes="(max-width: 1023px) 40vw, 520px" src="/landing/f89119366.webp" style={{ objectPosition: "65% 60%" }} />
         </div>
         <div className="auth-brand-foot"><LockKeyhole aria-hidden="true" size={17} /><span>Tu seguridad también es parte del viaje.</span></div>
       </section>

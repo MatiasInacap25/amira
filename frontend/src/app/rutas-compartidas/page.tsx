@@ -9,6 +9,9 @@ import { MarketplaceSkeleton, ROUTE_RESULTS_LAYOUT } from "@/components/marketpl
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { QuoteRequestDialog } from "@/components/marketplace/quote-request-dialog";
 import { getProviderProfile, getSharedRoutes, type ProviderProfile, type SharedRoute, type SharedRouteFilters } from "@/lib/marketplace-api";
+import { geist } from "@/app/fonts";
+import "@/styles/lp-tokens.css";
+import "@/styles/lp-app.css";
 
 const initialFilters: SharedRouteFilters = { originCommuneCode: "", destinationCommuneCode: "", departureFrom: "", departureTo: "", offset: 0 };
 const emptyLocation: RegionCommuneValue = { regionCode: "", communeCode: "" };
@@ -79,8 +82,8 @@ export default function SharedRoutesPage() {
 
   return (
     <>
-      <MarketplaceHeader />
-      <main className="marketplace-main" id="contenido">
+      <MarketplaceHeader variant="lp" />
+      <main className={`marketplace-main lp-app ${geist.variable}`} id="contenido">
         <a className="skip-link" href="#resultados">Ir a los resultados</a>
         <section aria-labelledby="routes-title" className="marketplace-hero routes-hero">
           <div className="marketplace-hero-inner">
@@ -191,7 +194,7 @@ export default function SharedRoutesPage() {
           />
         )}
       </main>
-      <MarketplaceFooter />
+      <MarketplaceFooter variant="lp" />
     </>
   );
 }

@@ -10,6 +10,9 @@ import { RegionCommuneSelect } from "@/components/marketplace/region-commune-sel
 import { MarketplaceSkeleton, SERVICE_RESULTS_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { getServiceTypes, getServices, type ProviderProfile, type ServiceFilters } from "@/lib/marketplace-api";
+import { geist } from "@/app/fonts";
+import "@/styles/lp-tokens.css";
+import "@/styles/lp-app.css";
 
 const SERVICE_TYPES_STALE_TIME = 60 * 60 * 1000;
 
@@ -73,8 +76,8 @@ function ServicesSearch() {
 
   return (
     <>
-      <MarketplaceHeader />
-      <main className="marketplace-main" id="contenido">
+      <MarketplaceHeader variant="lp" />
+      <main className={`marketplace-main lp-app ${geist.variable}`} id="contenido">
         <a className="skip-link" href="#resultados">Ir a los resultados</a>
         <section aria-labelledby="services-title" className="marketplace-hero">
           <div className="marketplace-hero-inner">
@@ -179,7 +182,7 @@ function ServicesSearch() {
           <p className="marketplace-transparency">No se muestran calificaciones ni verificaciones que Amira no ofrece. Amira no procesa pagos ni confirma reservas.</p>
         </div>
       </main>
-      <MarketplaceFooter />
+      <MarketplaceFooter variant="lp" />
       {quote && (
         <QuoteRequestDialog
           onClose={() => setQuote(null)}

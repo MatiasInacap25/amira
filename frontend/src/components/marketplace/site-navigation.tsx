@@ -4,7 +4,9 @@ import { ArrowRight, Menu, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { geist } from "@/app/fonts";
 import { ChatNotifications } from "@/components/marketplace/chat-notifications";
+import { LpMark } from "@/components/marketplace/lp-mark";
 import { ProfileMenu, useSignOut } from "@/components/marketplace/profile-menu";
 import { useChatEvents } from "@/components/marketplace/use-chat-events";
 import { CHAT_ROOT_KEY, chatUnreadTotalKey } from "@/lib/chats";
@@ -136,7 +138,20 @@ function ProviderRequestsLink({ className, onNavigate }: { className?: string; o
   );
 }
 
-export function MarketplaceHeader() {
+// variant "lp": the taste-skill look (styles in src/styles/lp-app.css), opted into by the redesigned pages only.
+type NavigationVariant = "default" | "lp";
+
+function BrandLabel({ variant, size }: { variant: NavigationVariant; size: number }) {
+  if (variant === "lp") return <><LpMark /><span>amira</span></>;
+  return (
+    <>
+      <span className="brand-mark"><Truck aria-hidden="true" size={size} strokeWidth={2.2} /></span>
+      <span>amira<span className="brand-period">.</span></span>
+    </>
+  );
+}
+
+export function MarketplaceHeader({ variant = "default" }: { variant?: NavigationVariant } = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { userId, pending } = useNavUserId();
   const { signOut, signingOut, error: signOutError } = useSignOut(() => setMenuOpen(false));
@@ -145,12 +160,11 @@ export function MarketplaceHeader() {
   // Hidden links wait for a confirmed panel role, so anonymous visitors and customers never see them flicker out.
 
   return (
-    <header className="site-header">
+    <header className={variant === "lp" ? `site-header lp-app-header ${geist.variable}` : "site-header"}>
       <ChatNotifications userId={userId} />
       <div className="header-inner">
         <Link aria-label="Amira, inicio" className="brand" href="/">
-          <span className="brand-mark"><Truck aria-hidden="true" size={20} strokeWidth={2.2} /></span>
-          <span>amira<span className="brand-period">.</span></span>
+          <BrandLabel size={20} variant={variant} />
         </Link>
         <nav aria-label="Navegación principal" className="desktop-nav">
           {!panelNav && <Link className="button button-secondary header-nav-button" href="/servicios">Buscar servicios</Link>}
@@ -210,13 +224,12 @@ export function MarketplaceHeader() {
   );
 }
 
-export function MarketplaceFooter() {
+export function MarketplaceFooter({ variant = "default" }: { variant?: NavigationVariant } = {}) {
   return (
-    <footer className="marketplace-footer">
+    <footer className={variant === "lp" ? `marketplace-footer lp-app-footer ${geist.variable}` : "marketplace-footer"}>
       <div className="marketplace-footer-inner">
         <Link aria-label="Amira, inicio" className="brand" href="/">
-          <span className="brand-mark"><Truck aria-hidden="true" size={18} strokeWidth={2.2} /></span>
-          <span>amira<span className="brand-period">.</span></span>
+          <BrandLabel size={18} variant={variant} />
         </Link>
         <p>Amira no procesa pagos ni confirma reservas. Coordina las condiciones directamente con el prestador.</p>
         <Link className="text-link" href="/">Volver al inicio <ArrowRight aria-hidden="true" size={15} /></Link>
