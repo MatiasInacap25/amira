@@ -24,9 +24,9 @@ const servicesResponse = {
 
 test("landing links lead to service search and shared-route search", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("navigation", { name: "Navegación principal" }).getByRole("link", { name: "Servicios" })).toHaveAttribute("href", "/servicios");
-  await expect(page.getByRole("link", { name: "Explorar servicios" })).toHaveAttribute("href", "/servicios");
-  await expect(page.getByRole("link", { name: "Buscar viajes compartidos" })).toHaveAttribute("href", "/rutas-compartidas");
+  await expect(page.getByRole("navigation", { name: "Navegación principal" }).getByRole("link", { name: "Buscar servicios" })).toHaveAttribute("href", "/servicios");
+  await expect(page.getByRole("link", { name: "Ver transportistas publicados" })).toHaveAttribute("href", "/servicios");
+  await expect(page.getByRole("link", { name: "Ver viajes compartidos" })).toHaveAttribute("href", "/rutas-compartidas");
 });
 
 test("service search sends only supported filters and displays API results without invented trust claims", async ({ page }) => {
