@@ -171,7 +171,7 @@ export function MarketplaceHeader({ variant = "default" }: { variant?: Navigatio
           {!panelNav && <Link className="button button-secondary header-nav-button" href="/rutas-compartidas">Rutas compartidas</Link>}
           <ChatsLink />
           <ProviderRequestsLink />
-          <Link href="/cuenta/servicios">Mis servicios</Link>
+          {panelNav && <Link href="/cuenta/servicios">Mis servicios</Link>}
           {!panelNav && <Link href="/#como-funciona">Cómo funciona</Link>}
         </nav>
         <div className="header-actions">
@@ -202,7 +202,7 @@ export function MarketplaceHeader({ variant = "default" }: { variant?: Navigatio
           {!panelNav && <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMenuOpen(false)}>Rutas compartidas</Link>}
           <ChatsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <ProviderRequestsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
-          <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Mis servicios</Link>
+          {panelNav && <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Mis servicios</Link>}
           {!pending && (userId ? (
             <>
               <Link className="header-nav-button" href="/cuenta/perfil" onClick={() => setMenuOpen(false)}>Configuración del perfil</Link>
