@@ -518,7 +518,8 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     }
   }
 
-  const title = step === "loading" ? "Cargando tu sesión" : step === "email-pending" ? "Confirma tu correo" : step === "enroll" ? "Verifica tu teléfono" : step === "verify" ? "Ingresa tu código SMS" : step === "account" ? "Completa tu cuenta" : mode === "login" ? "Qué bueno verte" : "Crea tu cuenta";
+  const title = step === "loading" ? "Cargando tu sesión" : step === "email-pending" ? "Confirma tu correo" : step === "enroll" ? "Verifica tu teléfono" : step === "verify" ? "Ingresa tu código SMS" : step === "account" ? "Completa tu cuenta" : mode === "login" ? "Inicia sesión" : "Crea tu cuenta";
+  const kicker = step === "account" ? "Último paso" : step === "verify" || step === "enroll" ? "Seguridad de la cuenta" : "";
 
   return (
     <main className={`auth-shell lp-auth ${geist.variable}`}>
@@ -528,23 +529,22 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
           <span>amira<span>.</span></span>
         </Link>
         <div className="auth-brand-copy">
-          <p className="auth-kicker">CONECTA. COTIZA. COORDINA.</p>
-          <h1>El movimiento empieza con una cuenta segura.</h1>
-          <p>Encuentra servicios de transporte o prepara tu perfil para ofrecerlos, con la confianza de verificar cada acceso.</p>
+          <h1>Tu cuenta para cotizar u ofrecer transporte de carga</h1>
+          <p>Como cliente, cotizas mudanzas, fletes y más con transportistas de todo Chile. Como transportista, publicas tus servicios y respondes solicitudes.</p>
         </div>
         <div className="auth-brand-photo">
           <Image alt="" fill priority sizes="(max-width: 1023px) 40vw, 520px" src="/landing/f89119366.webp" style={{ objectPosition: "65% 60%" }} />
         </div>
-        <div className="auth-brand-foot"><LockKeyhole aria-hidden="true" size={17} /><span>Tu seguridad también es parte del viaje.</span></div>
+        <div className="auth-brand-foot"><LockKeyhole aria-hidden="true" size={17} /><span>Cada acceso se confirma con un código por SMS.</span></div>
       </section>
 
       <section className="auth-form-panel">
         <div className="auth-form-wrap">
           <Link className="auth-back-link" href="/"><ArrowLeft aria-hidden="true" size={15} /> Volver a Amira</Link>
           <div className="auth-heading">
-            <p className="auth-kicker">{step === "account" ? "UN ÚLTIMO PASO" : step === "verify" || step === "enroll" ? "SEGURIDAD DE LA CUENTA" : "TRANSPORTE, MÁS CERCA"}</p>
+            {kicker && <p className="auth-kicker">{kicker}</p>}
             <h2>{title}</h2>
-            <p>{step === "account" ? "Estos datos crean tu cuenta de Amira; no se envían a Supabase como metadatos de autorización." : step === "email-pending" ? "Te enviaremos a este mismo flujo después de confirmar el correo." : step === "enroll" || step === "verify" ? `Cuenta: ${email || confirmedUser?.email || "correo confirmado"}` : mode === "login" ? "Ingresa para continuar donde quedaste." : "Regístrate con tu correo y confirma la dirección antes de completar tu perfil."}</p>
+            <p>{step === "account" ? "Con estos datos creamos tu cuenta de Amira." : step === "email-pending" ? "Te enviaremos a este mismo flujo después de confirmar el correo." : step === "enroll" || step === "verify" ? `Cuenta: ${email || confirmedUser?.email || "correo confirmado"}` : mode === "login" ? "Usa el correo y la contraseña de tu cuenta." : "Regístrate con tu correo y confirma la dirección antes de completar tu perfil."}</p>
           </div>
 
           {devSkipSmsMfa && <p className="auth-notice" role="note">Modo desarrollo: verificación SMS desactivada</p>}

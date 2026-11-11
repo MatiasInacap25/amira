@@ -87,8 +87,7 @@ export default function SharedRoutesPage() {
         <a className="skip-link" href="#resultados">Ir a los resultados</a>
         <section aria-labelledby="routes-title" className="marketplace-hero routes-hero">
           <div className="marketplace-hero-inner">
-            <p className="eyebrow"><span className="eyebrow-dot" /> VIAJES COMPARTIDOS</p>
-            <h1 id="routes-title">Encuentra una ruta publicada.</h1>
+            <h1 id="routes-title">Viajes compartidos con espacio libre</h1>
             <p>Consulta viajes que aceptan solicitudes de espacio. La disponibilidad y compatibilidad de cada carga las confirma el transportista.</p>
             <Link className="marketplace-back-link" href="/"><ArrowLeft aria-hidden="true" size={16} /> Volver a Amira</Link>
           </div>
@@ -98,7 +97,7 @@ export default function SharedRoutesPage() {
           <form aria-label="Filtros de rutas compartidas" className="marketplace-filter" onSubmit={search}>
             <div className="filter-heading">
               <span className="filter-icon"><Route aria-hidden="true" size={19} /></span>
-              <div><h2>Buscar viajes en ruta</h2><p>Filtra por origen, destino y fecha de salida.</p></div>
+              <div><h2>Origen, destino y fecha</h2><p>Todos los filtros son opcionales.</p></div>
             </div>
             <div className="filter-fields route-filter-fields">
               <RegionCommuneSelect
@@ -131,7 +130,7 @@ export default function SharedRoutesPage() {
           </form>
 
           <section aria-labelledby="results-title" className="marketplace-results" id="resultados">
-            <div className="results-heading"><div><p className="eyebrow">PUBLICADAS Y DISPONIBLES</p><h2 id="results-title">Rutas compartidas</h2></div>{page && <p className="results-count">{page.total} {page.total === 1 ? "ruta" : "rutas"}</p>}</div>
+            <div className="results-heading"><div><h2 id="results-title">Rutas compartidas</h2></div>{page && <p className="results-count">{page.total} {page.total === 1 ? "ruta" : "rutas"}</p>}</div>
 
             {routesQuery.isError && (
               <div className="marketplace-state marketplace-error" role="alert">

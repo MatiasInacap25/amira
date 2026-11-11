@@ -554,7 +554,7 @@ test("mobile landing navigation exposes and opens the service and shared-route p
   await expect(navigation.getByRole("link", { name: "Rutas compartidas" })).toHaveAttribute("href", "/rutas-compartidas");
   await navigation.getByRole("link", { name: "Servicios" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
-  await expect(page.getByRole("heading", { name: "Encuentra el servicio que necesitas." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Servicios de transporte en todo Chile" })).toBeVisible();
 });
 
 // Request photos: the customer attaches images in the quote modal and they upload after the request exists.

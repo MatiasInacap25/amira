@@ -34,10 +34,11 @@ async function fillCredentials(page: Page, password: string) {
 test("login page presents its welcome copy and the privacy notice in Spanish", async ({ page }) => {
   await page.goto("/login");
   await expect(page).toHaveTitle("Iniciar sesión | Amira");
-  await expect(page.getByRole("heading", { level: 1, name: "El movimiento empieza con una cuenta segura." })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "Qué bueno verte" })).toBeVisible();
-  await expect(page.getByText("Ingresa para continuar donde quedaste.")).toBeVisible();
-  await expect(page.getByText("CONECTA. COTIZA. COORDINA.")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Tu cuenta para cotizar u ofrecer transporte de carga" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Inicia sesión" })).toBeVisible();
+  await expect(page.getByText("Usa el correo y la contraseña de tu cuenta.")).toBeVisible();
+  await expect(page.getByText("Cada acceso se confirma con un código por SMS.")).toBeVisible();
+  await expect(page.getByText("CONECTA. COTIZA. COORDINA.")).toHaveCount(0);
   await expect(page.getByText("Amira nunca solicita códigos SMS por teléfono o mensaje directo.")).toBeVisible();
 });
 
@@ -80,7 +81,7 @@ test("empty login submit is stopped by native validation before any token reques
   await page.getByRole("button", { name: "Iniciar sesión" }).click();
   await expect(page.getByLabel("Correo electrónico")).toBeFocused();
   await expect(page.getByLabel("Correo electrónico")).toHaveJSProperty("validity.valueMissing", true);
-  await expect(page.getByRole("heading", { name: "Qué bueno verte" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inicia sesión" })).toBeVisible();
   expect(tokenRequests).toHaveLength(0);
 });
 
@@ -98,7 +99,7 @@ test("login with an unconfirmed email explains that the address must be confirme
   await fillCredentials(page, "un-password-seguro");
   await expect(page.locator(".auth-error")).toContainText("Confirma tu correo antes de iniciar sesión.");
   await expect(page.locator(".auth-error")).toContainText("Revisa también la carpeta de correo no deseado.");
-  await expect(page.getByRole("heading", { name: "Qué bueno verte" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inicia sesión" })).toBeVisible();
 });
 
 test("unexpected auth server failure shows the generic retry message and keeps the typed email", async ({ page }) => {

@@ -81,8 +81,7 @@ function ServicesSearch() {
         <a className="skip-link" href="#resultados">Ir a los resultados</a>
         <section aria-labelledby="services-title" className="marketplace-hero">
           <div className="marketplace-hero-inner">
-            <p className="eyebrow"><span className="eyebrow-dot" /> SERVICIOS DE TRANSPORTE</p>
-            <h1 id="services-title">Encuentra el servicio que necesitas.</h1>
+            <h1 id="services-title">Servicios de transporte en todo Chile</h1>
             <p>Busca prestadores por tipo de servicio o comuna. Los resultados reflejan la información publicada y no incluyen calificaciones ni verificaciones.</p>
             <Link className="marketplace-back-link" href="/"><ArrowLeft aria-hidden="true" size={16} /> Volver a Amira</Link>
           </div>
@@ -92,7 +91,7 @@ function ServicesSearch() {
           <form aria-label="Filtros de servicios" className="marketplace-filter" onSubmit={search}>
             <div className="filter-heading">
               <span className="filter-icon"><Search aria-hidden="true" size={19} /></span>
-              <div><h2>Buscar servicios</h2><p>Usa uno o más filtros para acotar los resultados.</p></div>
+              <div><h2>Filtros de búsqueda</h2><p>Combina texto, categoría y comuna, o deja los filtros vacíos para ver todo.</p></div>
             </div>
             <div className="filter-fields service-filter-fields">
               <label className="marketplace-field" htmlFor="service-query">
@@ -118,7 +117,7 @@ function ServicesSearch() {
           </form>
 
           <section aria-labelledby="results-title" className="marketplace-results" id="resultados">
-            <div className="results-heading"><div><p className="eyebrow">PRESTADORES PUBLICADOS</p><h2 id="results-title">Servicios disponibles</h2></div>{page && <p className="results-count">{page.total} {page.total === 1 ? "resultado" : "resultados"}</p>}</div>
+            <div className="results-heading"><div><h2 id="results-title">Servicios disponibles</h2></div>{page && <p className="results-count">{page.total} {page.total === 1 ? "resultado" : "resultados"}</p>}</div>
 
             {servicesQuery.isError && (
               <div className="marketplace-state marketplace-error" role="alert">

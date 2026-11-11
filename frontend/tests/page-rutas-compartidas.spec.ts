@@ -39,7 +39,7 @@ test("page shows its heading, skip link, back link and booking disclaimer", asyn
 
   await page.goto("/rutas-compartidas");
 
-  await expect(page.getByRole("heading", { name: "Encuentra una ruta publicada.", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Viajes compartidos con espacio libre", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Rutas compartidas", level: 2 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Ir a los resultados" })).toHaveAttribute("href", "#resultados");
   await expect(page.getByRole("link", { name: "Volver a Amira" })).toHaveAttribute("href", "/");
