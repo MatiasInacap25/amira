@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored taste-skill moment modules, served as-is to the landing page.
+    "public/moments/**",
   ]),
 ]);
 

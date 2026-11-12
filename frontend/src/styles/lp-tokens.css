@@ -1,0 +1,33 @@
+/* taste-skill tokens for Amira: the landing (.lp) and the redesigned app pages share one palette, radius family and
+   type. Built with start.mjs brand from Amira's own colours (ground #f4f7f7, ink #17394b, accent #b84824); the greys
+   are darkened to 7:1 for body text. */
+.lp, .lp-app, .lp-app-header, .lp-app-footer, .lp-auth {
+  --lp-bg: #f4f7f7;
+  --lp-surface: #eaf1f2;
+  --lp-card: #ffffff;
+  --lp-ink: #17394b;
+  --lp-muted: #38525f;
+  --lp-line: rgba(23, 57, 75, .14);
+  --lp-action: #b84824;
+  --lp-action-hover: #9f3c1d;
+  --lp-action-ink: #ffffff;
+  --lp-inv-bg: #17394b;
+  --lp-inv-surface: #264556;
+  --lp-inv-ink: #f4f7f7;
+  --lp-inv-muted: #c4d0d4;
+  --lp-r-sm: 8px;
+  --lp-r-md: 12px;
+  --lp-r-lg: 20px;
+  --lp-nav: 72px;
+  --lp-gut: 80px;
+  --lp-padt: 120px;
+  --lp-padb: 72px;
+  --lp-gap: 24px;
+  --lp-h1: 52px;
+  --lp-h2: 48px;
+}
+
+.lp-mark { width: 24px; height: 24px; flex: none; fill: var(--lp-ink); }
+
+@media (max-width: 1023px) { .lp-app, .lp-app-header, .lp-app-footer, .lp-auth { --lp-gut: 48px; } }
+@media (max-width: 639px) { .lp-app, .lp-app-header, .lp-app-footer, .lp-auth { --lp-gut: 24px; --lp-nav: 56px; } }

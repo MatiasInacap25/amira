@@ -249,3 +249,33 @@ Cross-record and temporal rules remain business-transaction responsibilities unl
 The logical ERD does not settle provider status vocabularies, canonical profile-role tokens, subcontracting policy, refund limits, currency/provider compatibility, or live concurrency and reconciliation behavior. Those are not inferred by the ORM; the application must define them before money-moving workflows are enabled.
 
 The engine normalizes PostgreSQL URLs to Psycopg 3, requires TLS, and bounds the pool, connection timeout, and statement timeout. The public-browse migration enables RLS and revokes `PUBLIC`, `anon`, and `authenticated` privileges for all 26 application tables and `alembic_version`. It seeds clearly labeled `[DEMO]` rows with a synthetic non-login account mapping and `.invalid` email; it creates no Supabase Auth user, identity-verification, payment, or payout record.
+
+## Unit test coverage
+
+From this directory, run:
+
+```bash
+uv run pytest --cov=amira_api --cov-branch --cov-report=term-missing
+```
+
+Tests use local fakes; database integration tests require an explicitly configured local test database.
+
+## Opt-in black-box suite
+
+The black-box suite starts a real Uvicorn subprocess and a local JWKS server. It
+seeds and truncates account-linked rows in an **already migrated disposable**
+PostgreSQL database, exclusively `127.0.0.1:55432/postgres` with TLS. Never point
+it at a developer or hosted database. The localhost redirect guard in
+`tests/postgres_support.py` applies as well; URL query overrides are refused.
+
+```bash
+AMIRA_BLACKBOX_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/postgres uv run pytest tests/blackbox -v
+```
+
+Without `AMIRA_BLACKBOX_DATABASE_URL`, all black-box tests skip before creating
+sockets or connecting to PostgreSQL. `uv run pytest` remains the default runner.
+The harness uses generated signing keys and local-only simulator secrets, does
+not load the repository `.env`, and never imports application code for assertions.
+A local in-memory Storage fake accepts uploads and signed-URL requests; it does
+not prove Supabase bucket policies, real signed-URL expiry or production delivery.
+Specifications and the live `/openapi.json` are the oracle.
