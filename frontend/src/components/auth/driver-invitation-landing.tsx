@@ -30,7 +30,7 @@ export function DriverInvitationLanding() {
   }, []);
 
   return (
-    <main className="auth-shell">
+    <main className="auth-shell lp-auth lp-auth-single">
       <section className="auth-form-panel" aria-labelledby="invitation-title">
         <div className="auth-form-wrap">
           <p className="auth-kicker">INVITACIÓN DE EMPRESA</p>

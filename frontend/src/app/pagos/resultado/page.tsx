@@ -6,7 +6,7 @@ export default async function PaymentResultPage({ searchParams }: { searchParams
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main chat-page" id="contenido">
+      <main className="marketplace-main lp-app chat-page" id="contenido">
         <PaymentResultView paymentId={paymentId} status={status} />
       </main>
       <MarketplaceFooter />

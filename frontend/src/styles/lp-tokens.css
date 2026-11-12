@@ -1,7 +1,7 @@
 /* taste-skill tokens for Amira: the landing (.lp) and the redesigned app pages share one palette, radius family and
    type. Built with start.mjs brand from Amira's own colours (ground #f4f7f7, ink #17394b, accent #b84824); the greys
    are darkened to 7:1 for body text. */
-.lp, .lp-app, .lp-app-header, .lp-app-footer, .lp-auth {
+.lp, .lp-app, .lp-app-header, .lp-app-footer, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop {
   --lp-bg: #f4f7f7;
   --lp-surface: #eaf1f2;
   --lp-card: #ffffff;

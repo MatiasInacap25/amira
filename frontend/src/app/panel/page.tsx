@@ -25,7 +25,7 @@ function PanelShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main customer-services-page" id="contenido">
+      <main className="marketplace-main lp-app customer-services-page" id="contenido">
         <div className="customer-services-wrap">
           <h1>Panel del proveedor</h1>
           {children}

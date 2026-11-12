@@ -111,7 +111,7 @@ export function ProviderRequestDetail({ requestId }: { requestId: string }) {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main provider-inbox-page" id="contenido">
+      <main className="marketplace-main lp-app provider-inbox-page" id="contenido">
         <section aria-labelledby="provider-request-title" className="provider-inbox provider-request-detail">
           <Link className="provider-request-back" href="/solicitudes"><ArrowLeft aria-hidden="true" size={15} /> Volver a solicitudes</Link>
 

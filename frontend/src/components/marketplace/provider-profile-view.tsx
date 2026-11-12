@@ -31,7 +31,7 @@ export function ProviderProfileView({ profileId }: { profileId: string }) {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main provider-profile-page" id="contenido">
+      <main className="marketplace-main lp-app provider-profile-page" id="contenido">
         <a className="skip-link" href="#provider-profile-content">Ir al perfil</a>
         <div className="provider-profile-stage" id="provider-profile-content" tabIndex={-1}>
           {query.isError && (

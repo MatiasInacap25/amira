@@ -15,7 +15,7 @@ const credits = [
 
 export default function CreditsPage() {
   return (
-    <main id="contenido" style={{ display: "grid", gap: 16, width: "min(100% - 48px, 720px)", margin: "0 auto", padding: "96px 0" }}>
+    <main className="lp-app lp-credits" id="contenido" style={{ display: "grid", gap: 16, width: "min(100% - 48px, 720px)", margin: "0 auto", padding: "96px 0" }}>
       <h1>Créditos de fotografías</h1>
       <p>Las fotografías de la página de inicio provienen de Wikimedia Commons y se usan según su licencia.</p>
       <ul>

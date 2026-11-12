@@ -84,7 +84,7 @@ export function CustomerServicesView() {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main customer-services-page" id="contenido">
+      <main className="marketplace-main lp-app customer-services-page" id="contenido">
         <div className="customer-services-wrap">
           <h1>Mis servicios</h1>
           <p className="customer-services-intro">Valora los servicios completados. Tu valoración aparece en el perfil del prestador.</p>
