@@ -12,7 +12,7 @@ export default async function SimulatedCheckoutPage({ searchParams }: { searchPa
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main chat-page" id="contenido">
+      <main className="marketplace-main lp-app chat-page" id="contenido">
         <SimulatedCheckoutView paymentId={paymentId} token={token} />
       </main>
       <MarketplaceFooter />

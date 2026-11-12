@@ -5,7 +5,7 @@ export default function ProviderRequestsPage() {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main provider-inbox-page" id="contenido">
+      <main className="marketplace-main lp-app provider-inbox-page" id="contenido">
         <a className="skip-link" href="#provider-inbox-title">Ir a las solicitudes</a>
         <ProviderRequestInbox />
       </main>

@@ -266,7 +266,7 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main customer-services-page" id="contenido">
+      <main className="marketplace-main lp-app customer-services-page" id="contenido">
         <div className="customer-services-wrap">
           <Link className="account-service-back" href={LIST_HREF}>
             <ArrowLeft aria-hidden="true" size={15} /> Volver a mis servicios

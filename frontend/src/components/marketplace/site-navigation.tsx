@@ -151,7 +151,7 @@ function BrandLabel({ variant, size }: { variant: NavigationVariant; size: numbe
   );
 }
 
-export function MarketplaceHeader({ variant = "default" }: { variant?: NavigationVariant } = {}) {
+export function MarketplaceHeader({ variant = "lp" }: { variant?: NavigationVariant } = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { userId, pending } = useNavUserId();
   const { signOut, signingOut, error: signOutError } = useSignOut(() => setMenuOpen(false));
@@ -224,7 +224,7 @@ export function MarketplaceHeader({ variant = "default" }: { variant?: Navigatio
   );
 }
 
-export function MarketplaceFooter({ variant = "default" }: { variant?: NavigationVariant } = {}) {
+export function MarketplaceFooter({ variant = "lp" }: { variant?: NavigationVariant } = {}) {
   return (
     <footer className={variant === "lp" ? `marketplace-footer lp-app-footer ${geist.variable}` : "marketplace-footer"}>
       <div className="marketplace-footer-inner">
