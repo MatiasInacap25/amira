@@ -37,7 +37,9 @@ class VerifikCertificateVerifier:
         self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
         self._transport = transport
 
-    def verify_certificate(self, folio: str, verification_code: str) -> CertificateRecord:
+    def verify_certificate(
+        self, folio: str, verification_code: str, *, holder_run: str | None = None, document_type: str | None = None,
+    ) -> CertificateRecord:
         # One short-lived client per verification, closed on exit: the composition root builds a verifier per request.
         try:
             with httpx.Client(
