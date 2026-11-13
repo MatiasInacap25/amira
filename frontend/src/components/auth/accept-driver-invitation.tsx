@@ -105,7 +105,7 @@ export function AcceptDriverInvitation() {
   }
 
   return (
-    <main className="auth-shell">
+    <main className="auth-shell lp-auth lp-auth-single">
       <section className="auth-form-panel" aria-labelledby="accept-invitation-title">
         <div className="auth-form-wrap">
           <p className="auth-kicker">{"INVITACI\u00d3N DE EMPRESA"}</p>

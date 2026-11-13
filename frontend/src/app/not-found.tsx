@@ -10,7 +10,7 @@ export default function NotFound() {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main" id="contenido">
+      <main className="marketplace-main lp-app" id="contenido">
         <section className="marketplace-state not-found-state">
           <h1>Página no encontrada</h1>
           <p>La página que buscas no existe o fue movida.</p>

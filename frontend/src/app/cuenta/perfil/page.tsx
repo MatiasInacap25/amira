@@ -40,7 +40,7 @@ export default function ProfileSettingsPage() {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main customer-services-page" id="contenido">
+      <main className="marketplace-main lp-app customer-services-page" id="contenido">
         <div className="customer-services-wrap">
           <h1>Configuración del perfil</h1>
           {profileQuery.isPending && <p role="status">Cargando tu perfil…</p>}

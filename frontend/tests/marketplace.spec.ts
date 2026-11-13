@@ -552,7 +552,8 @@ test("mobile landing navigation exposes and opens the service and shared-route p
   const navigation = page.getByRole("navigation", { name: "Navegación móvil" });
   await expect(navigation.getByRole("link", { name: "Buscar servicios" })).toHaveAttribute("href", "/servicios");
   await expect(navigation.getByRole("link", { name: "Rutas compartidas" })).toHaveAttribute("href", "/rutas-compartidas");
-  await navigation.getByRole("link", { name: "Servicios" }).click();
+  await expect(navigation.getByRole("link", { name: "Ofrecer mis servicios" })).toHaveAttribute("href", "/registro?intent=provider");
+  await navigation.getByRole("link", { name: "Buscar servicios" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
   await expect(page.getByRole("heading", { name: "Servicios de transporte en todo Chile" })).toBeVisible();
 });

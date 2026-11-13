@@ -1,7 +1,7 @@
 /* taste-skill tokens for Amira: the landing (.lp) and the redesigned app pages share one palette, radius family and
    type. Built with start.mjs brand from Amira's own colours (ground #f4f7f7, ink #17394b, accent #b84824); the greys
    are darkened to 7:1 for body text. */
-.lp, .lp-app, .lp-app-header, .lp-app-footer, .lp-auth {
+.lp, .lp-app, .lp-app-header, .lp-app-footer, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop {
   --lp-bg: #f4f7f7;
   --lp-surface: #eaf1f2;
   --lp-card: #ffffff;
@@ -27,7 +27,11 @@
   --lp-h2: 48px;
 }
 
-.lp-mark { width: 24px; height: 24px; flex: none; fill: var(--lp-ink); }
+/* The Amira wordmark image (public/brand), sized by height so its arrow keeps the logo's proportions. */
+.amira-logo { display: block; flex: none; width: auto; height: 34px; }
 
 @media (max-width: 1023px) { .lp-app, .lp-app-header, .lp-app-footer, .lp-auth { --lp-gut: 48px; } }
-@media (max-width: 639px) { .lp-app, .lp-app-header, .lp-app-footer, .lp-auth { --lp-gut: 24px; --lp-nav: 56px; } }
+@media (max-width: 639px) {
+  .lp-app, .lp-app-header, .lp-app-footer, .lp-auth { --lp-gut: 24px; --lp-nav: 56px; }
+  .amira-logo { height: 28px; }
+}

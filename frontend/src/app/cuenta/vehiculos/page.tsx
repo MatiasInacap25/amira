@@ -43,7 +43,7 @@ export default function ProviderVehiclesPage() {
   }, [router]);
 
   return (
-    <main className="auth-shell">
+    <main className="auth-shell lp-auth lp-auth-single">
       <section className="auth-form-panel" aria-labelledby="vehicles-title">
         <div className="auth-form-wrap">
           <Link className="auth-back-link" href="/panel">Volver al panel</Link>

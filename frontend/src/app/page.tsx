@@ -18,7 +18,7 @@ import { ProfileMenu, useSignOut } from "@/components/marketplace/profile-menu";
 import { useNavAccountRole, useNavUserId, useProviderNavAccountScope, usesPanelNavigation } from "@/components/marketplace/site-navigation";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { getServiceTypes } from "@/lib/marketplace-api";
-import { LpMark as Mark } from "@/components/marketplace/lp-mark";
+import { AmiraLogo } from "@/components/marketplace/amira-logo";
 import { geist } from "./fonts";
 import "@/styles/lp-tokens.css";
 import "./landing.css";
@@ -261,7 +261,7 @@ export default function HomePage() {
       <header className={`site-header nav lp lp-nav ${geist.variable}`}>
         <div className="wrap lp-wrap lp-nav__bar">
           <a className="lp-skip" href="#contenido">Ir al contenido</a>
-          <a aria-label="Amira, inicio" className="nav__logo lp-logo" href="#inicio"><Mark />amira</a>
+          <a aria-label="Amira, inicio" className="nav__logo lp-logo" href="#inicio"><AmiraLogo /></a>
           <nav aria-label="Navegación principal" className="lp-nav__links">
             {!panelNav && <Link href="/servicios">Buscar servicios</Link>}
             {!panelNav && <Link href="/rutas-compartidas">Rutas compartidas</Link>}
@@ -275,7 +275,7 @@ export default function HomePage() {
                 <Link className="lp-nav__plain" href="/registro">Crear cuenta</Link>
               </>
             ))}
-            <a className="btn lp-btn lp-btn--primary lp-nav__cta" href="#buscar">Buscar un servicio</a>
+            <Link className="btn lp-btn lp-btn--primary lp-nav__cta" href="/registro?intent=provider">Ofrecer mis servicios</Link>
             <button
               aria-controls="lp-sheet"
               aria-expanded={menuOpen}
@@ -310,7 +310,7 @@ export default function HomePage() {
               </>
             ))}
             <Link href="/registro?intent=provider" onClick={closeMenu}>Registrar mi vehículo</Link>
-            <a className="btn lp-btn lp-btn--primary" href="#buscar" onClick={closeMenu}>Buscar un servicio</a>
+            <Link className="btn lp-btn lp-btn--primary" href="/registro?intent=provider" onClick={closeMenu}>Ofrecer mis servicios</Link>
           </nav>
         )}
       </header>
@@ -507,7 +507,7 @@ export default function HomePage() {
           <div className="closing__links lp-footer__bottom">
           <div className="lp-footer__links">
             <div className="lp-footer__brand">
-              <a aria-label="Amira, volver al inicio" className="nav__logo lp-logo" href="#inicio"><Mark />amira</a>
+              <a aria-label="Amira, volver al inicio" className="nav__logo lp-logo" href="#inicio"><AmiraLogo /></a>
               <p>Transporte de carga entre personas, pymes y transportistas.</p>
             </div>
             <div className="lp-footer__col">

@@ -8,7 +8,7 @@ import { geist } from "@/app/fonts";
 import "@/styles/lp-tokens.css";
 import "@/styles/lp-app.css";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
-import { LpMark } from "@/components/marketplace/lp-mark";
+import { AmiraLogo } from "@/components/marketplace/amira-logo";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { RegionCommuneSelect, type RegionCommuneValue } from "@/components/marketplace/region-commune-select";
 import { accountApiFetch, authenticatedApiFetch } from "@/lib/auth/account-api";
@@ -19,7 +19,8 @@ import { maskRutWithCaret, restoreRutCaret } from "@/lib/validation/rut-caret";
 import { createClient } from "@/lib/supabase/client";
 
 type AuthMode = "login" | "register";
-type AuthStep = "loading" | "credentials" | "email-pending" | "enroll" | "verify" | "account";
+// "account" asks for the personal data; providers then fill their public profile in "provider" before the account is provisioned.
+type AuthStep = "loading" | "credentials" | "email-pending" | "enroll" | "verify" | "account" | "provider";
 type AccountRole = "client" | "company_owner" | "independent_driver";
 type PhoneFactor = { id: string; phone?: string; status?: string };
 type FieldKey = "phone" | "nationalId" | "companyTaxId";
@@ -137,6 +138,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
   const [alsoDriver, setAlsoDriver] = useState(false);
   const [regionCommune, setRegionCommune] = useState<RegionCommuneValue>({ regionCode: "", communeCode: "" });
   const [confirmedUser, setConfirmedUser] = useState<User | null>(null);
+  const needsProviderStep = !invitationIntent && role !== "client";
   const [invitationToken] = useState(() => {
     if (!invitationIntent || typeof window === "undefined") return "";
     try { return window.sessionStorage.getItem(DRIVER_INVITATION_KEY) ?? ""; }
@@ -402,6 +404,24 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     }
   }
 
+  // Clients finish here; providers check their personal data and move on to their public profile.
+  function handleAccountDetails(event: FormEvent<HTMLFormElement>) {
+    if (!needsProviderStep) {
+      void handleProvision(event);
+      return;
+    }
+    event.preventDefault();
+    if (busy) return;
+    setError("");
+    setFieldErrors({});
+    if (!normalizeRut(nationalId)) {
+      setFieldErrors({ nationalId: RUT_ERROR });
+      setError("Revisa los campos marcados para continuar.");
+      return;
+    }
+    setStep("provider");
+  }
+
   async function handleProvision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!client || busy || !isEmailConfirmed(confirmedUser)) return;
@@ -417,6 +437,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
       if (provisionRole === "company_owner" && !companyRut) accountErrors.companyTaxId = RUT_ERROR;
       if (Object.keys(accountErrors).length > 0) {
         setFieldErrors(accountErrors);
+        if (accountErrors.nationalId) setStep("account");
         throw new Error("Revisa los campos marcados para continuar.");
       }
       const { data: verified, error: verifyError } = await client.auth.getUser();
@@ -455,6 +476,8 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
           const apiFieldErrors = await fieldErrorsFromResponse(response);
           if (Object.keys(apiFieldErrors).length > 0) {
             setFieldErrors(apiFieldErrors);
+            // Errors on the personal data are shown where those fields live.
+            if (Object.keys(apiFieldErrors).some((field) => field !== "companyTaxId")) setStep("account");
             throw new Error("Revisa los campos marcados para continuar.");
           }
         }
@@ -518,15 +541,15 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     }
   }
 
-  const title = step === "loading" ? "Cargando tu sesión" : step === "email-pending" ? "Confirma tu correo" : step === "enroll" ? "Verifica tu teléfono" : step === "verify" ? "Ingresa tu código SMS" : step === "account" ? "Completa tu cuenta" : mode === "login" ? "Inicia sesión" : "Crea tu cuenta";
-  const kicker = step === "account" ? "Último paso" : step === "verify" || step === "enroll" ? "Seguridad de la cuenta" : "";
+  const title = step === "loading" ? "Cargando tu sesión" : step === "email-pending" ? "Confirma tu correo" : step === "enroll" ? "Verifica tu teléfono" : step === "verify" ? "Ingresa tu código SMS" : step === "account" ? "Completa tu cuenta" : step === "provider" ? "Tu perfil de prestador" : mode === "login" ? "Inicia sesión" : "Crea tu cuenta";
+  const kicker = step === "account" ? (needsProviderStep ? "Paso 1 de 2" : "Último paso") : step === "provider" ? "Paso 2 de 2" : step === "verify" || step === "enroll" ? "Seguridad de la cuenta" : "";
+  const description = step === "account" ? (needsProviderStep ? "Primero tus datos personales; después, cómo te verán los clientes." : "Con estos datos creamos tu cuenta de Amira.") : step === "provider" ? "Así aparecerás cuando los clientes busquen transporte." : step === "email-pending" ? "Te enviaremos a este mismo flujo después de confirmar el correo." : step === "enroll" || step === "verify" ? `Cuenta: ${email || confirmedUser?.email || "correo confirmado"}` : mode === "login" ? "Usa el correo y la contraseña de tu cuenta." : "Regístrate con tu correo y confirma la dirección antes de completar tu perfil.";
 
   return (
     <main className={`auth-shell lp-auth ${geist.variable}`}>
       <section aria-label="Amira, acceso a tu cuenta" className="auth-brand-panel">
         <Link aria-label="Amira, volver al inicio" className="auth-brand" href="/">
-          <LpMark />
-          <span>amira<span>.</span></span>
+          <AmiraLogo tone="light" />
         </Link>
         <div className="auth-brand-copy">
           <h1>Tu cuenta para cotizar u ofrecer transporte de carga</h1>
@@ -544,7 +567,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
           <div className="auth-heading">
             {kicker && <p className="auth-kicker">{kicker}</p>}
             <h2>{title}</h2>
-            <p>{step === "account" ? "Con estos datos creamos tu cuenta de Amira." : step === "email-pending" ? "Te enviaremos a este mismo flujo después de confirmar el correo." : step === "enroll" || step === "verify" ? `Cuenta: ${email || confirmedUser?.email || "correo confirmado"}` : mode === "login" ? "Usa el correo y la contraseña de tu cuenta." : "Regístrate con tu correo y confirma la dirección antes de completar tu perfil."}</p>
+            <p>{description}</p>
           </div>
 
           {devSkipSmsMfa && <p className="auth-notice" role="note">Modo desarrollo: verificación SMS desactivada</p>}
@@ -583,16 +606,6 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                       <option value="company_owner">Empresa transportista</option>
                     </select>
                   </label>
-                  {role === "company_owner" && <>
-                    <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa
-                      <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setCompanyTaxId(masked); restoreRutCaret(event.currentTarget, caret); }} required value={companyTaxId} />
-                      <FieldError id="auth-company-tax-id-error" message={fieldErrors.companyTaxId} />
-                    </label>
-                    <label className="auth-checkbox" htmlFor="auth-also-driver">
-                      <input checked={alsoDriver} id="auth-also-driver" onChange={(event) => setAlsoDriver(event.target.checked)} type="checkbox" />
-                      También quiero registrarme como conductor de mi propia empresa para reservar servicios.
-                    </label>
-                  </>}
                 </>}
               </>}
               <label className="auth-field" htmlFor="auth-email">Correo electrónico
@@ -643,7 +656,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
           )}
 
           {step === "account" && (
-            <form className="auth-form" onSubmit={handleProvision}>
+            <form className="auth-form" onSubmit={handleAccountDetails}>
               {!invitationIntent && <label className="auth-field" htmlFor="auth-role">¿Cómo usarás Amira?
                 <select id="auth-role" onChange={(event) => setRole(event.target.value as AccountRole)} value={role}>
                   {!providerIntent && <option value="client">Buscar un servicio de transporte</option>}
@@ -667,8 +680,16 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
               <label className="auth-field" htmlFor="auth-account-birth-date">Fecha de nacimiento
                 <input autoComplete="bday" id="auth-account-birth-date" max={new Date().toISOString().slice(0, 10)} min="1900-01-01" onChange={(event) => setBirthDate(event.target.value)} required type="date" value={birthDate} />
               </label>
-              {role !== "client" && <label className="auth-field" htmlFor="auth-display-name">Nombre público del prestador<input autoComplete="organization" id="auth-display-name" maxLength={160} onChange={(event) => setDisplayName(event.target.value)} required value={displayName} /></label>}
-              {!invitationIntent && role !== "client" && <RegionCommuneSelect idPrefix="auth-account" onChange={setRegionCommune} required value={regionCommune} />}
+              {needsProviderStep
+                ? <button className="auth-submit" disabled={busy} type="submit">Continuar<ArrowRight aria-hidden="true" size={17} /></button>
+                : <button className="auth-submit" disabled={busy} type="submit">{busy ? "Creando cuenta…" : "Completar registro"}<ArrowRight aria-hidden="true" size={17} /></button>}
+            </form>
+          )}
+
+          {step === "provider" && (
+            <form className="auth-form" onSubmit={handleProvision}>
+              <label className="auth-field" htmlFor="auth-display-name">Nombre público del prestador<input autoComplete="organization" id="auth-display-name" maxLength={160} onChange={(event) => setDisplayName(event.target.value)} required value={displayName} /></label>
+              <RegionCommuneSelect idPrefix="auth-account" onChange={setRegionCommune} required value={regionCommune} />
               {role === "company_owner" && <>
                 <label className="auth-field" htmlFor="auth-company-tax-id">RUT de la empresa
                   <input aria-describedby={fieldErrors.companyTaxId ? "auth-company-tax-id-error" : undefined} aria-invalid={fieldErrors.companyTaxId ? true : undefined} autoComplete="off" id="auth-company-tax-id" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setCompanyTaxId(masked); restoreRutCaret(event.currentTarget, caret); }} required value={companyTaxId} />
@@ -680,10 +701,11 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                 </label>
               </>}
               <button className="auth-submit" disabled={busy} type="submit">{busy ? "Creando cuenta…" : "Completar registro"}<ArrowRight aria-hidden="true" size={17} /></button>
+              <button className="auth-secondary-action" disabled={busy} onClick={() => { setStep("account"); setError(""); }} type="button"><ArrowLeft aria-hidden="true" size={15} /> Volver a tus datos</button>
             </form>
           )}
 
-          {(step === "account" || step === "enroll" || step === "verify") && <button className="auth-secondary-action auth-signout" disabled={busy} onClick={() => void handleSignOut()} type="button">Cerrar sesión</button>}
+          {(step === "account" || step === "provider" || step === "enroll" || step === "verify") &&<button className="auth-secondary-action auth-signout" disabled={busy} onClick={() => void handleSignOut()} type="button">Cerrar sesión</button>}
           {step === "credentials" && <p className="auth-switch">{mode === "login" ? "¿Todavía no tienes cuenta?" : "¿Ya tienes una cuenta?"} <Link href={mode === "login" ? "/registro" : "/login"}>{mode === "login" ? "Regístrate" : "Inicia sesión"}</Link></p>}
           {step === "email-pending" && <p className="auth-switch">¿Ya confirmaste tu correo? <Link href="/login">Inicia sesión</Link></p>}
           <p className="auth-privacy">Amira nunca solicita códigos SMS por teléfono o mensaje directo.</p>

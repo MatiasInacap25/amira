@@ -146,6 +146,11 @@ async function fillAccountPrivateDetails(page: Page) {
   await page.locator("#auth-account-birth-date").fill("1990-01-01");
 }
 
+async function continueToProviderDetails(page: Page) {
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Tu perfil de prestador" })).toBeVisible();
+}
+
 async function selectProviderCommune(page: Page) {
   await page.getByLabel("Región").selectOption("13");
   await page.getByLabel("Comuna").selectOption("13101");
@@ -230,6 +235,7 @@ test("confirmed registration supports company fields and surfaces unavailable dr
   await page.locator("#auth-first-name").fill("Ana");
   await page.getByLabel("Apellido").fill("Pérez");
   await fillAccountPrivateDetails(page);
+  await continueToProviderDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Transportes Sur");
   await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
   await selectProviderCommune(page);
@@ -290,6 +296,11 @@ test("provider account requires a region and commune before provisioning and sen
   await page.locator("#auth-first-name").fill("Pedro");
   await page.getByLabel("Apellido").fill("Soto");
   await fillAccountPrivateDetails(page);
+  await expect(page.getByLabel("Nombre público del prestador")).toHaveCount(0);
+  await expect(page.getByLabel("Región")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Completar registro" })).toHaveCount(0);
+  await continueToProviderDetails(page);
+  await expect(page.getByLabel("RUT personal")).toHaveCount(0);
   await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
 
   const region = page.getByLabel("Región");
@@ -327,6 +338,7 @@ test("independent-driver provisioning failure gives an actionable message", asyn
   await page.locator("#auth-first-name").fill("Pedro");
   await page.getByLabel("Apellido").fill("Soto");
   await fillAccountPrivateDetails(page);
+  await continueToProviderDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
   await selectProviderCommune(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
@@ -346,6 +358,7 @@ test("company owner can retain company account when linked-driver configuration 
   await page.locator("#auth-first-name").fill("Camila");
   await page.locator("#auth-last-name").fill("Rojas");
   await fillAccountPrivateDetails(page);
+  await continueToProviderDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Transportes Sur");
   await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
   await page.locator("#auth-account-also-driver").check();
@@ -354,7 +367,33 @@ test("company owner can retain company account when linked-driver configuration 
   await expect(page.locator(".auth-error")).toContainText("La cuenta de empresa puede continuar sin activar esa opción");
   const request = mocks.events.find((event) => event.path === "/api/account/provision");
   expect(request?.body?.also_driver).toBe(true);
-  await expect(page.getByLabel("¿Cómo usarás Amira?")).toBeVisible();
+  await expect(page.getByLabel("RUT de la empresa")).toHaveValue("76123456-0");
+
+  await page.getByRole("button", { name: "Volver a tus datos" }).click();
+  await expect(page.getByLabel("¿Cómo usarás Amira?")).toHaveValue("company_owner");
+  await expect(page.locator("#auth-account-national-id")).toHaveValue("12345678-5");
+});
+
+test("a personal-data error from the provider step returns to the personal form", async ({ page }) => {
+  const mocks = await installAuthMocks(page, { existingPhone: true, validationError: true });
+  await page.goto("/login");
+  await page.getByLabel("Correo electrónico").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await page.getByLabel("Código de verificación").fill("246810");
+  await page.getByRole("button", { name: "Verificar teléfono" }).click();
+  await page.getByLabel("¿Cómo usarás Amira?").selectOption("independent_driver");
+  await page.locator("#auth-first-name").fill("Pedro");
+  await page.getByLabel("Apellido").fill("Soto");
+  await fillAccountPrivateDetails(page);
+  await continueToProviderDetails(page);
+  await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
+  await selectProviderCommune(page);
+  await page.getByRole("button", { name: "Completar registro" }).click();
+
+  await expect(page.locator("#auth-account-national-id")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#auth-account-national-id-error")).toContainText("El RUT no es válido. Revisa el dígito verificador.");
+  expect(mocks.events.filter((event) => event.path === "/api/account/provision")).toHaveLength(1);
 });
 
 test("callback rejects external next destinations and returns to the login flow", async ({ page }) => {
@@ -596,16 +635,13 @@ test("home and desktop/mobile marketplace navigation expose real auth routes", a
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test("provider registration starts with service-role choice and company RUT/driver opt-in", async ({ page }) => {
+test("provider registration starts with the service-role choice and leaves company details for a later form", async ({ page }) => {
   const mocks = await installAuthMocks(page);
   await page.goto("/registro?intent=provider");
   await expect(page.getByLabel("Quiero ofrecer mis servicios como")).toBeVisible();
   await page.getByLabel("Quiero ofrecer mis servicios como").selectOption("company_owner");
-  await expect(page.getByLabel("RUT de la empresa")).toBeVisible();
-  await expect(page.getByLabel(/También quiero registrarme como conductor/)).toBeVisible();
-  await expect(page.locator("#auth-also-driver")).not.toBeChecked();
-  await page.locator("#auth-also-driver").check();
-  await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
+  await expect(page.getByLabel("RUT de la empresa")).toHaveCount(0);
+  await expect(page.getByLabel(/También quiero registrarme como conductor/)).toHaveCount(0);
   await fillRegistrationCredentials(page, "owner@example.test");
   await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page.getByRole("heading", { name: "Confirma tu correo" })).toBeVisible();

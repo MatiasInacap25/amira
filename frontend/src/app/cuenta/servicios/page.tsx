@@ -19,7 +19,7 @@ export default function CustomerServicesPage() {
     return (
       <>
         <MarketplaceHeader />
-        <main className="marketplace-main customer-services-page" id="contenido">
+        <main className="marketplace-main lp-app customer-services-page" id="contenido">
           <div className="customer-services-wrap">
             <h1>Mis servicios</h1>
             <MarketplaceSkeleton label="Cargando tus servicios…" layout={CUSTOMER_SERVICES_LAYOUT} loading name="services-account">
@@ -37,7 +37,7 @@ export default function CustomerServicesPage() {
     return (
       <>
         <MarketplaceHeader />
-        <main className="marketplace-main customer-services-page" id="contenido">
+        <main className="marketplace-main lp-app customer-services-page" id="contenido">
           <div className="customer-services-wrap">
             <h1>Mis servicios</h1>
             {needsSignIn ? (

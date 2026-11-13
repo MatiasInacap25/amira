@@ -5,7 +5,7 @@ export default function MessagesPage() {
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main chat-page" id="contenido">
+      <main className="marketplace-main lp-app chat-page" id="contenido">
         <a className="skip-link" href="#chat-list-title">Ir a los mensajes</a>
         <ChatListView />
       </main>

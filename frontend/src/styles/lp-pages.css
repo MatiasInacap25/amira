@@ -1,0 +1,395 @@
+/* taste-skill look for the rest of the app: panel, cuenta, solicitudes, mensajes, pagos, prestadores, invitaciones,
+   the 404 and the dialogs. Visual only, like lp-app.css: every rule re-dresses existing classes under a scope class,
+   so no component changes behaviour, ids or text. Scopes: main.lp-app (marketplace pages), main.lp-auth (account
+   pages on the auth shell; .lp-auth-single has no brand panel) and the dialogs (.quote-dialog,
+   .shared-trip-dialog-backdrop). Tokens: lp-tokens.css. */
+
+:is(.quote-dialog, .shared-trip-dialog-backdrop) { color: var(--lp-ink); font-family: var(--lp-font), system-ui, sans-serif; }
+
+/* ---------------------------------------------------------------- type */
+
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) :is(h1, h2, h3, h4) { color: var(--lp-ink); font-weight: 500; }
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) strong { font-weight: 600; }
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .eyebrow { color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: .02em; text-transform: none; }
+
+/* Kickers written in capitals in the markup read as sentence case; the text itself stays as written. */
+:is(.lp-auth .auth-kicker, .provider-inbox-heading .eyebrow, .chat-result .eyebrow, .quote-dialog-header .eyebrow) { text-transform: lowercase; letter-spacing: .01em; }
+:is(.lp-auth .auth-kicker, .provider-inbox-heading .eyebrow, .chat-result .eyebrow, .quote-dialog-header .eyebrow)::first-letter { text-transform: uppercase; }
+
+/* ---------------------------------------------------------------- controls */
+
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button {
+  min-height: 48px;
+  padding: 0 24px;
+  border-radius: var(--lp-r-sm);
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  transition: transform .16s ease, background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: none; }
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button:active:not(:disabled) { transform: translateY(0) scale(.98); }
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button-primary,
+.lp-app.provider-profile-page .button-primary { border: 1px solid transparent; background: var(--lp-action); color: var(--lp-action-ink); }
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button-primary:hover:not(:disabled),
+.lp-app.provider-profile-page .button-primary:hover:not(:disabled) { border-color: transparent; background: var(--lp-action-hover); }
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button-secondary { border: 1px solid var(--lp-line); background: var(--lp-card); color: var(--lp-ink); }
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button-secondary:hover:not(:disabled) { border-color: var(--lp-ink); background: var(--lp-card); }
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) .button:disabled { opacity: .55; cursor: not-allowed; }
+:is(.quote-dialog, .shared-trip-dialog-backdrop) :focus-visible { outline: 2px solid var(--lp-action); outline-offset: 3px; }
+
+/* Fields outside .marketplace-field and .auth-field (already styled in lp-app.css): textareas, account forms, dialogs. */
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) textarea,
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) :is(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"]), select):not(.auth-field *, .marketplace-field *),
+:is(.quote-dialog, .shared-trip-dialog-backdrop) .marketplace-field :is(input, select) {
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--lp-line);
+  border-radius: var(--lp-r-sm);
+  background-color: var(--lp-card);
+  color: var(--lp-ink);
+  font: inherit;
+  font-size: 16px;
+  box-shadow: none;
+}
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) textarea { line-height: 1.5; }
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) :is(textarea, input, select):focus-visible { border-color: var(--lp-ink); box-shadow: 0 0 0 3px rgba(23, 57, 75, .1); outline: none; }
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--lp-action); }
+:is(.quote-dialog, .shared-trip-dialog-backdrop) .marketplace-field { gap: 8px; color: var(--lp-ink); font-size: 14px; font-weight: 500; }
+:is(.lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) label:not(.auth-checkbox) { color: var(--lp-ink); }
+
+/* ---------------------------------------------------------------- one card, one panel, one chip, one notice */
+
+/* Cards: white, one line, 20px corners, no shadow; a linked card lifts 2px. */
+.lp-app :is(.account-data, .panel-action, .customer-service-card, .account-service-card, .account-service-detail, .provider-request-card, .provider-request-panel, .chat-card, .chat-composer, .chat-quotation, .provider-profile-hero, .provider-profile-section, .marketplace-state),
+.lp-auth :is(.vehicle-card, .shared-trip-item) {
+  border: 1px solid var(--lp-line);
+  border-radius: var(--lp-r-lg);
+  background: var(--lp-card);
+  box-shadow: none;
+}
+.lp-app :is(.panel-action, .provider-request-card, .chat-card) { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.lp-app :is(.panel-action, .provider-request-card, .chat-card):hover { border-color: rgba(23, 57, 75, .24); box-shadow: 0 12px 32px rgba(23, 57, 75, .08); transform: translateY(-2px); }
+.lp-app .provider-request-card-link::after { border-radius: var(--lp-r-lg); }
+.lp-app .provider-request-card:has(.provider-request-card-link:focus-visible) { border-color: var(--lp-action); box-shadow: 0 0 0 2px rgba(184, 72, 36, .25); }
+
+/* Inner panels: the surface tint, 12px corners, no line. */
+.lp-app :is(.customer-service-rating, .account-service-assignments li, .account-service-window, .account-service-confirm, .provider-vehicle-grid li, .provider-driver-grid li, .provider-service-item, .provider-rating-summary, .provider-rating-list li, .chat-quotation-confirm, .chat-attachment-placeholder, .provider-request-privacy, .same-day-conflict-list li),
+.quote-dialog .same-day-conflict-list li {
+  border: 0;
+  border-radius: var(--lp-r-md);
+  background: var(--lp-surface);
+}
+.lp-app .provider-profile-empty { border: 1px dashed var(--lp-line); border-radius: var(--lp-r-md); background: var(--lp-card); color: var(--lp-muted); }
+
+/* Chips and status pills. */
+.lp-app :is(.account-service-status, .provider-request-status, .chat-quotation-status, .provider-kind-badge, .provider-inbox-count) {
+  border-radius: 999px;
+  background: var(--lp-surface);
+  color: var(--lp-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.lp-app :is(.account-service-status-confirmed, .provider-request-status:not(.provider-request-status-accepted, .provider-request-status-rejected)) { background: #fbe6dc; color: #8a3418; }
+.lp-app :is(.account-service-status-completed, .provider-request-status-accepted) { background: #e3f1ea; color: #285944; }
+.lp-app .account-service-status-in_progress { background: #e3ecf6; color: #284a73; }
+.lp-app .account-service-status-disputed { background: #f8e3e3; color: #842a2a; }
+.lp-app .provider-request-status-rejected { background: var(--lp-surface); color: var(--lp-muted); }
+.lp-app .provider-owner-badge { width: fit-content; margin-left: 0; padding: 2px 10px; border-radius: 999px; background: #fbe6dc; color: #8a3418; font-weight: 600; }
+.lp-app :is(.chat-card-badge), .lp-app-header .nav-badge { background: var(--lp-action); font-weight: 600; }
+
+/* Notices and errors, as on the auth pages. */
+:is(.lp-app, .lp-auth, .quote-dialog, .shared-trip-dialog-backdrop) :is(.provider-inbox-error, .customer-submit-error, .quote-request-error, .quote-dialog-error, .quote-dialog-notice, .account-service-state-claim) {
+  padding: 14px 16px;
+  border: 0;
+  border-left: 3px solid var(--lp-action);
+  border-radius: var(--lp-r-sm);
+  background: #fbe6dc;
+  color: #6e2a14;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.lp-app .account-service-state-consent { border-radius: var(--lp-r-sm); background: #e3f1ea; color: #285944; }
+.lp-app .account-service-reason { border-left-color: var(--lp-action); border-radius: 0 var(--lp-r-sm) var(--lp-r-sm) 0; background: var(--lp-surface); color: var(--lp-ink); }
+:is(.lp-app, .lp-auth) :is(.customer-field-error, .chat-composer-error, .chat-quotation-error, .account-service-form-error, .provider-profile-checklist-title, .provider-profile-checklist) { color: var(--lp-action); font-weight: 500; }
+
+/* Text links inside pages: underlined, the line darkens on hover. */
+.lp-app :is(.account-service-detail-link, .account-service-inline-action, .quote-request-error a, .customer-submit-error a, .service-provider-link),
+.quote-dialog .quote-request-error a {
+  color: var(--lp-ink);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 4px;
+}
+.lp-app :is(.account-service-detail-link, .account-service-inline-action, .service-provider-link):hover { text-decoration-color: currentColor; }
+
+/* Back links: one look across pages. */
+.lp-app :is(.account-service-back, .provider-request-back, .chat-back, .provider-profile-back) {
+  min-height: 44px;
+  color: var(--lp-ink);
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 4px;
+}
+.lp-app :is(.account-service-back, .provider-request-back, .chat-back, .provider-profile-back):hover { color: var(--lp-ink); text-decoration-color: currentColor; }
+.lp-app :is(.account-service-back, .provider-request-back, .chat-back, .provider-profile-back) svg { transition: transform .16s ease; }
+.lp-app :is(.account-service-back, .provider-request-back, .chat-back, .provider-profile-back):hover svg { transform: translateX(-3px); }
+
+/* ---------------------------------------------------------------- page heads */
+
+.marketplace-main.lp-app:is(.customer-services-page, .provider-inbox-page, .chat-page, .provider-profile-page) { background: var(--lp-bg); }
+.lp-app :is(.customer-services-wrap > h1, .provider-inbox-heading h1, .chat-heading h1) {
+  margin: 0;
+  color: var(--lp-ink);
+  font-size: clamp(36px, 4vw, 52px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.lp-app :is(.provider-request-detail h1, .account-service-detail h1, .chat-thread-header h1, .chat-result h1, .provider-profile-hero h1, .not-found-state h1) {
+  color: var(--lp-ink);
+  font-size: clamp(30px, 3.2vw, 40px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+.lp-app .chat-result-success h1 { color: #1f6b4a; }
+.lp-app .chat-result-failure h1 { color: #8a3418; }
+.lp-app :is(.customer-services-intro, .chat-result p) { color: var(--lp-muted); font-size: 17px; line-height: 1.6; }
+
+/* ---------------------------------------------------------------- panel, perfil, Mis servicios (customer-services-page) */
+
+.lp-app .customer-services-wrap { width: min(100% - 2 * var(--lp-gut), 960px); gap: 24px; padding: 72px 0 96px; }
+.lp-app .account-data { margin-top: 8px; }
+.lp-app .account-data > div { padding: 20px 24px; border-color: var(--lp-line); }
+.lp-app .account-data dt { color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.lp-app .account-data dd { color: var(--lp-ink); font-size: 17px; font-weight: 500; }
+.lp-app .panel-action-list { gap: var(--lp-gap); }
+.lp-app .panel-action { min-height: 72px; padding: 0 24px; color: var(--lp-ink); font-size: 17px; font-weight: 500; }
+.lp-app .panel-action:hover { color: var(--lp-ink); }
+.lp-app .panel-action svg { color: var(--lp-action); transition: transform .16s ease; }
+.lp-app .panel-action:hover svg { transform: translateX(3px); }
+
+.lp-app .account-service-filters { gap: 8px; }
+.lp-app .account-service-filter { min-height: 44px; padding: 0 18px; border: 1px solid var(--lp-line); border-radius: 999px; background: var(--lp-card); color: var(--lp-ink); font-size: 15px; font-weight: 500; transition: border-color .16s ease, background-color .16s ease; }
+.lp-app .account-service-filter:hover { border-color: var(--lp-ink); }
+.lp-app .account-service-filter[aria-pressed="true"] { border-color: var(--lp-ink); background: var(--lp-ink); color: var(--lp-inv-ink); }
+.lp-app .account-service-list, .lp-app .customer-service-list { gap: 16px; }
+.lp-app :is(.account-service-card, .customer-service-card) { gap: 16px; padding: 24px; }
+.lp-app :is(.account-service-card h2, .customer-service-card header h2) { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+.lp-app .account-service-card-link:hover { text-decoration-color: var(--lp-action); }
+.lp-app :is(.account-service-meta, .customer-service-card header p, .account-service-hint, .account-service-empty, .customer-service-pending) { color: var(--lp-muted); font-size: 14px; }
+.lp-app :is(.account-service-facts, .account-service-detail-facts) dt { color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.lp-app :is(.account-service-facts, .account-service-detail-facts) dd { color: var(--lp-ink); font-size: 16px; }
+.lp-app .account-service-exclusive { color: #8a3418; font-size: 14px; font-weight: 500; }
+.lp-app .account-service-detail { gap: 32px; padding: 40px; }
+.lp-app .account-service-section h2 { font-size: 20px; letter-spacing: -0.02em; }
+.lp-app :is(.account-service-description, .account-service-assignment-hint, .account-service-assignments li, .same-day-conflict-body p) { color: var(--lp-ink); font-size: 16px; }
+.lp-app .account-service-assignments li { padding: 14px 16px; }
+.lp-app .account-service-window { padding: 16px 20px; }
+.lp-app .account-service-window-state, .lp-app .driver-location-status { color: var(--lp-ink); font-weight: 600; }
+.lp-app .account-service-confirm { padding: 20px; }
+.lp-app .account-service-confirm h3 { font-size: 18px; }
+.lp-app .account-service-result { color: #285944; font-weight: 500; }
+.lp-app :is(.account-service-photo-image, .account-service-photo-preview, .live-location-map-canvas) { border: 0; border-radius: var(--lp-r-md); }
+.lp-app .live-location-marker span { background: var(--lp-action); box-shadow: 0 0 0 2px var(--lp-action); }
+.lp-app .customer-service-rating { padding: 16px 20px; }
+.lp-app .customer-star-display, .lp-app .customer-star-filled { color: var(--lp-action); }
+.lp-app .customer-star-option { border-radius: var(--lp-r-sm); color: rgba(23, 57, 75, .3); }
+.lp-app .customer-star-option:hover { background: var(--lp-surface); }
+.lp-app .customer-star-option:has(.customer-star-input:focus-visible) { outline: 2px solid var(--lp-action); outline-offset: 2px; }
+.lp-app :is(.customer-rating-fieldset legend, .customer-rating-comment label, .provider-profile-fieldset legend) { color: var(--lp-ink); font-size: 14px; font-weight: 500; }
+
+/* Configuración del perfil */
+.lp-app .provider-profile-form { gap: 24px; margin-top: 8px; padding: 40px; border: 1px solid var(--lp-line); border-radius: var(--lp-r-lg); background: var(--lp-card); }
+.lp-app .provider-profile-form h2 { font-size: 24px; letter-spacing: -0.03em; }
+.lp-app .provider-profile-status { color: var(--lp-ink); font-size: 16px; font-weight: 500; }
+.lp-app .provider-profile-checkbox { gap: 12px; min-height: 44px; color: var(--lp-ink); font-size: 16px; font-weight: 400; }
+.lp-app .provider-profile-checkbox input { width: 20px; height: 20px; }
+
+/* ---------------------------------------------------------------- solicitudes (provider-inbox-page) */
+
+.marketplace-main.lp-app.provider-inbox-page, .marketplace-main.lp-app.chat-page { padding: 72px var(--lp-gut) 96px; }
+.lp-app .provider-inbox { width: min(100%, 960px); }
+.lp-app .provider-inbox-heading { align-items: end; margin-bottom: 32px; }
+.lp-app .provider-inbox-heading .eyebrow { margin: 0 0 12px; }
+.lp-app .provider-inbox-tabs { gap: 4px; margin-bottom: 32px; padding: 4px; border-radius: var(--lp-r-md); background: var(--lp-surface); }
+.lp-app .provider-inbox-tab { min-height: 44px; padding: 0 18px; border-radius: var(--lp-r-sm); color: var(--lp-muted); font-size: 15px; font-weight: 500; }
+.lp-app .provider-inbox-tab:hover { color: var(--lp-ink); }
+.lp-app .provider-inbox-tab[aria-selected="true"] { background: var(--lp-card); color: var(--lp-ink); box-shadow: 0 1px 2px rgba(23, 57, 75, .08); }
+.lp-app .provider-inbox-count { background: var(--lp-card); }
+.lp-app .provider-inbox-tab[aria-selected="true"] .provider-inbox-count { background: var(--lp-ink); color: var(--lp-inv-ink); }
+.lp-app .provider-request-list { gap: 16px; }
+.lp-app .provider-request-card { padding: 28px; }
+.lp-app .provider-request-card h2 { color: var(--lp-ink); font-size: 24px; font-weight: 500; letter-spacing: -0.03em; }
+.lp-app .provider-request-card h2 span, .lp-app .provider-request-detail h1 span { color: var(--lp-action); }
+.lp-app .provider-request-card .eyebrow { margin: 0 0 8px; }
+.lp-app :is(.provider-request-date, .provider-request-customer, .provider-request-closed, .provider-request-muted) { color: var(--lp-muted); font-size: 15px; }
+.lp-app .provider-request-details { color: var(--lp-ink); font-size: 16px; }
+.lp-app .provider-request-actions { gap: 12px; padding-top: 20px; border-top-color: var(--lp-line); }
+.lp-app .provider-request-actions .button { min-height: 44px; }
+.lp-app .provider-request-detail .provider-request-card-heading { margin-bottom: 32px; }
+.lp-app .provider-request-panel { margin-bottom: 24px; padding: 32px; }
+.lp-app .provider-request-panel h2 { margin-bottom: 20px; color: var(--lp-ink); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+.lp-app .provider-request-facts dt { color: var(--lp-muted); font-size: 13px; font-weight: 500; }
+.lp-app .provider-request-facts dd { color: var(--lp-ink); font-size: 16px; }
+.lp-app .provider-request-privacy { color: var(--lp-ink); font-size: 14px; }
+.lp-app .provider-request-photos img { border: 0; border-radius: var(--lp-r-md); }
+
+/* ---------------------------------------------------------------- mensajes and pagos (chat-page) */
+
+.lp-app .chat-wrap { width: min(100%, 880px); }
+.lp-app .chat-heading { margin-bottom: 32px; }
+.lp-app .chat-list { gap: 16px; }
+.lp-app .chat-card-link { padding: 24px 28px; }
+.lp-app .chat-card h2 { color: var(--lp-ink); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+.lp-app :is(.chat-card-time, .chat-card-meta, .chat-message time, .chat-composer-count, .chat-message-sender) { color: var(--lp-muted); }
+.lp-app .chat-card-preview { border-top-color: var(--lp-line); color: var(--lp-ink); font-size: 15px; }
+.lp-app .chat-card-unread { border-color: var(--lp-action); }
+.lp-app :is(.chat-card-unread h2, .chat-card-unread .chat-card-preview) { font-weight: 600; }
+.lp-app .chat-thread-header { margin-bottom: 32px; padding-bottom: 24px; border-bottom-color: var(--lp-line); }
+.lp-app .chat-thread { gap: 12px; }
+.lp-app .chat-message-content { padding: 12px 16px; border-radius: 16px 16px 16px 4px; background: var(--lp-surface); color: var(--lp-ink); font-size: 16px; }
+.lp-app .chat-message-own .chat-message-content { border-radius: 16px 16px 4px 16px; background: var(--lp-ink); color: var(--lp-inv-ink); }
+.lp-app .chat-composer { margin-top: 32px; padding: 16px; }
+.lp-app .chat-composer textarea { min-height: 72px; background: var(--lp-bg); }
+.lp-app :is(.chat-composer-send, .chat-composer-attach) { min-height: 44px; }
+.lp-app .chat-composer-send:disabled { background: var(--lp-action); opacity: .45; }
+.lp-app :is(.chat-composer-thumb, .chat-attachment) { border-radius: var(--lp-r-md); }
+.lp-app .chat-attachment-image { background: var(--lp-surface); }
+.lp-app .chat-quotation { gap: 16px; padding: 20px 24px; border-left: 4px solid var(--lp-ink); }
+.lp-app .chat-quotation-pending { border-left-color: var(--lp-action); }
+.lp-app .chat-quotation-paid { border-left-color: #2f7d5b; }
+.lp-app :is(.chat-quotation-rejected, .chat-quotation-expired, .chat-quotation-superseded) { border-left-color: rgba(23, 57, 75, .3); }
+.lp-app .chat-quotation-header h3 { color: var(--lp-muted); font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.lp-app .chat-quotation-amount { color: var(--lp-ink); font-size: 32px; font-weight: 500; letter-spacing: -0.03em; }
+.lp-app .chat-quotation-details dt { color: var(--lp-muted); font-size: 13px; font-weight: 500; }
+.lp-app .chat-quotation-details dd { color: var(--lp-ink); font-size: 16px; }
+.lp-app .chat-quotation-confirm { padding: 16px; }
+.lp-app .chat-quotation-confirm p { color: var(--lp-ink); font-size: 15px; }
+.lp-app .chat-quotation-reject { background: #8a3418; }
+.lp-app .chat-quotation-reject:hover:not(:disabled) { background: #6e2a14; }
+.lp-app .chat-result { gap: 16px; padding: 40px; text-align: left; }
+.lp-app .chat-simulated-checkout { max-width: 600px; margin-top: 0; border-style: solid; }
+
+/* ---------------------------------------------------------------- prestadores/[profileId] */
+
+.lp-app .provider-profile-shell { width: min(100%, 1280px); }
+.lp-app .provider-profile-sidebar { border-right-color: var(--lp-line); background: var(--lp-bg); }
+.lp-app .provider-sidebar-provider-name { color: var(--lp-ink); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+.lp-app :is(.provider-profile-location, .provider-profile-identity-details, .provider-profile-quote-note, .provider-rating-summary span, .provider-rating-empty-recent, .provider-rating-list time, .provider-profile-rating-empty) { color: var(--lp-muted); font-size: 14px; }
+.lp-app :is(.provider-profile-location svg, .provider-profile-identity-details svg, .provider-profile-rating-line svg, .provider-profile-empty svg) { color: var(--lp-action); }
+.lp-app .provider-profile-nav a { color: var(--lp-ink); font-size: 15px; font-weight: 500; }
+.lp-app .provider-profile-nav a:is(:hover, :focus-visible) { border-left-color: var(--lp-action); background: var(--lp-surface); color: var(--lp-ink); }
+.lp-app .provider-profile-content { gap: 24px; padding: 48px var(--lp-gut) 96px 48px; }
+.lp-app :is(.provider-profile-hero, .provider-profile-section) { padding: 32px; }
+.lp-app .provider-avatar { border-radius: var(--lp-r-md); background: var(--lp-ink); color: var(--lp-inv-ink); font-weight: 500; }
+.lp-app :is(.provider-avatar-small, .provider-driver-avatar) { border: 0; border-radius: var(--lp-r-md); background: var(--lp-card); color: var(--lp-ink); font-weight: 500; }
+.lp-app .provider-item-icon { border-radius: var(--lp-r-sm); background: #fbe6dc; color: var(--lp-action); }
+.lp-app .provider-profile-rating-line, .lp-app .provider-profile-description, .lp-app .provider-rating-list p { color: var(--lp-ink); font-size: 16px; }
+.lp-app .provider-profile-section h2 { margin-bottom: 20px; font-size: 24px; letter-spacing: -0.03em; }
+.lp-app :is(.provider-vehicle-grid, .provider-driver-grid, .provider-services-list, .provider-rating-list) { gap: 12px; }
+.lp-app :is(.provider-vehicle-grid li, .provider-driver-grid li, .provider-service-item) { padding: 16px; }
+.lp-app :is(.provider-vehicle-grid strong, .provider-driver-grid strong, .provider-service-item strong, .provider-rating-summary strong, .provider-rating-list li strong) { color: var(--lp-ink); font-size: 16px; font-weight: 500; }
+.lp-app :is(.provider-vehicle-grid small, .provider-driver-grid small) { color: var(--lp-muted); font-size: 13px; }
+.lp-app .provider-rating-list li > div { color: var(--lp-muted); font-size: 14px; }
+.lp-app .provider-profile-empty p { font-size: 15px; }
+.lp-app .provider-quote-bar { border-top-color: var(--lp-line); background: var(--lp-bg); box-shadow: none; }
+.lp-app .provider-profile-mobile-nav a { min-height: 44px; border: 1px solid var(--lp-line); border-radius: 999px; background: var(--lp-card); color: var(--lp-ink); font-size: 14px; font-weight: 500; }
+
+/* ---------------------------------------------------------------- 404 */
+
+.marketplace-main.lp-app:has(.not-found-state) { display: grid; place-items: center; padding: 96px var(--lp-gut); }
+.lp-app .not-found-state { width: min(100%, 640px); gap: 16px; padding: 56px 48px; }
+.lp-app .not-found-actions { gap: 12px; margin-top: 16px; }
+
+/* ---------------------------------------------------------------- account pages on the auth shell (no brand panel) */
+
+.auth-shell.lp-auth.lp-auth-single { grid-template-columns: minmax(0, 1fr); }
+.lp-auth-single .auth-form-panel { align-items: start; padding: 72px var(--lp-gut) 96px; }
+.lp-auth-single .auth-form-wrap { width: min(100%, 720px); }
+.lp-auth-single .auth-form-wrap > h1 { margin: 0 0 16px; color: var(--lp-ink); font-size: clamp(36px, 4vw, 52px); font-weight: 500; letter-spacing: -0.045em; line-height: 1.05; }
+.lp-auth-single .auth-form-wrap > p:not([class]) { color: var(--lp-muted); font-size: 17px; line-height: 1.6; }
+.lp-auth.lp-auth-single .auth-kicker { margin-bottom: 12px; color: var(--lp-muted); }
+.lp-auth-single .auth-form-wrap > p:not([class]) { margin: 0 0 8px; }
+.lp-auth-single .auth-form-wrap > :is(form, .vehicle-manager, .shared-trip-manager) { margin-top: 32px; }
+.lp-auth-single .auth-form-wrap > h2 { margin: 48px 0 16px; color: var(--lp-ink); font-size: 24px; font-weight: 500; letter-spacing: -0.03em; }
+.lp-auth-single .auth-form-wrap > ul { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.lp-auth-single .auth-form-wrap > ul > li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 16px 20px; border-radius: var(--lp-r-md); background: var(--lp-surface); color: var(--lp-ink); font-size: 15px; }
+.lp-auth-single .auth-form-wrap > ul > li .auth-secondary-action { min-height: 44px; padding: 0 16px; font-size: 15px; }
+.lp-auth-single .auth-form-wrap > ul > li .auth-secondary-action:first-of-type { margin-left: auto; }
+.lp-auth-single .auth-form-wrap > a:not([class]) { color: var(--lp-ink); font-weight: 500; text-underline-offset: 4px; }
+.lp-auth-single .auth-step-actions .auth-submit { display: inline-flex; width: auto; padding: 0 24px; text-decoration: none; }
+.lp-auth :is(.vehicle-manager, .shared-trip-manager, .invitation-manager) h2 { margin: 0 0 16px; font-size: 24px; letter-spacing: -0.03em; }
+.lp-auth .vehicle-card { gap: 20px; padding: 16px; }
+.lp-auth .vehicle-card img { border: 0; border-radius: var(--lp-r-md); }
+.lp-auth .vehicle-card p { color: var(--lp-muted); font-size: 15px; }
+.lp-auth .shared-trip-item { padding: 20px 24px; }
+.lp-auth .shared-trip-status { color: var(--lp-ink); font-weight: 500; }
+
+/* ---------------------------------------------------------------- dialogs */
+
+.quote-dialog { border: 0; border-radius: var(--lp-r-lg); background: var(--lp-card); color: var(--lp-ink); box-shadow: 0 24px 64px rgba(23, 57, 75, .2); }
+.quote-dialog::backdrop { background: rgba(23, 57, 75, .55); backdrop-filter: none; }
+.quote-dialog .quote-dialog-header { padding: 28px 32px 20px; border-bottom-color: var(--lp-line); }
+.quote-dialog .quote-dialog-header .eyebrow { margin: 0 0 8px; }
+.quote-dialog .quote-dialog-header h2 { color: var(--lp-ink); font-size: 28px; font-weight: 500; letter-spacing: -0.035em; }
+.quote-dialog .quote-dialog-close { width: 44px; height: 44px; border-color: var(--lp-line); color: var(--lp-ink); transition: border-color .16s ease; }
+.quote-dialog .quote-dialog-close:hover { border-color: var(--lp-ink); }
+.quote-dialog :is(.quote-request-form, .same-day-conflict-body) { gap: 20px; padding: 24px 32px 32px; }
+.quote-dialog .quote-request-grid { gap: 16px; }
+.quote-dialog :is(.quote-request-note, .quotation-field-hint) { color: var(--lp-muted); font-size: 13px; }
+.quote-dialog .quote-dialog-actions { gap: 12px; }
+.quote-dialog .quote-dialog-success { gap: 16px; padding: 32px; }
+.quote-dialog .quote-dialog-success h3 { font-size: 24px; letter-spacing: -0.03em; }
+.quote-dialog .quote-dialog-success p { color: var(--lp-muted); font-size: 16px; }
+.quote-dialog .quote-photo-item { border: 0; border-radius: var(--lp-r-sm); }
+.shared-trip-dialog-backdrop { background: rgba(23, 57, 75, .55); }
+.shared-trip-dialog-backdrop .shared-trip-dialog { padding: 32px; border-radius: var(--lp-r-lg); background: var(--lp-card); color: var(--lp-ink); }
+.shared-trip-dialog-backdrop .shared-trip-dialog-actions { gap: 12px; }
+
+/* ---------------------------------------------------------------- header profile menu */
+
+.lp-app-header .profile-menu-dropdown { padding: 8px; border-color: var(--lp-line); border-radius: var(--lp-r-md); box-shadow: 0 16px 40px rgba(23, 57, 75, .12); }
+.lp-app-header .profile-menu-item { border-radius: var(--lp-r-sm); color: var(--lp-ink); font-size: 15px; font-weight: 500; }
+.lp-app-header .profile-menu-item:is(:hover, :focus-visible) { background: var(--lp-surface); color: var(--lp-ink); }
+.lp-app-header .profile-menu-toggle:hover, .lp-app-header .profile-menu-toggle[aria-expanded="true"] { border-color: var(--lp-ink); background: var(--lp-card); }
+
+/* ---------------------------------------------------------------- créditos */
+
+.lp-app.lp-credits { color: var(--lp-ink); }
+.lp-app.lp-credits h1 { font-size: clamp(36px, 4vw, 52px); letter-spacing: -0.045em; line-height: 1.05; }
+
+/* ---------------------------------------------------------------- tablet and phone */
+
+@media (max-width: 1023px) {
+  .lp-app .provider-profile-content { padding: 40px var(--lp-gut) 96px 32px; }
+}
+
+@media (max-width: 760px) {
+  .lp-app .provider-profile-content { padding: 24px var(--lp-gut) 120px; }
+  .lp-app :is(.provider-profile-hero, .provider-profile-section) { padding: 20px; }
+  .quote-dialog .quote-dialog-header { padding: 20px var(--lp-gut) 16px; }
+  .quote-dialog :is(.quote-request-form, .same-day-conflict-body) { padding: 20px var(--lp-gut) 24px; }
+}
+
+@media (max-width: 639px) {
+  .lp-app .customer-services-wrap { padding: 40px 0 64px; }
+  .marketplace-main.lp-app.provider-inbox-page, .marketplace-main.lp-app.chat-page { padding: 40px var(--lp-gut) 64px; }
+  .lp-app :is(.account-service-card, .customer-service-card, .provider-request-card, .provider-request-panel) { padding: 20px; }
+  .lp-app :is(.account-service-detail, .provider-profile-form, .chat-result) { padding: 24px 20px; }
+  .lp-app .chat-card-link { padding: 20px; }
+  .lp-app .not-found-state { padding: 40px 24px; }
+  .lp-auth-single .auth-form-panel { padding: 40px var(--lp-gut) 64px; }
+  .shared-trip-dialog-backdrop .shared-trip-dialog { padding: 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quote-dialog *, .shared-trip-dialog-backdrop * { transition: none !important; }
+}

@@ -6,7 +6,7 @@ export default async function ChatPage({ params }: { params: Promise<{ chatId: s
   return (
     <>
       <MarketplaceHeader />
-      <main className="marketplace-main chat-page" id="contenido">
+      <main className="marketplace-main lp-app chat-page" id="contenido">
         <ChatThreadView chatId={chatId} />
       </main>
       <MarketplaceFooter />
