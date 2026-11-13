@@ -241,17 +241,17 @@ def test_simulated_adapter_does_not_find_other_codes() -> None:
 # Adapter selection (S5)
 
 def test_a_configured_token_selects_the_verifik_adapter() -> None:
-    settings = Settings(verifik_api_token="token", app_env="production")
+    settings = Settings(_env_file=None, verifik_api_token="token", app_env="production")
     assert isinstance(build_certificate_verifier(settings), VerifikCertificateVerifier)
 
 
 def test_the_simulator_needs_an_explicit_development_app_env() -> None:
-    settings = Settings(verifik_simulator=True, app_env="development")
+    settings = Settings(_env_file=None, verifik_simulator=True, app_env="development")
     assert isinstance(build_certificate_verifier(settings), SimulatedCertificateVerifier)
 
 
 @pytest.mark.parametrize("values", [{}, {"verifik_simulator": True}, {"verifik_simulator": True, "app_env": "production"}])
 def test_without_a_token_or_an_allowed_simulator_verification_is_unavailable(values: dict) -> None:
     with pytest.raises(HTTPException) as raised:
-        build_certificate_verifier(Settings.model_construct(**values) if "app_env" not in values else Settings(**values))
+        build_certificate_verifier(Settings.model_construct(**values) if "app_env" not in values else Settings(_env_file=None, **values))
     assert raised.value.status_code == 503
