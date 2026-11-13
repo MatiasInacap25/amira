@@ -42,8 +42,8 @@ def test_owner_gets_the_employed_drivers_and_vehicles_of_the_service_profile(cal
     assert response.status_code == 200
     assert response.json() == {
         "drivers": [
-            {"driverId": str(fleet.eli.id), "firstName": "Eli", "lastName": "Employee", "isOwner": False},
-            {"driverId": str(fleet.gus.id), "firstName": "Gus", "lastName": "Second", "isOwner": False},
+            {"driverId": str(fleet.eli.id), "firstName": "Eli", "lastName": "Employee", "isOwner": False, "verified": True},
+            {"driverId": str(fleet.gus.id), "firstName": "Gus", "lastName": "Second", "isOwner": False, "verified": True},
         ],
         "vehicles": [
             {"vehicleId": str(fleet.van.id), "vehicleLabel": "Hyundai Porter", "plate": "ABCD12"},
@@ -57,7 +57,7 @@ def test_independent_owner_gets_their_own_driver_row_marked_as_owner(call, fleet
 
     assert response.status_code == 200
     assert response.json() == {
-        "drivers": [{"driverId": str(fleet.dana.id), "firstName": "Dana", "lastName": "Driver", "isOwner": True}],
+        "drivers": [{"driverId": str(fleet.dana.id), "firstName": "Dana", "lastName": "Driver", "isOwner": True, "verified": True}],
         "vehicles": [{"vehicleId": str(fleet.solo_van.id), "vehicleLabel": "Kia Frontier", "plate": "IJKL56"}],
     }
 
@@ -151,3 +151,14 @@ def test_customer_gets_403_on_provider_options(call, fleet: Fleet):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Only provider accounts can access provider services."
+
+
+def test_options_mark_which_drivers_are_verified(call, db: Session, fleet: Fleet):
+    from driver_verification_support import unverify_driver
+
+    unverify_driver(db, fleet.gus.user_id)
+
+    drivers = {item["driverId"]: item["verified"] for item in _options(call, fleet.service_a).json()["drivers"]}
+
+    assert drivers[str(fleet.gus.id)] is False
+    assert drivers[str(fleet.eli.id)] is True

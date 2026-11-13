@@ -96,6 +96,8 @@ class AssignmentDriverOption(PublicResponse):
     last_name: str
     # True only for the owner's own independent driver row.
     is_owner: bool
+    # False while the driver's certificates are not verified; such a driver cannot be assigned.
+    verified: bool
 
 
 class AssignmentVehicleOption(PublicResponse):
