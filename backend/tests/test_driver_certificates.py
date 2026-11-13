@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 
 import httpx
+from pydantic import SecretStr
 import pytest
 from fastapi import HTTPException
 
@@ -254,4 +255,60 @@ def test_the_simulator_needs_an_explicit_development_app_env() -> None:
 def test_without_a_token_or_an_allowed_simulator_verification_is_unavailable(values: dict) -> None:
     with pytest.raises(HTTPException) as raised:
         build_certificate_verifier(Settings.model_construct(**values) if "app_env" not in values else Settings(_env_file=None, **values))
+    assert raised.value.status_code == 503
+
+
+# Verifik sandbox demo (S7)
+
+from amira_api.verifik_sandbox_demo import SANDBOX_CODE, SANDBOX_FOLIO, SandboxDemoCertificateVerifier  # noqa: E402
+
+
+def demo(handler, app_env: str = "development") -> SandboxDemoCertificateVerifier:
+    return SandboxDemoCertificateVerifier(inner=adapter(handler), app_env=app_env)
+
+
+@pytest.mark.parametrize("document_type", ["criminal_record", "driver_record"])
+def test_sandbox_demo_sends_the_sample_certificate_and_verifies_the_driver(document_type: str) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=verifik_payload(run="12.345.678-9"))
+
+    result = demo(handler).verify_certificate("99999999999", "codigo-del-conductor", holder_run="11.111.111-1", document_type=document_type)
+
+    assert (SANDBOX_FOLIO, SANDBOX_CODE) == ("50070080804", "2aacbb9a636a")
+    assert dict(seen[0].url.params) == {"folio": SANDBOX_FOLIO, "verificationCode": SANDBOX_CODE}
+    assert seen[0].headers["Authorization"] == f"Bearer {TOKEN}"
+    assert result.run == "11.111.111-1"
+    assert result.pdf == PDF
+    assert classify_certificate(result, expected_run="11111111-1", document_type=document_type).status == "verified"
+
+
+def test_sandbox_demo_keeps_sandbox_failures() -> None:
+    with pytest.raises(VerifikUnavailable):
+        demo(lambda _: httpx.Response(500, text="down")).verify_certificate("99999999999", "x", holder_run="11111111-1", document_type="criminal_record")
+
+
+@pytest.mark.parametrize("app_env", ["production", "staging", "", " prod"])
+def test_sandbox_demo_refuses_outside_development(app_env: str) -> None:
+    with pytest.raises(RuntimeError):
+        demo(lambda _: httpx.Response(200, json=verifik_payload()), app_env=app_env)
+
+
+def test_the_sandbox_demo_needs_a_token_the_flag_and_an_explicit_development_app_env() -> None:
+    settings = Settings(_env_file=None, verifik_api_token="token", verifik_sandbox_demo=True, app_env="development")
+    assert isinstance(build_certificate_verifier(settings), SandboxDemoCertificateVerifier)
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        Settings(_env_file=None, verifik_api_token="token", verifik_sandbox_demo=True, app_env="production"),
+        Settings.model_construct(verifik_api_token=SecretStr("token"), verifik_sandbox_demo=True),
+    ],
+)
+def test_the_sandbox_demo_flag_outside_development_fails_closed(settings) -> None:
+    with pytest.raises(HTTPException) as raised:
+        build_certificate_verifier(settings)
     assert raised.value.status_code == 503

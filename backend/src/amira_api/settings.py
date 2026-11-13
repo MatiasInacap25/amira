@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     verifik_base_url: str = "https://api.verifik.co"
     # Development-only: the simulated verifier, allowed only when APP_ENV is set explicitly to development, local or test.
     verifik_simulator: bool = False
+    # Development-only demo: every submission calls the Verifik sandbox with its sample certificate and is taken as the
+    # driver's own, so it is verified. Needs VERIFIK_API_TOKEN (a sandbox token) and APP_ENV development/local/test.
+    verifik_sandbox_demo: bool = False
     # Official certificate PDFs returned by Verifik live in their own private bucket. No default: unset means fail closed.
     driver_certificates_bucket: str | None = None
     driver_certificate_url_ttl_seconds: int = Field(default=300, gt=0)

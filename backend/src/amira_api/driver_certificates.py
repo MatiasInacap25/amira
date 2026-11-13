@@ -70,8 +70,14 @@ class CertificateVerifier(Protocol):
     # True when verify_certificate returns the official PDF, which must then be stored in the private bucket.
     returns_pdf: bool
 
-    def verify_certificate(self, folio: str, verification_code: str) -> CertificateRecord:
-        """The certificate behind this folio and code. Raises CertificateNotFound, CertificateInvalid or VerifikUnavailable."""
+    def verify_certificate(
+        self, folio: str, verification_code: str, *, holder_run: str | None = None, document_type: str | None = None,
+    ) -> CertificateRecord:
+        """The certificate behind this folio and code. Raises CertificateNotFound, CertificateInvalid or VerifikUnavailable.
+
+        holder_run and document_type are hints from the account; real adapters ignore them. Only the development
+        sandbox demo uses them to present Verifik's sample certificate as the driver's own.
+        """
         ...
 
 

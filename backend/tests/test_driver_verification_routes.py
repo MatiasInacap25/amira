@@ -47,10 +47,13 @@ class FakeVerifier:
     def __init__(self) -> None:
         self.returns_pdf = True
         self.calls: list[tuple[str, str]] = []
+        self.hints: list[tuple[str | None, str | None]] = []
         self.results: dict[str, CertificateRecord | Exception] = {}
 
-    def verify_certificate(self, folio: str, verification_code: str) -> CertificateRecord:
+    def verify_certificate(self, folio: str, verification_code: str, *, holder_run: str | None = None,
+                           document_type: str | None = None) -> CertificateRecord:
         self.calls.append((folio, verification_code))
+        self.hints.append((holder_run, document_type))
         result = self.results.get(folio)
         if result is None:
             raise CertificateNotFound("missing")
@@ -342,12 +345,12 @@ def test_a_submission_stored_while_verifik_answered_wins_and_the_pdf_is_discarde
     driver_id = db.execute(select(Usuario.id).where(Usuario.auth_user_id == DRIVER_AUTH)).scalar_one()
     original = verifier.verify_certificate
 
-    def concurrent(folio: str, code: str) -> CertificateRecord:
+    def concurrent(folio: str, code: str, **hints) -> CertificateRecord:
         db.add(VerificacionIdentidad(id=uuid4(), user_id=driver_id, provider="verifik", provider_verification_id="50070080899",
                                      status="verified", document_type="criminal_record", created_at=datetime.now(UTC),
                                      updated_at=datetime.now(UTC)))
         db.commit()
-        return original(folio, code)
+        return original(folio, code, **hints)
 
     verifier.verify_certificate = concurrent
     verifier.results["50070080804"] = certificate()
@@ -415,3 +418,12 @@ def test_users_who_are_not_drivers_cannot_verify(client, verifier) -> None:
 def test_unknown_users_cannot_verify(client) -> None:
     as_user(uuid4())
     assert client.get(URL).status_code == 403
+
+
+def test_the_verifier_receives_the_drivers_rut_and_the_declared_type(client, verifier) -> None:
+    as_user(DRIVER_AUTH)
+    verifier.results["50070080805"] = driver_record()
+
+    assert submit(client, kind="driver_record", folio="50070080805").status_code == 201
+
+    assert verifier.hints == [(DRIVER_RUT, "driver_record")]

@@ -30,7 +30,9 @@ class SimulatedCertificateVerifier:
             allowed = ", ".join(sorted(SIMULATOR_APP_ENVS))
             raise RuntimeError(f"The simulated certificate verifier requires APP_ENV to be one of: {allowed}.")
 
-    def verify_certificate(self, folio: str, verification_code: str) -> CertificateRecord:
+    def verify_certificate(
+        self, folio: str, verification_code: str, *, holder_run: str | None = None, document_type: str | None = None,
+    ) -> CertificateRecord:
         prefix, _, run = verification_code.partition("-")
         if prefix not in {"ok", "anot", "hv", "hvanot"} or not run:
             raise CertificateNotFound("The simulator has no certificate for this code.")

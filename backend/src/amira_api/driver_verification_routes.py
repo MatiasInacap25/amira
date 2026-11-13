@@ -40,6 +40,7 @@ from amira_api.models import Conductor, Usuario, VerificacionIdentidad
 from amira_api.settings import Settings, get_settings
 from amira_api.simulated_certificate_verifier import SIMULATOR_APP_ENVS, SimulatedCertificateVerifier
 from amira_api.verifik_certificate_verifier import VerifikCertificateVerifier
+from amira_api.verifik_sandbox_demo import SandboxDemoCertificateVerifier
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/driver/verifications", tags=["driver-verification"])
@@ -56,19 +57,25 @@ ALREADY_SUBMITTED_MESSAGE = "Ya enviaste este certificado y está verificado o e
 
 
 def _simulator_enabled(settings: Settings) -> bool:
-    return (
-        settings.verifik_simulator
-        and "app_env" in settings.model_fields_set
-        and settings.app_env.strip().lower() in SIMULATOR_APP_ENVS
-    )
+    return settings.verifik_simulator and _development_app_env(settings)
+
+
+def _development_app_env(settings: Settings) -> bool:
+    return "app_env" in settings.model_fields_set and settings.app_env.strip().lower() in SIMULATOR_APP_ENVS
 
 
 def build_certificate_verifier(settings: Settings) -> CertificateVerifier:
     if settings.verifik_api_token is not None and settings.verifik_api_token.get_secret_value().strip():
-        return VerifikCertificateVerifier(
+        verifik = VerifikCertificateVerifier(
             token=settings.verifik_api_token.get_secret_value().strip(),
             base_url=settings.verifik_base_url,
         )
+        if not settings.verifik_sandbox_demo:
+            return verifik
+        # The demo turns every submission into a verified certificate, so a flag outside development fails closed.
+        if not _development_app_env(settings):
+            raise HTTPException(status_code=503, detail=UNAVAILABLE_MESSAGE)
+        return SandboxDemoCertificateVerifier(inner=verifik, app_env=settings.app_env)
     if _simulator_enabled(settings):
         return SimulatedCertificateVerifier(app_env=settings.app_env)
     raise HTTPException(status_code=503, detail=UNAVAILABLE_MESSAGE)
@@ -173,7 +180,9 @@ def submit_driver_certificate(
     session.rollback()
 
     try:
-        record = verifier.verify_certificate(payload.folio, payload.verification_code)
+        record = verifier.verify_certificate(
+            payload.folio, payload.verification_code, holder_run=expected_run, document_type=payload.type,
+        )
     except CertificateNotFound:
         raise HTTPException(status_code=422, detail=NOT_FOUND_MESSAGE) from None
     except CertificateInvalid:
