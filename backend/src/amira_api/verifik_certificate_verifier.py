@@ -33,16 +33,17 @@ class VerifikCertificateVerifier:
     returns_pdf = True
 
     def __init__(self, *, token: str, base_url: str = DEFAULT_BASE_URL, transport: httpx.BaseTransport | None = None) -> None:
-        self._client = httpx.Client(
-            base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-            timeout=REQUEST_TIMEOUT_SECONDS,
-            transport=transport,
-        )
+        self._base_url = base_url.rstrip("/")
+        self._headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        self._transport = transport
 
     def verify_certificate(self, folio: str, verification_code: str) -> CertificateRecord:
+        # One short-lived client per verification, closed on exit: the composition root builds a verifier per request.
         try:
-            response = self._client.get(CERTIFICATE_PATH, params={"folio": folio, "verificationCode": verification_code})
+            with httpx.Client(
+                base_url=self._base_url, headers=self._headers, timeout=REQUEST_TIMEOUT_SECONDS, transport=self._transport,
+            ) as client:
+                response = client.get(CERTIFICATE_PATH, params={"folio": folio, "verificationCode": verification_code})
         except httpx.HTTPError as error:
             raise VerifikUnavailable("Verifik could not be reached.") from error
 

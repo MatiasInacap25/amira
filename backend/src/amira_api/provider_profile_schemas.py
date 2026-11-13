@@ -51,4 +51,4 @@ class ProviderProfileView(BaseModel):
     commune_code: str | None
     service_type_ids: list[UUID]
     published: bool
-    missing: list[Literal["description", "commune", "service_types"]]
+    missing: list[Literal["description", "commune", "service_types", "driver_verification"]]

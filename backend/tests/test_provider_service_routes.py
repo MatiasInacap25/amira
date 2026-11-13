@@ -55,7 +55,7 @@ def db():
     tables = (
         "Rol_Usuario", "Usuario", "Perfil", "Conductor", "Vehiculo", "Formulario_servicio", "Chat",
         "Cotizacion", "Servicio", "Servicio_Asignacion", "Servicio_Ubicacion", "Pago", "Cuenta_Desembolso", "Desembolso",
-        "Viaje", "Viaje_Vehiculo", "Parada_Viaje",
+        "Viaje", "Viaje_Vehiculo", "Parada_Viaje", "Verificacion_Identidad",
     )
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
     with engine.begin() as connection:

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, aliased
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
+from amira_api.driver_verification import is_driver_verified
 from amira_api.models import (
     Chat,
     ChatParticipante,
@@ -559,6 +560,8 @@ def assign_provider_service_driver(
     ).scalar_one_or_none()
     if driver is None:
         raise HTTPException(status_code=404, detail="Driver not found for this provider profile.")
+    if not is_driver_verified(session, driver.user_id):
+        raise HTTPException(status_code=409, detail="The driver must have verified certificates.")
 
     service.contracted_driver_id = driver.id
     session.commit()

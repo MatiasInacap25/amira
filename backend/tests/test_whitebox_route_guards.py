@@ -152,6 +152,7 @@ def test_assignments_without_service_date_skip_conflict_query(monkeypatch):
     monkeypatch.setattr(provider_service_routes, "_provider_viewer", lambda session, user: viewer)
     monkeypatch.setattr(provider_service_routes, "_lock_visible_service", lambda session, viewer, identifier: service)
     monkeypatch.setattr(provider_service_routes, "_ensure_drivers_belong", Mock())
+    monkeypatch.setattr(provider_service_routes, "_ensure_drivers_verified", Mock())
     monkeypatch.setattr(provider_service_routes, "_ensure_vehicles_belong", Mock())
     monkeypatch.setattr(provider_service_routes, "_visible_detail", lambda session, viewer, identifier: expected)
     session = Mock()

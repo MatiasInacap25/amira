@@ -26,8 +26,8 @@ def latest_certificates(session: Session, user_id: UUID) -> dict[str, Verificaci
     return latest
 
 
-def verified_driver_condition(user_id: ColumnElement[UUID]) -> ColumnElement[bool]:
-    """SQL condition: the user behind ``user_id`` has both certificates verified. Use it inside driver filters."""
+def verified_driver_condition(user_id: ColumnElement[UUID] | UUID) -> ColumnElement[bool]:
+    """SQL condition: the user behind ``user_id`` (a column or a value) has both certificates verified."""
     return and_(*(
         exists().where(
             VerificacionIdentidad.user_id == user_id,
@@ -39,5 +39,4 @@ def verified_driver_condition(user_id: ColumnElement[UUID]) -> ColumnElement[boo
 
 
 def is_driver_verified(session: Session, user_id: UUID) -> bool:
-    latest = latest_certificates(session, user_id)
-    return all(document_type in latest and latest[document_type].status == "verified" for document_type in CERTIFICATE_TYPES)
+    return bool(session.execute(select(verified_driver_condition(user_id))).scalar_one_or_none())
