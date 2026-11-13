@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.clock import as_utc, utc_now
 from amira_api.db import get_db_session
+from amira_api.driver_verification import verified_driver_condition
 from amira_api.evidence_storage import (
     EvidenceStorage,
     EvidenceStorageError,
@@ -179,6 +180,14 @@ def _ensure_drivers_belong(session: Session, viewer: ProviderViewer, driver_ids:
         raise _unprocessable("Every driver must belong to this provider profile.", "driver_not_in_profile", "assignments")
 
 
+def _ensure_drivers_verified(session: Session, driver_ids: list[UUID]) -> None:
+    unverified = session.execute(
+        select(Conductor.id).where(Conductor.id.in_(driver_ids), ~verified_driver_condition(Conductor.user_id))
+    ).first()
+    if unverified is not None:
+        raise _unprocessable("Every driver must have verified certificates.", "driver_not_verified", "assignments")
+
+
 def _ensure_vehicles_belong(session: Session, profile_id: UUID, vehicle_ids: list[UUID]) -> None:
     belonging = set(
         session.execute(
@@ -263,14 +272,17 @@ def get_service_assignment_options(service_id: UUID, current_user: CurrentUser, 
         raise HTTPException(status_code=403, detail="Only the profile owner can manage this service.")
 
     driver_rows = session.execute(
-        select(Conductor.id, Usuario.first_name, Usuario.last_name, Conductor.employer_profile_id)
+        select(
+            Conductor.id, Usuario.first_name, Usuario.last_name, Conductor.employer_profile_id,
+            verified_driver_condition(Conductor.user_id).label("verified"),
+        )
         .join(Usuario, Usuario.id == Conductor.user_id)
         .where(_assignable_driver_filter(viewer))
     ).all()
     # A NULL employer can only match the owner's own independent row (see _assignable_driver_filter).
     drivers = [
         AssignmentDriverOption(
-            driver_id=row[0], first_name=row[1], last_name=row[2], is_owner=row[3] is None
+            driver_id=row[0], first_name=row[1], last_name=row[2], is_owner=row[3] is None, verified=bool(row[4])
         )
         for row in driver_rows
     ]
@@ -307,6 +319,7 @@ def replace_service_assignments(
     driver_ids = [pair.driver_id for pair in payload.assignments]
     vehicle_ids = [pair.vehicle_id for pair in payload.assignments]
     _ensure_drivers_belong(session, viewer, driver_ids)
+    _ensure_drivers_verified(session, driver_ids)
     _ensure_vehicles_belong(session, viewer.owned_profile_id, vehicle_ids)
 
     if not payload.confirm_same_day_conflicts:
@@ -345,6 +358,14 @@ def start_provider_service(
     ).scalar_one()
     if not has_assignment:
         raise HTTPException(status_code=409, detail="Assign at least one driver and vehicle before starting.")
+    # Assignments made before drivers had to verify their certificates are caught here.
+    unverified_assignment = session.execute(
+        select(ServicioAsignacion.id)
+        .join(Conductor, Conductor.id == ServicioAsignacion.driver_id)
+        .where(ServicioAsignacion.service_id == service_id, ~verified_driver_condition(Conductor.user_id))
+    ).first()
+    if unverified_assignment is not None:
+        raise HTTPException(status_code=409, detail="Every assigned driver must be verified before starting.")
 
     # The status change and the first location share this transaction: a started service always has a position.
     now = utc_now()

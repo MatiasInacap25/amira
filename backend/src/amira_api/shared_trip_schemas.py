@@ -42,6 +42,8 @@ class ProviderSharedTripPage(PublicResponse):
 class ProviderDriverItem(PublicResponse):
     driver_id: UUID
     name: str
+    # False while the driver's certificates are not verified; such a driver cannot be put on a trip.
+    verified: bool
 
 
 class ProviderDriverPage(PublicResponse):

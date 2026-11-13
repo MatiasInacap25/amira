@@ -20,6 +20,7 @@ from chat_support import _register_btrim  # also registers the SQLite JSONB comp
 PAYOUT_TABLES = (
     "Rol_Usuario", "Usuario", "Perfil", "Conductor", "Vehiculo", "Formulario_servicio", "Chat",
     "Cotizacion", "Servicio", "Servicio_Asignacion", "Pago", "Reclamo", "Cuenta_Desembolso", "Desembolso",
+    "Verificacion_Identidad",
 )
 
 

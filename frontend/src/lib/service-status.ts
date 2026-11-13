@@ -66,11 +66,11 @@ const ACTION_STATUS_MESSAGES: Record<ServiceAction, Partial<Record<number, strin
   assign: {
     403: OWNER_ONLY_MESSAGE,
     409: "Solo se pueden asignar servicios confirmados.",
-    422: "Revisa los conductores y vehículos seleccionados. Cada conductor y cada vehículo solo pueden usarse una vez.",
+    422: "Revisa los conductores y vehículos seleccionados. Cada uno solo puede usarse una vez y los conductores deben tener sus certificados verificados.",
   },
   start: {
     403: "No tienes permiso para iniciar este servicio.",
-    409: "Solo se pueden iniciar servicios confirmados con al menos un conductor y un vehículo asignados.",
+    409: "Solo se pueden iniciar servicios confirmados con al menos un conductor y un vehículo asignados, y con todos los conductores verificados.",
   },
   complete: {
     403: "Solo un conductor asignado puede finalizar este servicio.",

@@ -1021,3 +1021,56 @@ test("normal sharing keeps sending about every 15 seconds while the position is 
   await page.waitForTimeout(200);
   expect(locationRequests.length).toBeLessThanOrEqual(4);
 });
+
+test("unverified drivers are left out of the assignment choices with a note", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({
+      json: serviceDetail({
+        status: "confirmed",
+        viewerRole: "provider",
+        canManage: true,
+        assignments: [],
+        assignmentCount: 0,
+        completedAt: null,
+        payoutDeadlineAt: null,
+        canClaim: false,
+        canConsent: false,
+      }),
+    }),
+  );
+  await page.route("**/api/provider/services/service-1/assignment-options", async (route) =>
+    route.fulfill({
+      json: {
+        drivers: [
+          { driverId: "driver-1", firstName: "Lucía", lastName: "Soto", isOwner: true, verified: true },
+          { driverId: "driver-2", firstName: "Mario", lastName: "Rojas", isOwner: false, verified: false },
+        ],
+        vehicles: [{ vehicleId: "vehicle-1", vehicleLabel: "Furgón 3,5 t", plate: "KLM12" }],
+      },
+    }),
+  );
+  await signInTo(page, "company_owner");
+
+  await page.goto("/cuenta/servicios/service-1");
+
+  await expect(page.getByText("1 conductor no aparece porque sus certificados no están verificados.")).toBeVisible();
+  const driverSelect = page.locator(".account-service-assignment-row").first().getByLabel("Conductor");
+  await expect(driverSelect.locator("option")).toHaveText(["Selecciona un conductor", "Lucía Soto (tú)"]);
+});
+
+test("an unverified driver is shown but cannot be chosen for a shared trip", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail() }));
+  await page.route("**/api/provider/vehicles", async (route) => route.fulfill({
+    json: { items: [{ vehicleId: "vehicle-1", plate: "KLM12", brand: "Hyundai", model: "Porter", year: null, maximumWeight: null, url: "https://storage.example.test/v.png", expiresAt: "2026-11-07T12:05:00.000Z" }] },
+  }));
+  await page.route("**/api/provider/drivers", async (route) => route.fulfill({
+    json: { items: [{ driverId: "driver-1", name: "Lucía Soto", verified: true }, { driverId: "driver-2", name: "Mario Rojas", verified: false }] },
+  }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+
+  await page.getByRole("button", { name: publishButtonName }).click();
+  const dialog = page.getByRole("dialog", { name: "Publicar viaje compartido" });
+  await expect(dialog.getByRole("option", { name: "Mario Rojas (sin verificar)" })).toHaveAttribute("disabled", "");
+  await expect(dialog.getByRole("option", { name: "Lucía Soto" })).not.toHaveAttribute("disabled", "");
+});

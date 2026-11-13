@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from amira_api.account_routes import router as account_router
 from amira_api.chat_routes import router as chat_router
 from amira_api.customer_routes import router as customer_router
+from amira_api.driver_verification_routes import router as driver_verification_router
 from amira_api.fallback_routes import router as fallback_router
 from amira_api.invitation_routes import router as invitation_router
 from amira_api.location_routes import router as location_router
@@ -44,6 +45,7 @@ app.include_router(account_router)
 app.include_router(chat_router)
 app.include_router(realtime_router)
 app.include_router(customer_router)
+app.include_router(driver_verification_router)
 app.include_router(fallback_router)
 app.include_router(invitation_router)
 app.include_router(location_router)
