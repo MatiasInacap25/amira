@@ -2,7 +2,7 @@ import { authenticatedApiFetch } from "@/lib/auth/account-api";
 import { accountAccessMessage, ProviderRequestAccessError } from "@/lib/provider-request-access";
 
 // "name" is not a backend missing key; the form adds it for companies so the publish gate and checklist cover it.
-export type ProviderProfileMissingItem = "description" | "commune" | "service_types" | "name";
+export type ProviderProfileMissingItem = "description" | "commune" | "service_types" | "name" | "driver_verification";
 
 export type ProviderProfile = {
   name: string;
@@ -43,6 +43,7 @@ const MISSING_LABELS: Record<ProviderProfileMissingItem, string> = {
   commune: "Elige tu comuna",
   service_types: "Elige al menos un tipo de servicio",
   name: "Escribe el nombre de la empresa",
+  driver_verification: "Verifica tus certificados de conductor",
 };
 
 // Responses are parsed here so every caller gets the same typed error for non-2xx statuses.

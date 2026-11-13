@@ -24,6 +24,8 @@ export type ProviderSharedTripPage = {
 export type ProviderDriver = {
   driverId: string;
   name: string;
+  // false while the driver's certificates are not verified; such a driver cannot be put on a trip.
+  verified?: boolean;
 };
 
 export type SharedTripPublishInput = {

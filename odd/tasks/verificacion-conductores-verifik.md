@@ -19,8 +19,8 @@ Objective: independent drivers and company drivers verify two Registro Civil cer
 | T2 | S1, S2 | inline | done | RED collection error → GREEN 26 route tests incl. race and folio reuse; new modules 99-100% covered |
 | T3 | S3 | inline | done | `7096bad`; RED per guard (assign 422, start 409, contracted driver 409, trip publish 409, profile missing `driver_verification`) → GREEN; full backend 1149 passed |
 | T4 | S4 | inline | done | RED import error → GREEN 11 tests (`test_driver_verification_review.py`); full backend 1160 passed, 99% |
-| T5 | S6 | inline | pending | frontend page, notices, Playwright |
-| T6 | S1-S5 | inline | pending | backend README and env docs |
+| T5 | S6 | inline | done | unit RED (module missing) → GREEN 8 tests; Playwright `page-cuenta-verificacion.spec.ts` 6 + 2 selector specs written after the UI (no RED observed); full Playwright 424 passed, 1 failed once and passed on rerun (name not captured); tsc and lint clean |
+| T6 | S1-S5 | inline | done | backend README "Driver verification" section and updated `GET /api/provider/drivers`; `.env.example` not edited (reading env files is denied in this workspace) |
 
 Route evidence: one model writing sequential units that share the new model and port (T2-T5 depend on T1), so no Writer trigger. High risk (items 1, 2, 3: new table/migration, permission guards, an external credential); an independent verifier runs at the feature's end.
 
