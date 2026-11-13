@@ -194,13 +194,44 @@ Ownership uses the verified JWT and the provider-profile helper of the other pro
 - `POST /api/provider/services/{serviceId}/shared-trip`: body `{vehicleId, driverId}`. The provider publishes a paid service. The trip copies origin, destination, communes and the requested date, and is published and accepting requests. The vehicle must belong to the caller's profile. The driver must be a company's employed driver (`Conductor` of that employer profile, role `company_driver`) or the caller's own driver record. Response: `{tripId}`, status 201. Refused with 409 when the service is exclusive (the customer did not accept sharing), already has a trip, has no requested date, or has no origin or destination. Each refusal leaves the rows unchanged.
 - `POST /api/provider/shared-trips/{tripId}/close`: stops new requests (`acceptsRequests` false). Services already linked and requests already accepted stay linked. Response: `{tripId, acceptsRequests}`, status 200.
 - `GET /api/provider/shared-trips?limit=20&offset=0`: the caller's trips only, ordered by departure. Items: `{tripId, status: "open" | "closed", origin, destination, departureAt, joinedServices}`, where `joinedServices` counts every service linked to the trip, the first service included. Returns `{items, total, limit, offset}`.
-- `GET /api/provider/drivers`: the caller's drivers, usable on a trip. Items: `{driverId, name}`.
+- `GET /api/provider/drivers`: the caller's drivers. Items: `{driverId, name, verified}`. A driver with `verified: false` cannot be put on a trip: publishing with them answers 409 (see [Driver verification](#driver-verification)).
 - `POST /api/service-requests` takes an optional `requestedTripId`. When present, the request is for that trip: `originCommuneCode`/`origin` are the customer's pickup and `destinationCommuneCode`/`destination` the delivery. The customer must accept sharing: `acceptsSharing` must be `true`, otherwise the request answers 422 (`loc: ["body", "acceptsSharing"]`) and writes nothing, including when the field is omitted (its default is `false`). The trip must belong to the requested `profileId` (404 otherwise) and be published and accepting requests (409 otherwise). Without `requestedTripId` the request behaves as before. Provider inbox items expose `requestedTripId`.
 - Payment is the second guard. A paid request is linked to its trip only when it carries a `requestedTripId` and is not exclusive (`es_exclusivo` false). An exclusive request is paid as a normal request and is not linked, and the stop insertion (`link_join_request_stops`) refuses an exclusive service on its own, so no stops are added for it. Linking still happens under the trip row lock, in the same transaction as the payment.
 - `GET /api/shared-routes` items carry `tripId` and `departureAt`, so the frontend can start a join request.
 - `GET /api/provider/services/{serviceId}` (provider detail) carries `sharedTripId`: the trip the service is linked to, or `null` when it has none. Customers always get `null`; the field is read-only and changes no other behavior.
 
 Payment of a join request (`payment_service.confirm_payment`) runs in the same transaction as the approval. It locks the trip row, inserts the pickup and delivery stops before the destination, renumbers the route `1..n` in two phases to keep `(trip, order)` unique, and links the new service with the trip, the trip vehicle and its stops. Closing the trip does not block a request already accepted. If the trip no longer exists or has no vehicle, the payment is recorded as rejected and nothing is linked, like the other closed-quotation cases.
+
+## Driver verification
+
+Every driver (any user with a `Conductor` row: independent drivers, company drivers and company owners who also drive) verifies two Registro Civil certificates: the certificado de antecedentes (`criminal_record`) and the hoja de vida del conductor (`driver_record`). The driver sends each certificate's folio and verification code; the backend checks them through the `CertificateVerifier` port (`driver_certificates.py`).
+
+- Adapters: Verifik (`verifik_certificate_verifier.py`, `GET https://api.verifik.co/v2/cl/registro-civil/certificado?folio=&verificationCode=`) when `VERIFIK_API_TOKEN` is set; the simulator only when `VERIFIK_SIMULATOR=true` and `APP_ENV` is set explicitly to `development`, `local` or `test`. Anything else answers 503. The token is server-side only. Optional: `VERIFIK_BASE_URL` (default `https://api.verifik.co`).
+- Sandbox demo (development only): with `VERIFIK_SANDBOX_DEMO=true`, a Verifik sandbox token in `VERIFIK_API_TOKEN` and `APP_ENV` set explicitly to `development`, `local` or `test`, every submission really calls the Verifik sandbox with its sample certificate (folio `50070080804`, code `2aacbb9a636a`) and the answer is taken as the driver's own certificate of the declared type, so it is verified (`201`). Its rows use the provider name `verifik-sandbox`. The flag in any other environment answers 503, so it never verifies anyone in production.
+- Simulator codes: `ok-<RUN>` / `anot-<RUN>` give a certificado de antecedentes without or with an annotation; `hv-<RUN>` / `hvanot-<RUN>` the same for the hoja de vida; anything else is not found. It returns no PDF.
+- Rule: a certificate is verified automatically only when its RUN matches the account's RUT, every register shows the declared type (registers named "...Condenas..." for antecedentes, "...Conductores..." for the hoja de vida) and every register says "No registra anotaciones". Annotations, an unrecognised response or a type that does not match go to manual review (`in_review`); another person's certificate is `rejected`. A folio can be used once per provider across all users.
+- The official PDF Verifik returns is stored in the private bucket named by `DRIVER_CERTIFICATES_BUCKET` (no default: unset means 503 when Verifik is configured), under `driver-certificates/{userId}/{certificateId}.pdf`, with the same `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as the other buckets. Create the bucket as private, like the others.
+- Storage: `Verificacion_Identidad` (migration `20261113_0001` adds `Tipo_Documento`, `Anotaciones`, `Clave_PDF`, `Fecha_Revision` and NOT VALID checks on status and type).
+
+Routes (any driver; other accounts get 403):
+
+- `GET /api/driver/verifications`: `{verified, certificates: [{type, status, reason, submittedAt, verifiedAt}]}`, one item per type; `status` is `missing`, `verified`, `in_review` or `rejected`.
+- `POST /api/driver/verifications`: body `{type, folio, verification_code}` (folio 10 to 15 letters or digits). 201 with the same view. 409 when that type is already verified or in review, or the folio was used; 422 when Verifik does not find the certificate or rejects the input; 503 when Verifik or storage fails (nothing is stored). No database transaction stays open during the Verifik call.
+
+What an unverified driver cannot do:
+
+- An independent driver's profile lists `driver_verification` in `missing`, so `POST /api/provider/profile/publish` answers 422 and a profile save unpublishes a profile that becomes incomplete. Company profiles do not depend on it.
+- `PUT /api/provider/services/{id}/assignments` answers 422 (`driver_not_verified`); `PUT /api/provider/services/{id}/driver` answers 409; `POST /api/provider/services/{id}/start` answers 409 while any assigned driver is unverified; publishing a shared trip with an unverified driver answers 409. Assignment options and `GET /api/provider/drivers` carry `verified` for each driver.
+
+Manual review (an Amira administrator, with the backend's `DATABASE_URL`; not exposed over HTTP):
+
+```bash
+uv run python -m amira_api.review_driver_verifications list
+uv run python -m amira_api.review_driver_verifications approve <certificateId>
+uv run python -m amira_api.review_driver_verifications reject <certificateId> --reason "Motivo que verá el conductor"
+```
+
+Only certificates in review can be decided; the row is locked while it changes. Exit codes: 0 done, 1 no database, 2 refused.
 
 ## Checks
 

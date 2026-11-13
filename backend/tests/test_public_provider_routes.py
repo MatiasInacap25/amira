@@ -573,6 +573,7 @@ def test_profile_owner_can_assign_only_a_driver_from_their_provider_profile():
         FakeResult(scalar=PROFILE_ID),
         FakeResult(scalar=service),
         FakeResult(scalar=driver),
+        FakeResult(scalar=True),
     ])
 
     response = run_request("PUT", f"/api/provider/services/{service.id}/driver", session, json_body={"driverId": str(driver.id)})
@@ -581,6 +582,25 @@ def test_profile_owner_can_assign_only_a_driver_from_their_provider_profile():
     assert response.json() == {"serviceId": str(service.id), "driverId": str(driver.id)}
     assert service.contracted_driver_id == driver.id
     assert session.committed
+
+
+def test_profile_owner_cannot_assign_an_unverified_driver():
+    service = Servicio(id=uuid4(), profile_id=PROFILE_ID, contracted_driver_id=None)
+    driver = Conductor(id=uuid4(), user_id=uuid4(), employer_profile_id=PROFILE_ID, driver_type_id=uuid4())
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "company_owner")),
+        FakeResult(scalar=PROFILE_ID),
+        FakeResult(scalar=service),
+        FakeResult(scalar=driver),
+        FakeResult(scalar=False),
+    ])
+
+    response = run_request("PUT", f"/api/provider/services/{service.id}/driver", session, json_body={"driverId": str(driver.id)})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "The driver must have verified certificates."
+    assert service.contracted_driver_id is None
+    assert not session.committed
 
 
 def test_profile_owner_cannot_assign_a_driver_from_another_company():

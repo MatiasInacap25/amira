@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from amira_api.driver_verification import is_driver_verified
 from amira_api.models import Conductor, ParadaViaje, RolUsuario, Servicio, Usuario, Vehiculo, Viaje, ViajeVehiculo
 
 TRIP_STATUS_SCHEDULED = "scheduled"
@@ -58,6 +59,8 @@ def publish_shared_trip(
         raise SharedTripConflict("El servicio necesita una fecha para publicar el viaje.")
     if not form.origin or not form.destination:
         raise SharedTripConflict("El servicio necesita origen y destino para publicar el viaje.")
+    if not is_driver_verified(session, driver.user_id):
+        raise SharedTripConflict("El conductor debe tener sus certificados verificados para publicar el viaje.")
 
     trip = Viaje(
         id=uuid4(),

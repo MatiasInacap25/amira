@@ -18,6 +18,7 @@ from amira_api.main import app
 from amira_api.settings import Settings, get_settings
 from amira_api.models import Base, Perfil, RolPerfil, RolUsuario, ServicioDisponible, TipoServicio, Usuario
 from chat_support import _register_btrim
+from driver_verification_support import verify_driver
 
 CLIENT_AUTH = UUID("7c2f4a10-5d1e-4b8a-9f3c-000000000001")
 OWNER_AUTH = UUID("7c2f4a10-5d1e-4b8a-9f3c-000000000002")
@@ -35,7 +36,7 @@ SERVICE_FLATBED = UUID("9e1b6c42-0a7d-4f3e-8b51-000000000002")
 def db():
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     event.listen(engine, "connect", _register_btrim)
-    tables = ("Rol_Usuario", "Usuario", "Rol_Perfil", "Perfil", "Servicios_Disponibles")
+    tables = ("Rol_Usuario", "Usuario", "Rol_Perfil", "Perfil", "Servicios_Disponibles", "Verificacion_Identidad")
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
     with engine.begin() as connection:
         connection.execute(text(
@@ -550,3 +551,33 @@ def test_put_profile_keeps_existing_hidden_link_when_saving_other_changes(call, 
 
     assert response.status_code == 200
     assert _service_ids(db, company) == {SERVICE_MOVING, SERVICE_SHARED}
+
+
+# Driver verification (odd/tasks/verificacion-conductores-verifik.md, S3)
+
+def test_an_unverified_independent_driver_cannot_publish_a_complete_profile(call, db, scenario):
+    assert call("PUT", "/api/provider/profile", as_auth_id=INDEPENDENT_AUTH, json=_without(_profile_body(), "name")).status_code == 200
+
+    response = call("POST", "/api/provider/profile/publish", as_auth_id=INDEPENDENT_AUTH)
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["missing"] == ["driver_verification"]
+    db.refresh(scenario["solo"])
+    assert scenario["solo"].public_activated_at is None
+
+
+def test_a_verified_independent_driver_publishes_and_reports_nothing_missing(call, db, scenario):
+    verify_driver(db, scenario["solo"].owner_user_id)
+    db.commit()
+    call("PUT", "/api/provider/profile", as_auth_id=INDEPENDENT_AUTH, json=_without(_profile_body(), "name"))
+
+    response = call("POST", "/api/provider/profile/publish", as_auth_id=INDEPENDENT_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["missing"] == []
+
+
+def test_company_publication_does_not_depend_on_driver_verification(call, db, scenario):
+    _save_and_publish_company(call)
+    db.refresh(scenario["company"])
+    assert scenario["company"].public_activated_at is not None

@@ -155,7 +155,8 @@ export type ServiceDetail = ServiceListItem & {
 export type ServiceListPage = PagedResponse<ServiceListItem>;
 
 export type ServiceAssignmentOptions = {
-  drivers: Array<{ driverId: string; firstName: string; lastName: string; isOwner: boolean }>;
+  // verified is false while the driver's certificates are not verified; such a driver cannot be assigned.
+  drivers: Array<{ driverId: string; firstName: string; lastName: string; isOwner: boolean; verified?: boolean }>;
   vehicles: Array<{ vehicleId: string; vehicleLabel: string; plate: string }>;
 };
 

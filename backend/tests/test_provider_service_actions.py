@@ -37,6 +37,7 @@ from amira_api.models import (
     Vehiculo,
 )
 from amira_api.settings import Settings, get_settings
+from driver_verification_support import unverify_driver, verify_driver  # noqa: F401
 from test_provider_service_routes import (  # noqa: F401  (pytest fixture re-export)
     CUSTOMER_AUTH,
     EMPLOYED_DRIVER_AUTH,
@@ -126,6 +127,8 @@ def fleet(db: Session) -> Fleet:
     gus = conductor(gus_user, company)
     dana = conductor(dana_user, None)
     outsider_driver = conductor(outsider_driver_user, outsider)
+    for verified_user in (eli_user, gus_user, dana_user, outsider_driver_user):
+        verify_driver(db, verified_user.id)
 
     def vehicle(profile, plate, brand, model):
         row = Vehiculo(id=uuid4(), profile_id=profile.id, plate=plate, brand=brand, model=model,
@@ -653,3 +656,26 @@ def test_requested_drivers_are_locked_in_id_order_before_the_same_day_check(call
     conflict = next(sql for sql in executed if sql.startswith('SELECT "Servicio_Asignacion"."ID_Conductor"'))
     assert "ORDER BY" in lock and '"Conductor"."ID"' in lock.split("ORDER BY", 1)[1]
     assert executed.index(lock) < executed.index(conflict)
+
+
+# Driver verification (odd/tasks/verificacion-conductores-verifik.md, S3)
+
+def test_an_unverified_driver_cannot_be_assigned(call, db, fleet: Fleet):
+    unverify_driver(db, fleet.gus.user_id)
+
+    response = _put(call, fleet.service_next_day, [_pair(fleet.gus, fleet.truck)])
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "driver_not_verified"
+    assert _assignment_rows(db, fleet.service_next_day) == []
+
+
+def test_a_service_with_an_unverified_assigned_driver_cannot_start(call, db, fleet: Fleet):
+    unverify_driver(db, fleet.eli_user.id)
+
+    response = _start(call, fleet.service_a, auth=OWNER_AUTH)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Every assigned driver must be verified before starting."
+    db.expire_all()
+    assert db.get(Servicio, fleet.service_a.id).status == "confirmed"

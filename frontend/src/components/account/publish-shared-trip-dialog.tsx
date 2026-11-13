@@ -134,7 +134,10 @@ function PublishSharedTripForm({ serviceId, onClose }: Omit<Props, "open">) {
               <select disabled={optionsLoading || noVehicles} id="publish-trip-driver" onChange={(event) => setDriverId(event.target.value)} required value={driverId}>
                 <option value="">Elige un conductor</option>
                 {driverItems.map((driver) => (
-                  <option key={driver.driverId} value={driver.driverId}>{driver.name}</option>
+                  // An unverified driver stays visible but cannot be chosen: the API refuses to put them on a trip.
+                  <option disabled={driver.verified === false} key={driver.driverId} value={driver.driverId}>
+                    {driver.verified === false ? `${driver.name} (sin verificar)` : driver.name}
+                  </option>
                 ))}
               </select>
             </label>

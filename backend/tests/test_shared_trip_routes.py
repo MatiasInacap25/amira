@@ -40,6 +40,7 @@ from amira_api.models import (
     ViajeVehiculo,
 )
 from chat_support import _register_btrim
+from driver_verification_support import unverify_driver, verify_driver
 
 CUSTOMER_AUTH = UUID("7c2e0a10-0000-4000-8000-000000000001")
 OTHER_CUSTOMER_AUTH = UUID("7c2e0a10-0000-4000-8000-000000000002")
@@ -53,7 +54,7 @@ INDEPENDENT_AUTH = UUID("7c2e0a10-0000-4000-8000-000000000007")
 TABLES = (
     "Rol_Usuario", "Rol_Perfil", "Usuario", "Perfil", "Tipo_Conductor", "Conductor", "Vehiculo",
     "Servicios_Disponibles", "Formulario_servicio", "Chat", "Cotizacion",
-    "Servicio", "Servicio_Asignacion", "Viaje", "Viaje_Vehiculo", "Parada_Viaje",
+    "Servicio", "Servicio_Asignacion", "Viaje", "Viaje_Vehiculo", "Parada_Viaje", "Verificacion_Identidad",
 )
 JOIN_REQUEST_DATE = "2030-10-20T09:00:00-03:00"
 
@@ -209,6 +210,8 @@ def scenario(db: Session) -> Scenario:
     other_vehicle = Vehiculo(id=uuid4(), profile_id=other_company.id, plate="CD5678", brand="Iveco", model="Daily",
                              image_storage_key="vehicles/2.jpg")
     service_type = TipoServicio(id=uuid4(), name="Mudanzas", slug="mudanzas")
+    for verified_user in (employee, other_employee, independent):
+        verify_driver(db, verified_user.id)
     db.add_all([driver, other_driver, solo_driver, vehicle, other_vehicle, service_type,
                 Commune(code="13101", region_code="13", name="Santiago"),
                 Commune(code="05101", region_code="05", name="Valparaíso")])
@@ -436,6 +439,7 @@ def test_provider_drivers_list_is_limited_to_its_own_drivers(api, scenario: Scen
     assert response.json()["items"] == [{
         "driverId": str(scenario.driver.id),
         "name": "Eli Test",
+        "verified": True,
     }]
 
 
@@ -559,3 +563,26 @@ def test_shared_routes_return_the_trip_id_and_its_date(api, scenario: Scenario, 
     item = response.json()["items"][0]
     assert item["tripId"] == str(trip.id)
     assert item["departureAt"].startswith("2030-10-20T09:00:00")
+
+
+# Driver verification (odd/tasks/verificacion-conductores-verifik.md, S3)
+
+def test_publish_refused_for_an_unverified_driver(api, scenario: Scenario, db: Session):
+    unverify_driver(db, scenario.driver.user_id)
+
+    response = api(
+        "POST", f"/api/provider/services/{scenario.shareable.id}/shared-trip",
+        as_auth_id=OWNER_AUTH, json=_publish_body(scenario),
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == "El conductor debe tener sus certificados verificados para publicar el viaje."
+    assert db.query(Viaje).count() == 0
+
+
+def test_provider_drivers_list_marks_unverified_drivers(api, scenario: Scenario, db: Session):
+    unverify_driver(db, scenario.driver.user_id)
+
+    response = api("GET", "/api/provider/drivers", as_auth_id=OWNER_AUTH)
+
+    assert response.json()["items"] == [{"driverId": str(scenario.driver.id), "name": "Eli Test", "verified": False}]

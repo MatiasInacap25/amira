@@ -63,8 +63,11 @@ export function ServiceAssignmentForm({ assignments, options, optionsPending, op
   const [error, setError] = useState("");
   const [conflicts, setConflicts] = useState<ServiceSameDayConflict[] | null>(null);
 
+  // Unverified drivers are left out: the API refuses to assign them.
+  const verifiedDrivers = (options?.drivers ?? []).filter((driver) => driver.verified !== false);
+  const unverifiedCount = (options?.drivers.length ?? 0) - verifiedDrivers.length;
   const driverChoices = withSelectedFallbacks(
-    (options?.drivers ?? []).map((driver) => ({
+    verifiedDrivers.map((driver) => ({
       id: driver.driverId,
       label: driver.isOwner ? `${driverFullName(driver)} (tú)` : driverFullName(driver),
     })),
@@ -125,6 +128,11 @@ export function ServiceAssignmentForm({ assignments, options, optionsPending, op
         {optionsErrorMessage && <p className="account-service-form-error" role="alert">{optionsErrorMessage}</p>}
         {options && options.drivers.length === 0 && (
           <p className="account-service-empty">No hay conductores disponibles en tu perfil.</p>
+        )}
+        {unverifiedCount > 0 && (
+          <p className="account-service-empty">
+            {unverifiedCount === 1 ? "1 conductor no aparece" : `${unverifiedCount} conductores no aparecen`} porque sus certificados no están verificados.
+          </p>
         )}
         {options && options.vehicles.length === 0 && (
           <p className="account-service-empty">No hay vehículos disponibles en tu perfil.</p>

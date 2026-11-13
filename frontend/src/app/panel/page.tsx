@@ -87,6 +87,7 @@ export default function PanelPage() {
         <nav aria-label="Acciones del conductor">
           <ul className="panel-action-list">
             <li><Link className="panel-action" href="/cuenta/perfil">Mi perfil <ArrowRight aria-hidden="true" size={16} /></Link></li>
+            <li><Link className="panel-action" href="/cuenta/verificacion">Verificación de conductor <ArrowRight aria-hidden="true" size={16} /></Link></li>
           </ul>
         </nav>
         <ProviderServicesBody />
@@ -104,6 +105,7 @@ export default function PanelPage() {
             <li><Link className="panel-action" href="/cuenta/vehiculos">Vehículos <ArrowRight aria-hidden="true" size={16} /></Link></li>
             <li><Link className="panel-action" href="/cuenta/viajes-compartidos">Viajes compartidos <ArrowRight aria-hidden="true" size={16} /></Link></li>
             <li><Link className="panel-action" href="/cuenta/perfil">Configuración del perfil <ArrowRight aria-hidden="true" size={16} /></Link></li>
+            <li><Link className="panel-action" href="/cuenta/verificacion">Verificación de conductor <ArrowRight aria-hidden="true" size={16} /></Link></li>
             {role === "company_owner" && (
               <li><Link className="panel-action" href="/cuenta/invitaciones">Invitaciones <ArrowRight aria-hidden="true" size={16} /></Link></li>
             )}

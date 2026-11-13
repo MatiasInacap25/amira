@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
+from amira_api.driver_verification import verified_driver_condition
 from amira_api.models import Conductor, Servicio, Usuario, Vehiculo, Viaje
 from amira_api.public_routes import MAX_OFFSET, MAX_PAGE_SIZE, _owned_provider
 from amira_api.shared_trip_schemas import (
@@ -142,10 +143,12 @@ def list_provider_shared_trips(
 def list_provider_drivers(current_user: CurrentUser, session: Database) -> ProviderDriverPage:
     owner_account_id, profile_id = _owned_provider(session, current_user)
     rows = session.execute(
-        provider_drivers_query(profile_id, owner_account_id).order_by(Usuario.first_name, Conductor.id)
+        provider_drivers_query(profile_id, owner_account_id)
+        .add_columns(verified_driver_condition(Conductor.user_id))
+        .order_by(Usuario.first_name, Conductor.id)
     ).all()
     items = [
-        ProviderDriverItem(driver_id=driver_id, name=f"{first_name} {last_name}")
-        for driver_id, first_name, last_name in rows
+        ProviderDriverItem(driver_id=driver_id, name=f"{first_name} {last_name}", verified=bool(verified))
+        for driver_id, first_name, last_name, verified in rows
     ]
     return ProviderDriverPage(items=items)
