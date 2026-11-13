@@ -86,9 +86,18 @@ def certificate(run: str = DRIVER_RUT, fines: str = CLEAN, pdf: bytes | None = P
         run=run,
         registers=(
             CertificateRegister(register="Registro General de Condenas", run=run, fines=CLEAN),
-            CertificateRegister(register="Registro de infracciones", run=run, fines=fines),
+            CertificateRegister(register="Registro Especial de Condenas por Actos de Violencia Intrafamiliar", run=run, fines=fines),
         ),
         pdf=pdf,
+    )
+
+
+def driver_record(run: str = DRIVER_RUT) -> CertificateRecord:
+    return CertificateRecord(
+        name="PEDRO SOTO",
+        run=run,
+        registers=(CertificateRegister(register="Registro Nacional de Conductores de Vehículos Motorizados", run=run, fines=CLEAN),),
+        pdf=PDF,
     )
 
 
@@ -184,11 +193,23 @@ def test_a_clean_certificate_of_the_driver_is_verified_and_its_pdf_stored(client
     assert storage.uploads[row.pdf_storage_key] == (PDF, "application/pdf")
     assert row.annotations == [
         {"register": "Registro General de Condenas", "fines": CLEAN},
-        {"register": "Registro de infracciones", "fines": CLEAN},
+        {"register": "Registro Especial de Condenas por Actos de Violencia Intrafamiliar", "fines": CLEAN},
     ]
 
 
 def test_both_clean_certificates_verify_the_driver(client, verifier) -> None:
+    as_user(DRIVER_AUTH)
+    verifier.results["50070080804"] = certificate()
+    verifier.results["50070080805"] = driver_record()
+    assert submit(client).status_code == 201
+
+    response = submit(client, kind="driver_record", folio="50070080805")
+
+    assert response.json()["verified"] is True
+    assert [item["status"] for item in response.json()["certificates"]] == ["verified", "verified"]
+
+
+def test_a_second_antecedentes_certificate_cannot_stand_in_for_the_driver_record(client, db, verifier) -> None:
     as_user(DRIVER_AUTH)
     verifier.results["50070080804"] = certificate()
     verifier.results["50070080805"] = certificate()
@@ -196,8 +217,10 @@ def test_both_clean_certificates_verify_the_driver(client, verifier) -> None:
 
     response = submit(client, kind="driver_record", folio="50070080805")
 
-    assert response.json()["verified"] is True
-    assert [item["status"] for item in response.json()["certificates"]] == ["verified", "verified"]
+    assert response.status_code == 201
+    assert response.json()["verified"] is False
+    assert response.json()["certificates"][1]["status"] == "in_review"
+    assert rows(db)[1].document_type == "driver_record"
 
 
 def test_annotations_leave_the_certificate_in_review(client, db, verifier) -> None:

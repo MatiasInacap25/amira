@@ -182,7 +182,7 @@ def submit_driver_certificate(
         logger.warning("Certificate verification failed upstream for user %s.", user_id, exc_info=True)
         raise HTTPException(status_code=503, detail=UNAVAILABLE_MESSAGE) from None
 
-    outcome = classify_certificate(record, expected_run)
+    outcome = classify_certificate(record, expected_run, payload.type)
     row_id = uuid4()
     pdf_key = None
     if record.pdf is not None and storage is not None:

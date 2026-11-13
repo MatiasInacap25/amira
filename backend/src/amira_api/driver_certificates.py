@@ -23,6 +23,12 @@ ANNOTATIONS_REASON = "El certificado tiene anotaciones y será revisado por el e
 UNRECOGNISED_REASON = "No pudimos leer las anotaciones del certificado; será revisado por el equipo de Amira."
 OTHER_PERSON_REASON = "El certificado pertenece a otra persona."
 NO_RUT_REASON = "Tu cuenta no tiene un RUT registrado para comparar con el certificado."
+OTHER_TYPE_REASON = "No pudimos confirmar que el certificado sea del tipo indicado; será revisado por el equipo de Amira."
+# Verifik returns no certificate type, so the type is read from the register names: the antecedentes certificate
+# lists the conviction registers ("Registro General de Condenas", ...), the hoja de vida the national driver register
+# ("Registro Nacional de Conductores ..."). A certificate whose registers do not show the declared type is never
+# verified automatically, so an antecedentes certificate cannot stand in for the hoja de vida.
+TYPE_MARKERS: dict[str, str] = {"criminal_record": "condenas", "driver_record": "conductores"}
 
 
 class CertificateNotFound(Exception):
@@ -74,7 +80,14 @@ def compact_run(value: str) -> str:
     return re.sub(r"[.\s-]", "", value).upper()
 
 
-def classify_certificate(record: CertificateRecord, expected_run: str | None) -> CertificateOutcome:
+def _shows_type(record: CertificateRecord, document_type: str) -> bool:
+    names = [item.register.lower() for item in record.registers]
+    own = TYPE_MARKERS[document_type]
+    others = [marker for kind, marker in TYPE_MARKERS.items() if kind != document_type]
+    return any(own in name for name in names) and not any(marker in name for name in names for marker in others)
+
+
+def classify_certificate(record: CertificateRecord, expected_run: str | None, document_type: str) -> CertificateOutcome:
     if not expected_run:
         return CertificateOutcome("rejected", NO_RUT_REASON)
     expected = compact_run(expected_run)
@@ -82,6 +95,8 @@ def classify_certificate(record: CertificateRecord, expected_run: str | None) ->
         return CertificateOutcome("rejected", OTHER_PERSON_REASON)
     if not record.registers or any(compact_run(item.run) != expected for item in record.registers):
         return CertificateOutcome("in_review", UNRECOGNISED_REASON)
+    if not _shows_type(record, document_type):
+        return CertificateOutcome("in_review", OTHER_TYPE_REASON)
     if all(item.fines.strip().lower() == CLEAN_FINES for item in record.registers):
         return CertificateOutcome("verified", None)
     return CertificateOutcome("in_review", ANNOTATIONS_REASON)

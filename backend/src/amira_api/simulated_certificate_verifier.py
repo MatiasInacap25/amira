@@ -1,8 +1,10 @@
 """Simulated CertificateVerifier for development. It refuses to run outside the development allowlist.
 
 The verification code chooses the answer, so a developer can try every branch without Verifik:
-- ``ok-<RUN>``: a certificate of that RUN with no annotations.
-- ``anot-<RUN>``: a certificate of that RUN with one annotation (goes to manual review).
+- ``ok-<RUN>``: a certificado de antecedentes of that RUN with no annotations.
+- ``anot-<RUN>``: a certificado de antecedentes of that RUN with one annotation (goes to manual review).
+- ``hv-<RUN>``: a hoja de vida del conductor of that RUN with no annotations.
+- ``hvanot-<RUN>``: a hoja de vida del conductor of that RUN with one annotation.
 - anything else: not found.
 It never returns a PDF, so no storage bucket is needed in development.
 """
@@ -30,15 +32,14 @@ class SimulatedCertificateVerifier:
 
     def verify_certificate(self, folio: str, verification_code: str) -> CertificateRecord:
         prefix, _, run = verification_code.partition("-")
-        if prefix not in {"ok", "anot"} or not run:
+        if prefix not in {"ok", "anot", "hv", "hvanot"} or not run:
             raise CertificateNotFound("The simulator has no certificate for this code.")
-        second = CLEAN if prefix == "ok" else "Anotación simulada"
-        return CertificateRecord(
-            name="CONDUCTOR SIMULADO",
-            run=run,
-            registers=(
+        fines = CLEAN if prefix in {"ok", "hv"} else "Anotación simulada"
+        if prefix.startswith("hv"):
+            registers = (CertificateRegister(register="Registro Nacional de Conductores de Vehículos Motorizados", run=run, fines=fines),)
+        else:
+            registers = (
                 CertificateRegister(register="Registro General de Condenas", run=run, fines=CLEAN),
-                CertificateRegister(register="Registro simulado", run=run, fines=second),
-            ),
-            pdf=None,
-        )
+                CertificateRegister(register="Registro Especial de Condenas por Actos de Violencia Intrafamiliar", run=run, fines=fines),
+            )
+        return CertificateRecord(name="CONDUCTOR SIMULADO", run=run, registers=registers, pdf=None)
