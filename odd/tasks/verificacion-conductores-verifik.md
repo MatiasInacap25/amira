@@ -1,0 +1,34 @@
+# Driver verification with Verifik (certificado de antecedentes + hoja de vida del conductor)
+
+Objective: independent drivers and company drivers verify two Registro Civil certificates through Verifik; unverified drivers cannot publish nor be assigned. Branch: `feat/driver-verification-verifik` (from develop). Delivery: `ask-on-risk`. Runners: `uv run pytest` (backend), `npx playwright test`, `npm run lint`, `npx tsc --noEmit`.
+
+## Specs
+
+- **S1 — Certificates.** "quiero que los conductores y conductores independientes tengan que subir certificados de antecedentes y hoja de vida y que se verifiquen con verifik". Drivers are users with a `Conductor` row: independent drivers, company drivers (invited) and company owners with `also_driver`. Each must verify a `certificado de antecedentes` and a `hoja de vida del conductor`. Assumption: "subir" is entering the certificate's **folio** and **código verificador**, because Verifik verifies Registro Civil certificates with those two values (`GET /v2/cl/registro-civil/certificado?folio=&verificationCode=`, Bearer token); the official PDF Verifik returns is kept in a private bucket.
+- **S2 — Verification rule.** A certificate counts only if Verifik finds it and its `details.run` equals the driver's RUT (normalized). If every register says "No registra anotaciones" it is verified automatically. Answer to "Si el certificado es auténtico y del mismo RUT pero TIENE anotaciones": "Revisión manual" — it stays "En revisión" until an Amira administrator approves or rejects it. A certificate not found, from another RUN, or with an unrecognised response is rejected or in review, never verified. A folio already used by another user is refused. A driver is verified when both certificates are verified.
+- **S3 — What is blocked.** Answer to "¿Qué debe bloquearse mientras un conductor NO esté verificado?": "Publicar y operar" — an unverified independent driver cannot publish their profile, and no unverified driver can be assigned to services (assignment options, assignment writes, contracted driver, starting a service) or to shared trips. They can still enter the panel and complete the verification. Assumption: profiles already published and assignments already made before this feature are not changed by the migration; the guards apply to new publish and assignment actions.
+- **S4 — Admin review.** Assumption: the repo has no admin UI, so review is a CLI command in the same pattern as `release_payouts` (`uv run python -m amira_api.review_driver_verifications list|approve|reject`).
+- **S5 — Verifik integration.** Port + adapters like payments: a real HTTP adapter configured by `VERIFIK_API_TOKEN` (secret) and `VERIFIK_BASE_URL`; a simulated adapter allowed only when `APP_ENV` is explicitly development/local/test (fail-closed); without configuration the endpoints answer 503. The token never reaches the frontend or logs.
+- **S6 — Frontend.** A driver page (`/cuenta/verificacion`) to submit both certificates and see each status (Verificado, En revisión, Rechazado con motivo); the profile publish form and the assignment/trip driver pickers explain when verification is missing.
+
+## Tasks
+
+| ID | Specs | Route | Status | Evidence |
+|---|---|---|---|---|
+| T1 | S1, S2, S5 | inline | done | RED import error → GREEN 33 tests (`test_driver_certificates.py`), migration test; full backend 1130 passed |
+| T2 | S1, S2 | inline | done | RED collection error → GREEN 26 route tests incl. race and folio reuse; new modules 99-100% covered |
+| T3 | S3 | inline | pending | publish and assignment guards |
+| T4 | S4 | inline | pending | review CLI |
+| T5 | S6 | inline | pending | frontend page, notices, Playwright |
+| T6 | S1-S5 | inline | pending | backend README and env docs |
+
+Route evidence: one model writing sequential units that share the new model and port (T2-T5 depend on T1), so no Writer trigger. High risk (items 1, 2, 3: new table/migration, permission guards, an external credential); an independent verifier runs at the feature's end.
+
+## Log
+
+- **L1 (2026-11-13, user):** "quiero que los conductores y conductores independientes tengan que subir certificados de antecedentes y hoja de vida y que se verifiquen con verifik"
+- **L2 (2026-11-13, user):** blocking scope answer "Publicar y operar (Recommended)"; annotations answer "Revisión manual (Recommended)".
+- **L3:** Verifik docs (https://docs.verifik.co/background-check/chile-certificate-verify/): GET with `folio` (10–15 chars) and `verificationCode`; 200 returns `details.name`, `details.run`, `details.registers[{register, run, fines}]`, `pdfBase64`, `urlPDF`; 404 NotFound; 409 MissingParameter / timeout_data_source. Sandbox sample folio 50070080804 / code 2aacbb9a636a. The certificate type and issue date are not returned; the hoja de vida response shape is not documented.
+- **L4:** Map: `Conductor` (models.py:225) has no verification column; `Verificacion_Identidad` (models.py:711) exists unused. Assignment points: `_assignable_driver_filter` and `replace_service_assignments` (provider_service_routes.py:151, ~296), `start_provider_service` (:336), `assign_provider_service_driver` (public_routes.py:529), `provider_drivers_query` and `publish_shared_trip` (shared_trip_service.py:25, 43). Publish: `_missing_items` (provider_profile_routes.py:28). Ports: payment_provider.py / simulated_payment_provider.py / payment_routes.py:48-75. Storage: evidence_storage.py port, supabase_evidence_storage.py. Alembic head `20261108_0001`.
+- **L5 (2026-11-13, user):** chain strategy "Rama de feature (Recommended)" → `feature-branch-chain`: slices are PRs into `feat/driver-verification-verifik`; one final PR to develop. Slices: (1) T1+T2 backend core, (2) T3+T4 guards and review CLI, (3) T5+T6 frontend and docs.
+- **L6:** Slice 1 = `c228fd4` + `41a1476` on `feat/driver-verification-verifik-1-backend` (not pushed). Assessed high (escalated, item 1: migration + Verifik credential); consent granted; lenses risk/resilience/reliability. CRITICAL `R1-self-declared-certificate-type` (an antecedentes certificate submitted as driver_record verified the driver) fixed in `41a1476` (type read from register names; unknown type → in_review); targeted validation approved; acknowledged (lineage review-63cc82c541ba0920). Advisory follow-ups: unclosed httpx client per request, env-dependent selection tests, folio consumed by a rejected submission, orphan PDF on a non-integrity DB error, sync route blocking a worker up to 30 s on a slow Registro Civil.

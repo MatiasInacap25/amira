@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     # Provider vehicle photos use their own private bucket. No default: unset means fail closed (503).
     vehicle_images_bucket: str | None = None
     vehicle_image_url_ttl_seconds: int = Field(default=300, gt=0)
+    # Driver certificate verification through Verifik. The token is server-side only; without it (and without the
+    # development simulator) the verification endpoints answer 503.
+    verifik_api_token: SecretStr | None = None
+    verifik_base_url: str = "https://api.verifik.co"
+    # Development-only: the simulated verifier, allowed only when APP_ENV is set explicitly to development, local or test.
+    verifik_simulator: bool = False
+    # Official certificate PDFs returned by Verifik live in their own private bucket. No default: unset means fail closed.
+    driver_certificates_bucket: str | None = None
+    driver_certificate_url_ttl_seconds: int = Field(default=300, gt=0)
     service_claim_window_hours: int = Field(default=24, gt=0)
     # Platform commission withheld from each payout, as a whole percent of the gross payment (0 to 99).
     payout_commission_percent: int = Field(default=10, ge=0, lt=100)

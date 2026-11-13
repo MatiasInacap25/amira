@@ -709,8 +709,18 @@ class Valoracion(Base):
 
 
 class VerificacionIdentidad(Base):
+    """A driver certificate checked by a CertificateVerifier (driver_certificates). One row per submission.
+
+    provider_verification_id is the certificate's folio, so a folio can be used once per provider across all users.
+    Status is verified, in_review (annotations; an administrator decides) or rejected. The CHECKs on status and
+    document type live in migration 20261113_0001 as NOT VALID, so rows written before it are not rechecked.
+    """
+
     __tablename__ = "Verificacion_Identidad"
-    __table_args__ = (UniqueConstraint("Proveedor", "ID_Verificacion_Proveedor", name="uq_identity_provider_verification"),)
+    __table_args__ = (
+        UniqueConstraint("Proveedor", "ID_Verificacion_Proveedor", name="uq_identity_provider_verification"),
+        Index("ix_identity_verification_user_document", "ID_Usuario", "Tipo_Documento", "Fecha_Creacion"),
+    )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id: Mapped[UUID] = mapped_column("ID_Usuario", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False, index=True)
@@ -721,6 +731,14 @@ class VerificacionIdentidad(Base):
     updated_at: Mapped[datetime] = mapped_column("Fecha_Actualizacion", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     verified_at: Mapped[datetime | None] = mapped_column("Fecha_Verificacion", DateTime(timezone=True))
     rejection_reason: Mapped[str | None] = mapped_column("Motivo_Rechazo", Text)
+    # criminal_record (certificado de antecedentes) or driver_record (hoja de vida del conductor).
+    document_type: Mapped[str | None] = mapped_column("Tipo_Documento", String(40))
+    # The certificate's registers as [{"register", "fines"}], kept for the manual review.
+    annotations: Mapped[list[dict[str, Any]] | None] = mapped_column("Anotaciones", JSONB)
+    # Key of the official PDF in DRIVER_CERTIFICATES_BUCKET, when the verifier returned one.
+    pdf_storage_key: Mapped[str | None] = mapped_column("Clave_PDF", String(512))
+    # Set when an administrator approves or rejects a certificate that was in review.
+    reviewed_at: Mapped[datetime | None] = mapped_column("Fecha_Revision", DateTime(timezone=True))
 
     user: Mapped[Usuario] = relationship(back_populates="identity_verifications")
 
