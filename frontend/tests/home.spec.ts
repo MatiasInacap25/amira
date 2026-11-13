@@ -22,7 +22,20 @@ test("desktop navigation links to the service pages and the landing sections", a
   await expect(navigation.getByRole("link", { name: "Transportistas" })).toHaveAttribute("href", "#transportistas");
   await expect(page.getByRole("banner").getByRole("link", { name: "Iniciar sesión" })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("banner").getByRole("link", { name: "Crear cuenta" })).toHaveAttribute("href", "/registro");
-  await expect(page.getByRole("banner").getByRole("link", { name: "Buscar un servicio" })).toHaveAttribute("href", "#buscar");
+  await expect(page.getByRole("banner").getByRole("link", { name: "Ofrecer mis servicios" })).toHaveAttribute("href", "/registro?intent=provider");
+  await expect(page.getByRole("banner").getByRole("link", { name: "Buscar un servicio" })).toHaveCount(0);
+});
+
+test("the Amira logo image replaces the dot mark in the home and marketplace headers", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("banner").getByRole("link", { name: "Amira, inicio" }).locator("img")).toHaveAttribute("src", /amira-logo\.png/);
+  await expect(page.getByRole("banner").locator(".lp-mark")).toHaveCount(0);
+
+  await page.goto("/servicios");
+  const header = page.locator("header.site-header");
+  await expect(header.getByRole("link", { name: "Amira, inicio" }).locator("img")).toHaveAttribute("src", /amira-logo\.png/);
+  await expect(header.getByRole("link", { name: "Ofrecer mis servicios" })).toHaveAttribute("href", "/registro?intent=provider");
+  await expect(page.locator("footer").getByRole("link", { name: "Amira, inicio" }).locator("img")).toHaveAttribute("src", /amira-logo\.png/);
 });
 
 test("lists one button per catalog service with its description", async ({ page }) => {

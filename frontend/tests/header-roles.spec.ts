@@ -96,7 +96,7 @@ for (const role of PANEL_ROLES) {
     for (const name of PUBLIC_SEARCH_LINKS) {
       await expect(desktopNav(page).getByRole("link", { name })).toHaveCount(0);
     }
-    await expect(page.locator("header.site-header").getByRole("link", { name: "Buscar un servicio" })).toHaveCount(0);
+    await expect(page.locator("header.site-header").getByRole("link", { name: "Ofrecer mis servicios" })).toHaveCount(0);
 
     await page.goto("/");
     for (const name of PUBLIC_SEARCH_LINKS) {
@@ -121,7 +121,7 @@ test("anonymous visitors keep the public search links in the desktop header and 
   for (const name of PUBLIC_SEARCH_LINKS) {
     await expect(desktopNav(page).getByRole("link", { name })).toBeVisible();
   }
-  await expect(page.locator("header.site-header").getByRole("link", { name: "Buscar un servicio" })).toBeVisible();
+  await expect(page.locator("header.site-header").getByRole("link", { name: "Ofrecer mis servicios" })).toBeVisible();
 
   await page.goto("/");
   for (const name of PUBLIC_SEARCH_LINKS) {
@@ -158,5 +158,5 @@ test("customers keep the public search links in the desktop header", async ({ pa
   for (const name of PUBLIC_SEARCH_LINKS) {
     await expect(desktopNav(page).getByRole("link", { name })).toBeVisible();
   }
-  await expect(page.locator("header.site-header").getByRole("link", { name: "Buscar un servicio" })).toBeVisible();
+  await expect(page.locator("header.site-header").getByRole("link", { name: "Ofrecer mis servicios" })).toBeVisible();
 });

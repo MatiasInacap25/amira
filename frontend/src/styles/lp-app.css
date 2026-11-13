@@ -240,7 +240,6 @@
 .lp-auth .auth-brand-panel { gap: 32px; padding: 40px 48px; background: var(--lp-inv-bg); color: var(--lp-inv-ink); }
 .lp-auth .auth-brand-panel::before, .lp-auth .auth-brand-panel::after { display: none; }
 .lp-auth .auth-brand { gap: 10px; color: var(--lp-inv-ink); font-size: 22px; font-weight: 500; letter-spacing: -0.04em; }
-.lp-auth .auth-brand .lp-mark { fill: var(--lp-inv-ink); }
 .lp-auth .auth-brand-copy { max-width: 480px; margin: 0; }
 .lp-auth .auth-kicker { margin: 0 0 16px; color: #f0a37f; font-size: 13px; font-weight: 500; letter-spacing: .04em; }
 .lp-auth .auth-brand-copy h1 { margin: 0 0 20px; color: var(--lp-inv-ink); font-size: clamp(36px, 3.6vw, 52px); font-weight: 500; letter-spacing: -0.04em; line-height: 1.06; text-wrap: balance; }
