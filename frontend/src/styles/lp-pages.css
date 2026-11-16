@@ -398,3 +398,5 @@
 }
 .invitation-share { margin: 16px 0; }
 .invitation-share-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.customer-service-title-link { color: inherit; text-decoration: none; }
+.customer-service-title-link:hover, .customer-service-title-link:focus-visible { text-decoration: underline; }
