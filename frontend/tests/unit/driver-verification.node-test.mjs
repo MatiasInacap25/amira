@@ -7,25 +7,48 @@ const {
   CERTIFICATE_LABELS,
   certificateStatusLabel,
   driverVerificationError,
-  validateCertificateForm,
+  simulatedCertificateSubmission,
+  validateCertificateFile,
 } = await import("../../src/lib/driver-verification-api.ts");
 const { missingProfileLabels } = await import("../../src/lib/provider-profile-api.ts");
 
-test("a folio of 10 to 15 letters or digits and a code are valid, after trimming", () => {
-  assert.deepEqual(validateCertificateForm({ folio: " 50070080804 ", verificationCode: " 2aacbb9a636a " }), {});
+function file(name, type, content = "%PDF-1.7\n", size) {
+  const blob = new File([content], name, { type });
+  return size === undefined ? blob : Object.defineProperty(blob, "size", { value: size });
+}
+
+test("a PDF certificate is valid", async () => {
+  assert.equal(await validateCertificateFile(file("antecedentes.pdf", "application/pdf")), null);
+  assert.equal(await validateCertificateFile(file("HOJA-VIDA.PDF", "")), null);
 });
 
-test("the folio is required and must be 10 to 15 letters or digits", () => {
-  assert.equal(validateCertificateForm({ folio: "", verificationCode: "abc" }).folio, "Ingresa el folio del certificado.");
-  assert.equal(validateCertificateForm({ folio: "123456789", verificationCode: "abc" }).folio, "El folio tiene entre 10 y 15 letras o números.");
-  assert.equal(validateCertificateForm({ folio: "5007008080412345", verificationCode: "abc" }).folio, "El folio tiene entre 10 y 15 letras o números.");
-  assert.equal(validateCertificateForm({ folio: "50070-80804", verificationCode: "abc" }).folio, "El folio tiene entre 10 y 15 letras o números.");
+test("a certificate file is required", async () => {
+  assert.equal(await validateCertificateFile(null), "Selecciona el certificado en PDF.");
 });
 
-test("the verification code is required and has no spaces or symbols", () => {
-  assert.equal(validateCertificateForm({ folio: "50070080804", verificationCode: " " }).verificationCode, "Ingresa el código verificador.");
-  assert.equal(validateCertificateForm({ folio: "50070080804", verificationCode: "2aac bb9a" }).verificationCode, "El código verificador solo tiene letras y números.");
-  assert.equal(validateCertificateForm({ folio: "50070080804", verificationCode: "a".repeat(65) }).verificationCode, "El código verificador solo tiene letras y números.");
+test("only PDF files are accepted", async () => {
+  const onlyPdf = "Solo se aceptan certificados en PDF.";
+  assert.equal(await validateCertificateFile(file("foto.jpg", "image/jpeg", "\xff\xd8\xff")), onlyPdf);
+  assert.equal(await validateCertificateFile(file("certificado.pdf", "image/png")), onlyPdf);
+  assert.equal(await validateCertificateFile(file("renombrado.pdf", "application/pdf", "not a pdf")), onlyPdf);
+});
+
+test("a PDF over 5 MB is refused", async () => {
+  assert.equal(
+    await validateCertificateFile(file("grande.pdf", "application/pdf", "%PDF-1.7", 5 * 1024 * 1024 + 1)),
+    "El PDF no puede pesar más de 5 MB.",
+  );
+});
+
+test("the simulated submission never carries the file and uses a fresh valid folio", () => {
+  const first = simulatedCertificateSubmission("criminal_record");
+  const second = simulatedCertificateSubmission("driver_record");
+  assert.deepEqual(Object.keys(first).sort(), ["folio", "type", "verification_code"]);
+  assert.equal(first.type, "criminal_record");
+  assert.equal(second.type, "driver_record");
+  assert.match(first.folio, /^[1-9][0-9]{14}$/);
+  assert.match(first.verification_code, /^[0-9A-Za-z_-]{1,64}$/);
+  assert.notEqual(first.folio, second.folio);
 });
 
 test("each certificate type has its Spanish name", () => {
@@ -53,7 +76,7 @@ test("the API's Spanish detail is shown for 409 and 422 answers", async () => {
 });
 
 test("other failures get fixed Spanish messages and never echo a structured detail", async () => {
-  assert.equal(await driverVerificationError(response(422, { detail: [{ msg: "x" }] })), "Revisa el folio y el código verificador.");
+  assert.equal(await driverVerificationError(response(422, { detail: [{ msg: "x" }] })), "Revisa el certificado e inténtalo nuevamente.");
   assert.equal(await driverVerificationError(response(403, { detail: "Solo los conductores pueden verificar certificados." })), "Solo los conductores pueden verificar certificados.");
   assert.equal(await driverVerificationError(response(503, { detail: "boom" })), "La verificación de certificados no está disponible por el momento. Inténtalo más tarde.");
   assert.equal(await driverVerificationError(response(500)), "No pudimos completar la verificación. Inténtalo nuevamente.");

@@ -130,11 +130,14 @@ async function mockVerificationApi(
   return { posts };
 }
 
+const pdf = (name: string) => ({ name, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n%fake certificate\n") });
+const simulatedPost = (type: string) => ({ type, folio: expect.stringMatching(/^[1-9][0-9]{14}$/), verification_code: "demo-pdf" });
+
 const criminalForm = (page: Page) => page.getByRole("form", { name: "Verificar certificado de antecedentes" });
 const driverForm = (page: Page) => page.getByRole("form", { name: "Verificar hoja de vida del conductor" });
 
 test.describe("cuenta verificacion", () => {
-  test("a driver verifies both certificates by folio and verification code", async ({ page }) => {
+  test("a driver uploads both PDFs, the files are not sent, and both certificates end verified", async ({ page }) => {
     const verifiedCriminal = view(certificate("criminal_record", "verified"), certificate("driver_record"));
     const { posts } = await mockVerificationApi(page, {
       answers: [
@@ -146,32 +149,35 @@ test.describe("cuenta verificacion", () => {
 
     await expect(page.getByRole("heading", { name: "Certificados del conductor" })).toBeVisible();
     await expect(page.getByText("Mientras tus dos certificados no estén verificados")).toBeVisible();
-    await criminalForm(page).getByLabel("Folio").fill(" 50070080804 ");
-    await criminalForm(page).getByLabel("Código verificador").fill("2aacbb9a636a");
-    await criminalForm(page).getByRole("button", { name: "Verificar certificado" }).click();
+    await expect(criminalForm(page).getByLabel("Certificado en PDF")).toHaveAttribute("accept", "application/pdf,.pdf");
+    await criminalForm(page).getByLabel("Certificado en PDF").setInputFiles(pdf("antecedentes.pdf"));
+    await criminalForm(page).getByRole("button", { name: "Subir certificado" }).click();
 
     await expect(page.getByRole("status")).toHaveText("Certificado verificado.");
     await expect(criminalForm(page)).toHaveCount(0);
-    await driverForm(page).getByLabel("Folio").fill("50070080805");
-    await driverForm(page).getByLabel("Código verificador").fill("abc123");
-    await driverForm(page).getByRole("button", { name: "Verificar certificado" }).click();
+    await driverForm(page).getByLabel("Certificado en PDF").setInputFiles(pdf("hoja-de-vida.pdf"));
+    await driverForm(page).getByRole("button", { name: "Subir certificado" }).click();
 
     await expect(page.getByText("Tus certificados están verificados.")).toBeVisible();
-    expect(posts).toEqual([
-      { type: "criminal_record", folio: "50070080804", verification_code: "2aacbb9a636a" },
-      { type: "driver_record", folio: "50070080805", verification_code: "abc123" },
-    ]);
+    expect(posts).toEqual([simulatedPost("criminal_record"), simulatedPost("driver_record")]);
+    const [first, second] = posts as Array<{ folio: string }>;
+    expect(first.folio).not.toBe(second.folio);
   });
 
-  test("an invalid folio is flagged inline and nothing is sent", async ({ page }) => {
+  test("a missing file or a file that is not a PDF is flagged inline and nothing is sent", async ({ page }) => {
     const { posts } = await mockVerificationApi(page);
     await signInToVerification(page);
 
-    await criminalForm(page).getByLabel("Folio").fill("123");
-    await criminalForm(page).getByRole("button", { name: "Verificar certificado" }).click();
+    await criminalForm(page).getByRole("button", { name: "Subir certificado" }).click();
+    await expect(criminalForm(page).getByText("Selecciona el certificado en PDF.")).toBeVisible();
 
-    await expect(criminalForm(page).getByText("El folio tiene entre 10 y 15 letras o números.")).toBeVisible();
-    await expect(criminalForm(page).getByText("Ingresa el código verificador.")).toBeVisible();
+    await criminalForm(page).getByLabel("Certificado en PDF").setInputFiles({ name: "foto.jpg", mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff]) });
+    await criminalForm(page).getByRole("button", { name: "Subir certificado" }).click();
+    await expect(criminalForm(page).getByText("Solo se aceptan certificados en PDF.")).toBeVisible();
+
+    await criminalForm(page).getByLabel("Certificado en PDF").setInputFiles({ name: "renombrado.pdf", mimeType: "application/pdf", buffer: Buffer.from("no es un pdf") });
+    await criminalForm(page).getByRole("button", { name: "Subir certificado" }).click();
+    await expect(criminalForm(page).getByText("Solo se aceptan certificados en PDF.")).toBeVisible();
     expect(posts).toEqual([]);
   });
 
@@ -182,9 +188,8 @@ test.describe("cuenta verificacion", () => {
     });
     await signInToVerification(page);
 
-    await criminalForm(page).getByLabel("Folio").fill("50070080804");
-    await criminalForm(page).getByLabel("Código verificador").fill("2aacbb9a636a");
-    await criminalForm(page).getByRole("button", { name: "Verificar certificado" }).click();
+    await criminalForm(page).getByLabel("Certificado en PDF").setInputFiles(pdf("antecedentes.pdf"));
+    await criminalForm(page).getByRole("button", { name: "Subir certificado" }).click();
 
     await expect(page.getByRole("status")).toHaveText("Recibimos tu certificado. El equipo de Amira lo revisará.");
     await expect(page.getByText("En revisión")).toBeVisible();
@@ -207,12 +212,11 @@ test.describe("cuenta verificacion", () => {
     await mockVerificationApi(page, { answers: [{ status: 409, json: { detail: "Este certificado ya fue usado en Amira." } }] });
     await signInToVerification(page);
 
-    await criminalForm(page).getByLabel("Folio").fill("50070080804");
-    await criminalForm(page).getByLabel("Código verificador").fill("2aacbb9a636a");
-    await criminalForm(page).getByRole("button", { name: "Verificar certificado" }).click();
+    await criminalForm(page).getByLabel("Certificado en PDF").setInputFiles(pdf("antecedentes.pdf"));
+    await criminalForm(page).getByRole("button", { name: "Subir certificado" }).click();
 
     await expect(page.locator(".auth-error")).toHaveText("Este certificado ya fue usado en Amira.");
-    await expect(criminalForm(page).getByLabel("Folio")).toHaveValue("50070080804");
+    await expect(criminalForm(page)).toBeVisible();
   });
 
   test("an account that is not a driver is told so", async ({ page }) => {
