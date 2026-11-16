@@ -1,22 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { authenticatedApiFetch } from "@/lib/auth/account-api";
 import {
   CERTIFICATE_LABELS,
   DRIVER_VERIFICATION_PATH,
   certificateStatusLabel,
   driverVerificationError,
-  validateCertificateForm,
-  type CertificateFormErrors,
-  type CertificateFormValues,
+  simulatedCertificateSubmission,
+  validateCertificateFile,
   type CertificateState,
   type CertificateType,
   type DriverVerification,
 } from "@/lib/driver-verification-api";
 
 const LOAD_ERROR = "No pudimos cargar el estado de tu verificación.";
-const EMPTY_FORM: CertificateFormValues = { folio: "", verificationCode: "" };
 const HINTS: Record<CertificateType, string> = {
   criminal_record: "Lo descargas gratis en el sitio del Registro Civil con tu ClaveÚnica.",
   driver_record: "Lo descargas gratis en el sitio del Registro Civil, sección Vehículos, con tu ClaveÚnica.",
@@ -29,25 +27,28 @@ function CertificateCard({
 }: {
   certificate: CertificateState;
   busy: boolean;
-  onSubmit: (type: CertificateType, values: CertificateFormValues) => Promise<boolean>;
+  onSubmit: (type: CertificateType) => Promise<boolean>;
 }) {
-  const [values, setValues] = useState<CertificateFormValues>(EMPTY_FORM);
-  const [errors, setErrors] = useState<CertificateFormErrors>({});
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const id = certificate.type;
   const canSubmit = certificate.status === "missing" || certificate.status === "rejected";
 
-  function update(field: keyof CertificateFormValues, value: string) {
-    setValues((current) => ({ ...current, [field]: value }));
-    setErrors((current) => ({ ...current, [field]: undefined }));
+  function choose(event: ChangeEvent<HTMLInputElement>) {
+    setFile(event.target.files?.[0] ?? null);
+    setError(null);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextErrors = validateCertificateForm(values);
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
-    if (await onSubmit(certificate.type, { folio: values.folio.trim(), verificationCode: values.verificationCode.trim() })) {
-      setValues(EMPTY_FORM);
+    const form = event.currentTarget;
+    const nextError = await validateCertificateFile(file);
+    setError(nextError);
+    if (nextError) return;
+    // The PDF stays in the browser: only the certificate type reaches the API (see simulatedCertificateSubmission).
+    if (await onSubmit(certificate.type)) {
+      form.reset();
+      setFile(null);
     }
   }
 
@@ -58,16 +59,12 @@ function CertificateCard({
       {certificate.reason && <p className="auth-help">{certificate.reason}</p>}
       {canSubmit && (
         <form aria-label={`Verificar ${CERTIFICATE_LABELS[certificate.type].toLowerCase()}`} className="auth-form" noValidate onSubmit={submit}>
-          <p className="auth-help">{HINTS[certificate.type]} Ingresa el folio y el código verificador impresos en el certificado.</p>
-          <label className="auth-field" htmlFor={`${id}-folio`}>Folio
-            <input aria-describedby={errors.folio ? `${id}-folio-error` : undefined} aria-invalid={errors.folio ? true : undefined} autoComplete="off" id={`${id}-folio`} inputMode="numeric" maxLength={20} onChange={(event) => update("folio", event.target.value)} value={values.folio} />
-            {errors.folio && <span className="auth-field-error" id={`${id}-folio-error`}>{errors.folio}</span>}
+          <p className="auth-help">{HINTS[certificate.type]} Sube el certificado en PDF, de hasta 5 MB.</p>
+          <label className="auth-field" htmlFor={`${id}-file`}>Certificado en PDF
+            <input accept="application/pdf,.pdf" aria-describedby={error ? `${id}-file-error` : undefined} aria-invalid={error ? true : undefined} id={`${id}-file`} onChange={choose} type="file" />
+            {error && <span className="auth-field-error" id={`${id}-file-error`}>{error}</span>}
           </label>
-          <label className="auth-field" htmlFor={`${id}-code`}>Código verificador
-            <input aria-describedby={errors.verificationCode ? `${id}-code-error` : undefined} aria-invalid={errors.verificationCode ? true : undefined} autoComplete="off" id={`${id}-code`} maxLength={70} onChange={(event) => update("verificationCode", event.target.value)} value={values.verificationCode} />
-            {errors.verificationCode && <span className="auth-field-error" id={`${id}-code-error`}>{errors.verificationCode}</span>}
-          </label>
-          <button className="auth-submit" disabled={busy} type="submit">{busy ? "Verificando…" : "Verificar certificado"}</button>
+          <button className="auth-submit" disabled={busy} type="submit">{busy ? "Subiendo…" : "Subir certificado"}</button>
         </form>
       )}
     </section>
@@ -93,7 +90,7 @@ export function DriverVerificationManager({ token }: { token: string }) {
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : LOAD_ERROR));
   }, [api]);
 
-  async function submit(type: CertificateType, values: CertificateFormValues): Promise<boolean> {
+  async function submit(type: CertificateType): Promise<boolean> {
     setBusy(true);
     setError("");
     setNotice("");
@@ -101,7 +98,7 @@ export function DriverVerificationManager({ token }: { token: string }) {
       const response = await api({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, folio: values.folio, verification_code: values.verificationCode }),
+        body: JSON.stringify(simulatedCertificateSubmission(type)),
       });
       if (!response.ok) throw new Error(await driverVerificationError(response));
       const next = await response.json() as DriverVerification;
