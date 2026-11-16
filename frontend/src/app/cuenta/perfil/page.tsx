@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PhoneChangeForm } from "@/components/account/phone-change-form";
 import { ProviderProfileForm } from "@/components/account/provider-profile-form";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { accountApiFetch } from "@/lib/auth/account-api";
-import { accountRoleLabel } from "@/lib/account-role-labels";
 import { accountAccessMessage, currentAccessToken, ProviderRequestAccessError } from "@/lib/provider-request-access";
 import { createClient } from "@/lib/supabase/client";
 
@@ -14,9 +15,24 @@ const MISSING_VALUE = "No registrado";
 // Clients and company drivers keep the read-only view; only these roles own a public profile.
 const PROVIDER_ROLES = new Set(["independent_driver", "company_owner"]);
 
-type ProfileData = { email: string; phone: string; role: string | null };
+type ProfileData = {
+  email: string;
+  phone: string | null;
+  role: string | null;
+  firstName: string;
+  lastName: string;
+  nationalId: string | null;
+};
 
-// Reads the session user for contact data and the backend account for the role. Throws the typed access error when signed out.
+type AccountBody = {
+  role?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  national_id?: string | null;
+  phone?: string | null;
+};
+
+// Reads the session user for the email and the backend account for the identity, phone and role. Throws the typed access error when signed out.
 async function fetchProfile(): Promise<ProfileData> {
   const token = await currentAccessToken();
   const { data, error } = await createClient().auth.getUser();
@@ -24,12 +40,23 @@ async function fetchProfile(): Promise<ProfileData> {
 
   const response = await accountApiFetch("/api/account/me", token, process.env.NEXT_PUBLIC_API_URL);
   if (!response.ok) throw new Error("No pudimos cargar tu perfil.");
-  const body = await response.json() as { role?: string | null };
+  const body = await response.json() as AccountBody;
 
-  return { email: data.user.email ?? "", phone: data.user.phone ?? "", role: body.role ?? null };
+  return {
+    email: data.user.email ?? "",
+    phone: body.phone ?? null,
+    role: body.role ?? null,
+    firstName: body.first_name ?? "",
+    lastName: body.last_name ?? "",
+    nationalId: body.national_id ?? null,
+  };
 }
 
 export default function ProfileSettingsPage() {
+  const queryClient = useQueryClient();
+  const [changingPhone, setChangingPhone] = useState(false);
+  const [phoneNotice, setPhoneNotice] = useState("");
+  const [phoneWarning, setPhoneWarning] = useState("");
   const profileQuery = useQuery({
     queryKey: ["account-profile"],
     queryFn: fetchProfile,
@@ -57,20 +84,59 @@ export default function ProfileSettingsPage() {
             </div>
           )}
           {profileQuery.isSuccess && (
-            <dl className="account-data">
-              <div>
-                <dt>Correo</dt>
-                <dd>{profileQuery.data.email || MISSING_VALUE}</dd>
-              </div>
-              <div>
-                <dt>Teléfono</dt>
-                <dd>{profileQuery.data.phone || MISSING_VALUE}</dd>
-              </div>
-              <div>
-                <dt>Tipo de cuenta</dt>
-                <dd>{accountRoleLabel(profileQuery.data.role)}</dd>
-              </div>
-            </dl>
+            <>
+              {phoneNotice && <p role="status" aria-live="polite" className="auth-notice">{phoneNotice}</p>}
+              {phoneWarning && <p className="auth-help">{phoneWarning}</p>}
+              <dl className="account-data">
+                <div>
+                  <dt>Nombre</dt>
+                  <dd>{profileQuery.data.firstName || MISSING_VALUE}</dd>
+                </div>
+                <div>
+                  <dt>Apellido</dt>
+                  <dd>{profileQuery.data.lastName || MISSING_VALUE}</dd>
+                </div>
+                <div>
+                  <dt>RUT</dt>
+                  <dd>{profileQuery.data.nationalId || MISSING_VALUE}</dd>
+                </div>
+                <div>
+                  <dt>Correo</dt>
+                  <dd>{profileQuery.data.email || MISSING_VALUE}</dd>
+                </div>
+                <div>
+                  <dt>Teléfono</dt>
+                  <dd>
+                    {profileQuery.data.phone || MISSING_VALUE}
+                    {!changingPhone && (
+                      <button
+                        className="button button-secondary account-data-action"
+                        onClick={() => {
+                          setPhoneNotice("");
+                          setPhoneWarning("");
+                          setChangingPhone(true);
+                        }}
+                        type="button"
+                      >
+                        Cambiar teléfono
+                      </button>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              {changingPhone && (
+                <PhoneChangeForm
+                  currentPhone={profileQuery.data.phone}
+                  onCancel={() => setChangingPhone(false)}
+                  onChanged={(account, warning) => {
+                    queryClient.setQueryData<ProfileData>(["account-profile"], (current) => current && { ...current, phone: account.phone });
+                    setChangingPhone(false);
+                    setPhoneNotice("Tu número de teléfono se actualizó.");
+                    setPhoneWarning(warning ?? "");
+                  }}
+                />
+              )}
+            </>
           )}
           {profileQuery.isSuccess && PROVIDER_ROLES.has(profileQuery.data.role ?? "") && (
             <ProviderProfileForm isCompany={profileQuery.data.role === "company_owner"} />

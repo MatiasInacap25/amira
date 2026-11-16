@@ -170,6 +170,9 @@
 .lp-app .account-data > div { padding: 20px 24px; border-color: var(--lp-line); }
 .lp-app .account-data dt { color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
 .lp-app .account-data dd { color: var(--lp-ink); font-size: 17px; font-weight: 500; }
+.lp-app .account-data dd .account-data-action { margin-left: 16px; padding: 6px 14px; font-size: 14px; vertical-align: middle; }
+.lp-app .phone-change { margin-top: 16px; max-width: 480px; }
+.lp-app .phone-change-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .lp-app .panel-action-list { gap: var(--lp-gap); }
 .lp-app .panel-action { min-height: 72px; padding: 0 24px; color: var(--lp-ink); font-size: 17px; font-weight: 500; }
 .lp-app .panel-action:hover { color: var(--lp-ink); }
@@ -393,3 +396,5 @@
 @media (prefers-reduced-motion: reduce) {
   .quote-dialog *, .shared-trip-dialog-backdrop * { transition: none !important; }
 }
+.invitation-share { margin: 16px 0; }
+.invitation-share-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }

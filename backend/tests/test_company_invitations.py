@@ -362,3 +362,27 @@ def test_email_confirmation_verifier_checks_auth_user_identity_and_confirmed_tim
     assert verifier.is_confirmed("verified-session-token", AUTH_ID, "driver@example.test")
     assert calls[0][0] == "https://project.example/auth/v1/user"
     assert calls[0][1] == {"apikey": "publishable-test-key", "Authorization": "Bearer verified-session-token"}
+
+
+def test_created_invitation_returns_the_share_link_the_owner_sends_to_the_driver():
+    owner = SimpleNamespace(id=USER_ID, role_id=DRIVER_ROLE_ID)
+    profile = SimpleNamespace(id=PROFILE_ID, kind="company", role_id=DRIVER_ROLE_ID, company_tax_id=None)
+    session = Session([Result(row=(owner, profile, "company_owner", "company")), Result(scalar=0), Result()])
+    sender = FakeSender()
+
+    result = create_invitation(
+        InvitationCreate(email="driver@example.test"), auth("owner@example.test"), session,
+        Settings(_env_file=None, frontend_base_url="https://amira.example"), sender,
+    )
+
+    assert result.link == sender.sent[0][1]
+    assert result.link.startswith("https://amira.example/invitacion/conductor#token=")
+
+
+def test_without_resend_the_link_is_only_shared_and_no_email_is_sent():
+    from amira_api.invitation_routes import ShareLinkInvitationSender, get_invitation_sender
+
+    sender = get_invitation_sender(Settings(_env_file=None, frontend_base_url="https://amira.example"))
+    assert isinstance(sender, ShareLinkInvitationSender)
+    assert sender.send_invitation("driver@example.test", "https://amira.example/invitacion/conductor#token=x") is True
+    assert get_invitation_sender(Settings(_env_file=None)) is None

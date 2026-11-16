@@ -8,8 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from amira_api.account_schemas import AccountProvisionRequest, AccountResponse, AccountRole, AccountRoleCode
+from amira_api.account_schemas import (
+    AccountDetailsResponse,
+    AccountProvisionRequest,
+    AccountResponse,
+    AccountRole,
+    AccountRoleCode,
+    PhoneChangeRequest,
+)
 from amira_api.auth import AuthenticatedUser, get_current_user
+from amira_api.auth_phone_factors import AuthAdminUnavailable, PhoneFactorReader, SupabasePhoneFactorReader
 from amira_api.db import get_db_session
 from amira_api.models import Commune, Conductor, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
 from amira_api.settings import Settings, get_settings
@@ -17,10 +25,27 @@ from amira_api.settings import Settings, get_settings
 router = APIRouter(prefix="/api/account", tags=["account"])
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
+PHONE_NOT_VERIFIED = "Verifica el número nuevo con el código SMS antes de guardarlo."
 
 
-@router.get("/me", response_model=AccountResponse)
-def get_account(current_user: CurrentUser, session: Database) -> AccountResponse:
+def get_phone_factor_reader(settings: Annotated[Settings, Depends(get_settings)]) -> PhoneFactorReader:
+    if not settings.supabase_url or settings.supabase_service_role_key is None:
+        raise HTTPException(status_code=503, detail="Phone changes are not configured.")
+    return SupabasePhoneFactorReader(
+        url=settings.supabase_url, service_role_key=settings.supabase_service_role_key.get_secret_value(),
+    )
+
+
+def _account_details(session: Session, user: Usuario, role_code: str) -> AccountDetailsResponse:
+    profile = session.execute(select(Perfil.id).where(Perfil.owner_user_id == user.id)).scalar_one_or_none()
+    return AccountDetailsResponse(
+        user_id=user.id, role=AccountRoleCode(role_code), profile_id=profile, first_name=user.first_name,
+        last_name=user.last_name, national_id=user.national_id, phone=user.phone,
+    )
+
+
+@router.get("/me", response_model=AccountDetailsResponse)
+def get_account(current_user: CurrentUser, session: Database) -> AccountDetailsResponse:
     result = session.execute(
         select(Usuario, RolUsuario.code)
         .join(RolUsuario, Usuario.role_id == RolUsuario.id)
@@ -29,8 +54,37 @@ def get_account(current_user: CurrentUser, session: Database) -> AccountResponse
     if result is None:
         raise HTTPException(status_code=404, detail="Account is not provisioned.")
     user, role_code = result
-    profile = session.execute(select(Perfil.id).where(Perfil.owner_user_id == user.id)).scalar_one_or_none()
-    return AccountResponse(user_id=user.id, role=AccountRoleCode(role_code), profile_id=profile)
+    return _account_details(session, user, role_code)
+
+
+@router.put("/phone", response_model=AccountDetailsResponse)
+def change_phone(
+    payload: PhoneChangeRequest,
+    current_user: CurrentUser,
+    session: Database,
+    factors: Annotated[PhoneFactorReader, Depends(get_phone_factor_reader)],
+) -> AccountDetailsResponse:
+    """Saves a new phone only when this session passed SMS and Supabase holds that number as the given verified factor."""
+    if current_user.assurance != "aal2":
+        raise HTTPException(status_code=403, detail=PHONE_NOT_VERIFIED)
+    result = session.execute(
+        select(Usuario, RolUsuario.code)
+        .join(RolUsuario, Usuario.role_id == RolUsuario.id)
+        .where(Usuario.auth_user_id == current_user.id)
+    ).one_or_none()
+    if result is None:
+        raise HTTPException(status_code=404, detail="Account is not provisioned.")
+    user, role_code = result
+    try:
+        verified = factors.verified_phone_factors(current_user.id)
+    except AuthAdminUnavailable:
+        raise HTTPException(status_code=503, detail="No pudimos comprobar el número. Inténtalo más tarde.") from None
+    digits = payload.phone.removeprefix("+")
+    if not any(factor.id == payload.factor_id and factor.phone.removeprefix("+") == digits for factor in verified):
+        raise HTTPException(status_code=422, detail=PHONE_NOT_VERIFIED)
+    user.phone = payload.phone
+    session.commit()
+    return _account_details(session, user, role_code)
 
 
 @router.post("/provision", response_model=AccountResponse, status_code=201)

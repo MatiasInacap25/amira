@@ -127,7 +127,7 @@ function serveInvitations(invitations: Invitation[]) {
     if (request.method === "POST" && request.path.endsWith("/driver-invitations")) {
       const email = String(request.body?.email);
       invitations.push(invitation({ id: `invitation-${invitations.length + 1}`, email }));
-      await route.fulfill({ status: 201, json: { id: `invitation-${invitations.length}`, email, expires_at: "2026-10-17T12:00:00.000Z" }, headers: corsHeaders });
+      await route.fulfill({ status: 201, json: { id: `invitation-${invitations.length}`, email, expires_at: "2026-10-17T12:00:00.000Z", link: `https://amira.example/invitacion/conductor#token=token-${invitations.length}` }, headers: corsHeaders });
       return;
     }
     await route.fulfill({ status: 404, json: { detail: "Invitation not found." }, headers: corsHeaders });
@@ -180,11 +180,11 @@ test("company page explains the invitation flow and links back to services", asy
 
   const panel = page.getByRole("region", { name: "Invitar conductores" });
   await expect(panel.getByRole("heading", { name: "Invitar conductores", level: 1 })).toBeVisible();
-  await expect(panel.getByText("Las personas invitadas deberán confirmar su correo, completar la verificación de acceso y aceptar antes de quedar vinculadas.", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Genera un link de invitación y compártelo con el conductor. Las personas invitadas deberán confirmar su correo, completar la verificación de acceso y aceptar antes de quedar vinculadas.", { exact: true })).toBeVisible();
   await expect(panel.getByText("El perfil independiente se convierte en empresa solo cuando la primera persona invitada acepta.", { exact: true })).toBeVisible();
   await expect(panel.getByRole("link", { name: "Volver a Amira" })).toHaveAttribute("href", "/servicios");
   await expect(panel.getByLabel("Correo de la persona invitada")).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Enviar invitación" })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Generar link de invitación" })).toBeEnabled();
 });
 
 test("empty company list shows the no-invitations message", async ({ page }) => {
@@ -213,10 +213,10 @@ test("each invitation shows its email, status and expiry, and only pending ones 
 
   await expect(pendingRow.locator("strong")).toHaveText("pendiente@example.test");
   await expect(pendingRow).toContainText(`· Pendiente · vence ${expires}`);
-  await expect(pendingRow.getByRole("button", { name: "Reenviar" })).toBeVisible();
+  await expect(pendingRow.getByRole("button", { name: "Generar nuevo link" })).toBeVisible();
   await expect(pendingRow.getByRole("button", { name: "Revocar" })).toBeVisible();
   await expect(revokedRow).toContainText("· Revocada ·");
-  await expect(revokedRow.getByRole("button", { name: "Reenviar" })).toHaveCount(0);
+  await expect(revokedRow.getByRole("button", { name: "Generar nuevo link" })).toHaveCount(0);
   await expect(revokedRow.getByRole("button", { name: "Revocar" })).toHaveCount(0);
 });
 
@@ -228,9 +228,12 @@ test("sending an invitation without a company tax ID posts only the email, then 
 
   const panel = page.getByRole("region", { name: "Invitar conductores" });
   await panel.getByLabel("Correo de la persona invitada").fill("nuevo@example.test");
-  await panel.getByRole("button", { name: "Enviar invitación" }).click();
+  await panel.getByRole("button", { name: "Generar link de invitación" }).click();
 
-  await expect(panel.getByRole("status")).toHaveText("Invitación enviada. El vínculo vence en siete días.");
+  await expect(panel.getByRole("status")).toHaveText("Invitación creada. Comparte el link con la persona invitada; vence en siete días.");
+  await expect(panel.getByLabel("Link de invitación")).toHaveValue(/^https:\/\/amira\.example\/invitacion\/conductor#token=token-/);
+  await expect(panel.getByRole("button", { name: "Copiar link" })).toBeVisible();
+  await expect(panel.getByRole("link", { name: "Compartir por WhatsApp" })).toHaveAttribute("href", /^https:\/\/wa\.me\/\?text=.*invitacion%2Fconductor%23token%3Dtoken-/);
   await expect(panel.getByLabel("Correo de la persona invitada")).toHaveValue("");
   await expect(panel.getByRole("listitem").filter({ hasText: "nuevo@example.test" })).toBeVisible();
   expect(requests.filter((request) => request.method === "POST")).toEqual([
@@ -249,9 +252,9 @@ test("first invitation sends the company RUT normalized after the field is maske
   const taxId = panel.getByLabel("RUT de empresa (requerido solo para el primer conductor)");
   await taxId.pressSequentially("123456785");
   await expect(taxId).toHaveValue("12345678-5");
-  await panel.getByRole("button", { name: "Enviar invitación" }).click();
+  await panel.getByRole("button", { name: "Generar link de invitación" }).click();
 
-  await expect(panel.getByRole("status")).toContainText("Invitación enviada");
+  await expect(panel.getByRole("status")).toContainText("Invitación creada");
   expect(requests.filter((request) => request.method === "POST")).toEqual([
     { method: "POST", path: "/api/company/profiles/me/driver-invitations", body: { email: "primer@example.test", company_tax_id: "12345678-5" } },
   ]);
@@ -266,7 +269,7 @@ test("an invalid company RUT is rejected in place and sends no invitation", asyn
   await panel.getByLabel("Correo de la persona invitada").fill("rut@example.test");
   const taxId = panel.getByLabel("RUT de empresa (requerido solo para el primer conductor)");
   await taxId.fill("12345678-9");
-  await panel.getByRole("button", { name: "Enviar invitación" }).click();
+  await panel.getByRole("button", { name: "Generar link de invitación" }).click();
 
   await expect(panel.getByText("El RUT no es válido. Revisa el dígito verificador.", { exact: true })).toBeVisible();
   await expect(taxId).toHaveAttribute("aria-invalid", "true");
@@ -283,7 +286,7 @@ test("editing the RUT clears its validation error", async ({ page }) => {
   await panel.getByLabel("Correo de la persona invitada").fill("rut@example.test");
   const taxId = panel.getByLabel("RUT de empresa (requerido solo para el primer conductor)");
   await taxId.fill("12345678-9");
-  await panel.getByRole("button", { name: "Enviar invitación" }).click();
+  await panel.getByRole("button", { name: "Generar link de invitación" }).click();
   await expect(panel.getByText("El RUT no es válido. Revisa el dígito verificador.", { exact: true })).toBeVisible();
 
   await taxId.fill("12345678-5");
@@ -305,9 +308,9 @@ test("a rejected invitation shows a safe error and keeps the typed email", async
 
   const panel = page.getByRole("region", { name: "Invitar conductores" });
   await panel.getByLabel("Correo de la persona invitada").fill("rechazado@example.test");
-  await panel.getByRole("button", { name: "Enviar invitación" }).click();
+  await panel.getByRole("button", { name: "Generar link de invitación" }).click();
 
-  await expect(panel.getByRole("alert")).toHaveText("No pudimos enviar la invitación. Revisa la dirección o intenta más tarde.");
+  await expect(panel.getByRole("alert")).toHaveText("No pudimos crear la invitación. Revisa la dirección o intenta más tarde.");
   await expect(panel.getByLabel("Correo de la persona invitada")).toHaveValue("rechazado@example.test");
   await expect(panel.getByRole("status")).toHaveCount(0);
 });
@@ -328,12 +331,12 @@ test("submit is disabled while an invitation is in flight", async ({ page }) => 
 
   const panel = page.getByRole("region", { name: "Invitar conductores" });
   await panel.getByLabel("Correo de la persona invitada").fill("espera@example.test");
-  await panel.getByRole("button", { name: "Enviar invitación" }).click();
+  await panel.getByRole("button", { name: "Generar link de invitación" }).click();
 
   const busy = panel.getByRole("button", { name: "Procesando…" });
   await expect(busy).toBeDisabled();
   releasePost();
-  await expect(panel.getByRole("button", { name: "Enviar invitación" })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Generar link de invitación" })).toBeEnabled();
 });
 
 test("revoking a pending invitation sends a DELETE, shows the notice and refreshes its status", async ({ page }) => {
@@ -364,7 +367,7 @@ test("reissuing an invitation posts to its reissue route and shows that the prev
   const invitations = [invitation({ id: "pending-1", email: "reenviar@example.test" })];
   const requests = await mockInvitationsApi(page, async (request, route) => {
     if (request.method === "POST" && request.path.endsWith("/reissue")) {
-      await route.fulfill({ status: 201, json: { id: "pending-2", email: "reenviar@example.test", expires_at: invitations[0].expires_at }, headers: corsHeaders });
+      await route.fulfill({ status: 201, json: { id: "pending-2", email: "reenviar@example.test", expires_at: invitations[0].expires_at, link: "https://amira.example/invitacion/conductor#token=nuevo" }, headers: corsHeaders });
       return;
     }
     await serveInvitations(invitations)(request, route);
@@ -372,9 +375,10 @@ test("reissuing an invitation posts to its reissue route and shows that the prev
   await page.goto("/cuenta/invitaciones");
 
   const panel = page.getByRole("region", { name: "Invitar conductores" });
-  await panel.getByRole("listitem").filter({ hasText: "reenviar@example.test" }).getByRole("button", { name: "Reenviar" }).click();
+  await panel.getByRole("listitem").filter({ hasText: "reenviar@example.test" }).getByRole("button", { name: "Generar nuevo link" }).click();
 
-  await expect(panel.getByRole("status")).toHaveText("Nuevo vínculo enviado; el anterior dejó de funcionar.");
+  await expect(panel.getByRole("status")).toHaveText("Nuevo link generado; el anterior dejó de funcionar.");
+  await expect(panel.getByLabel("Link de invitación")).toHaveValue("https://amira.example/invitacion/conductor#token=nuevo");
   expect(requests.filter((request) => request.method === "POST" && request.path.endsWith("/reissue")).map((request) => request.path)).toEqual([
     "/api/company/profiles/me/driver-invitations/pending-1/reissue",
   ]);
