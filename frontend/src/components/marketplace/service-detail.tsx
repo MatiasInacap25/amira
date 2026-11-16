@@ -13,6 +13,7 @@ type ServiceDetailProps = {
   service: ServiceDetailData;
   // Provider-only slots, supplied by the container. Each is omitted when the viewer cannot use it.
   actions?: ReactNode;
+  cancellation?: ReactNode;
   assignmentEditor?: ReactNode;
   deliveryPhoto?: ReactNode;
   // Customer-only slot: claim window, consent and claim actions.
@@ -25,8 +26,13 @@ type ServiceDetailProps = {
 
 const NO_VALUE_LABEL = "No indicado";
 
+function locationLabel(...parts: Array<string | null | undefined>) {
+  const present = parts.map((part) => part?.trim()).filter(Boolean);
+  return present.length > 0 ? present.join(", ") : NO_VALUE_LABEL;
+}
+
 /** Body of a service. The viewer's role decides how the other party is labelled. */
-export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution, sharedTrip, locationSharing }: ServiceDetailProps) {
+export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution, sharedTrip, locationSharing, cancellation }: ServiceDetailProps) {
   const counterpartLabel = service.viewerRole === "customer" ? "Prestador" : "Cliente";
   return (
     <article aria-labelledby="account-service-detail-title" className="account-service-detail">
@@ -42,6 +48,14 @@ export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhot
         <div>
           <dt>Ruta</dt>
           <dd>{serviceRouteLabel(service.originCommune, service.destinationCommune)}</dd>
+        </div>
+        <div>
+          <dt>Origen</dt>
+          <dd>{locationLabel(service.originAddress, service.originCommune, service.originRegion)}</dd>
+        </div>
+        <div>
+          <dt>Destino</dt>
+          <dd>{locationLabel(service.destinationAddress, service.destinationCommune, service.destinationRegion)}</dd>
         </div>
         <div>
           <dt>Fecha del servicio</dt>
@@ -98,6 +112,8 @@ export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhot
           )
         )}
       </section>
+
+      {cancellation}
 
       {actions && (
         <section aria-labelledby="account-service-actions-title" className="account-service-section">

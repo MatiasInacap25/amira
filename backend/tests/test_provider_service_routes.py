@@ -23,6 +23,7 @@ from amira_api.models import (
     Base,
     Chat,
     Commune,
+    Region,
     Conductor,
     Cotizacion,
     FormularioServicio,
@@ -59,6 +60,9 @@ def db():
     )
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
     with engine.begin() as connection:
+        connection.execute(text(
+            'CREATE TABLE IF NOT EXISTS "Regiones" ("Codigo" VARCHAR(2) PRIMARY KEY, "Nombre" VARCHAR(120) NOT NULL, "Orden" SMALLINT NOT NULL)'
+        ))
         connection.execute(text(
             'CREATE TABLE "Comunas" ("Codigo" VARCHAR(5) PRIMARY KEY, "Codigo_Region" VARCHAR(2) NOT NULL, "Nombre" VARCHAR(120) NOT NULL)'
         ))
@@ -128,13 +132,17 @@ def scenario(db: Session) -> Scenario:
     mudanzas = TipoServicio(id=uuid4(), name="Mudanzas", slug="mudanzas")
     santiago = Commune(code="13101", region_code="13", name="Santiago")
     valparaiso = Commune(code="05101", region_code="05", name="Valparaíso")
-    db.add_all([employed_driver, independent_driver, vehicle, mudanzas, santiago, valparaiso])
+    metropolitana = Region(code="13", name="Metropolitana de Santiago", order=7)
+    region_valparaiso = Region(code="05", name="Valparaíso", order=6)
+    db.add_all([employed_driver, independent_driver, vehicle, mudanzas, metropolitana, region_valparaiso, santiago,
+                valparaiso])
     db.flush()
 
     def service(profile, client, created_day):
         created = datetime(2026, 10, created_day, 10, tzinfo=timezone.utc)
         form = FormularioServicio(id=uuid4(), profile_id=profile.id, service_type_id=mudanzas.id, status="accepted",
                                   customer_id=client.id, origin_commune_code="13101",
+                                  origin="Av. Siempre Viva 742", destination="Calle Prat 100",
                                   destination_commune_code="05101", created_at=created)
         chat = Chat(id=uuid4(), form_id=form.id, created_at=created)
         quote = Cotizacion(id=uuid4(), chat_id=chat.id, status="paid", amount=Decimal("150000"), origin="A",
@@ -234,6 +242,12 @@ def test_owner_reads_detail_with_assignments_and_can_manage(api, scenario: Scena
     assert body["description"] == "Mover un sofá"
     assert body["startedAt"] is None and body["completedAt"] is None and body["payoutDeadlineAt"] is None
     assert body["chatId"]
+    assert body["originCommune"] == "Santiago"
+    assert body["originRegion"] == "Metropolitana de Santiago"
+    assert body["originAddress"] == "Av. Siempre Viva 742"
+    assert body["destinationCommune"] == "Valparaíso"
+    assert body["destinationRegion"] == "Valparaíso"
+    assert body["destinationAddress"] == "Calle Prat 100"
     assert body["assignments"] == [{
         "driverId": str(scenario.employed_driver.id),
         "driverFirstName": "Eli",

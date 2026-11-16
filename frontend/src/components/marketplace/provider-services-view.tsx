@@ -31,6 +31,7 @@ const EMPTY_FILTER_LABEL: Record<ServiceStatus, string> = {
   in_progress: "en curso",
   completed: "finalizados",
   disputed: "en reclamo",
+  cancelled: "cancelados",
 };
 
 function filterLabel(filter: StatusFilter) {

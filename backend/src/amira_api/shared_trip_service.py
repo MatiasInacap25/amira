@@ -59,6 +59,8 @@ def publish_shared_trip(
         raise SharedTripConflict("El servicio necesita una fecha para publicar el viaje.")
     if not form.origin or not form.destination:
         raise SharedTripConflict("El servicio necesita origen y destino para publicar el viaje.")
+    if service.status != "confirmed" or service.starts_at is not None:
+        raise SharedTripConflict("Solo se pueden publicar servicios confirmados que no hayan iniciado.")
     if not is_driver_verified(session, driver.user_id):
         raise SharedTripConflict("El conductor debe tener sus certificados verificados para publicar el viaje.")
 

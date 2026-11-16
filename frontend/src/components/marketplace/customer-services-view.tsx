@@ -147,7 +147,7 @@ function ServiceRatingRow({ alreadyRated, onAlreadyRated, service }: { alreadyRa
           <Link className="customer-service-title-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>{service.serviceTypeName}</Link>
         </h2>
         <p>{service.providerName}{service.completedAt ? ` · Completado el ${formatDate(service.completedAt)}` : ""}</p>
-        <Link className="account-service-detail-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>Ver detalle</Link>
+        <Link className="account-service-detail-link service-card-selection-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>Ver detalle</Link>
       </header>
       {service.rating ? (
         <div className="customer-service-rating">

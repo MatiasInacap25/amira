@@ -31,6 +31,7 @@ from amira_api.service_views import (
     signed_delivery_photo,
 )
 from amira_api.settings import Settings, get_settings
+from amira_api.service_cancellation import cancel_service
 from amira_api.models import (
     Desembolso,
     FormularioServicio,
@@ -356,5 +357,14 @@ def give_customer_service_consent(
         raise HTTPException(status_code=409, detail="Consent was already given for this service.")
     # Consent makes the payout due immediately; the release job picks it up on its next run.
     service.customer_consent_at = utc_now()
+    session.commit()
+    return _customer_service_detail(session, account_id, service_id)
+
+
+@router.post("/services/{service_id}/cancel", response_model=ServiceDetail)
+def cancel_customer_service(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceDetail:
+    account_id = _customer_account_id(session, current_user)
+    _lock_customer_service(session, account_id, service_id)
+    cancel_service(session, service_id, "customer")
     session.commit()
     return _customer_service_detail(session, account_id, service_id)

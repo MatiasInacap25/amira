@@ -16,6 +16,7 @@ from amira_api.clock import as_utc, utc_now
 from amira_api.evidence_storage import EvidenceStorage
 from amira_api.models import (
     Commune,
+    Region,
     Conductor,
     Cotizacion,
     Desembolso,
@@ -28,7 +29,7 @@ from amira_api.models import (
     Usuario,
     Vehiculo,
 )
-from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceAssignment, ServiceDetail, ServiceListItem
+from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceAssignment, ServiceCancellation, ServiceDetail, ServiceListItem
 
 DELIVERY_PHOTO_LINK_MESSAGE = "The delivery photo could not be retrieved. Try again."
 PROVIDER_FALLBACK_NAME = "Prestador"
@@ -40,6 +41,8 @@ _provider_owner = aliased(Usuario)
 _customer = aliased(Usuario)
 _origin_commune = aliased(Commune)
 _destination_commune = aliased(Commune)
+_origin_region = aliased(Region)
+_destination_region = aliased(Region)
 
 
 def provider_display_name(kind: str, profile_name: str | None, first_name: str | None, last_name: str | None) -> str:
@@ -62,6 +65,8 @@ def _service_relation(statement: Select) -> Select:
         .join(_customer, _customer.id == Servicio.customer_id)
         .outerjoin(_origin_commune, _origin_commune.code == FormularioServicio.origin_commune_code)
         .outerjoin(_destination_commune, _destination_commune.code == FormularioServicio.destination_commune_code)
+        .outerjoin(_origin_region, _origin_region.code == _origin_commune.region_code)
+        .outerjoin(_destination_region, _destination_region.code == _destination_commune.region_code)
     )
 
 
@@ -97,11 +102,19 @@ def service_rows(*conditions) -> Select:
             Cotizacion.chat_id.label("chat_id"),
             _origin_commune.name.label("origin_commune"),
             _destination_commune.name.label("destination_commune"),
+            _origin_region.name.label("origin_region"),
+            _destination_region.name.label("destination_region"),
+            func.coalesce(FormularioServicio.origin, Cotizacion.origin).label("origin_address"),
+            func.coalesce(FormularioServicio.destination, Cotizacion.destination).label("destination_address"),
             Servicio.is_exclusive.label("is_exclusive"),
             Servicio.trip_id.label("shared_trip_id"),
             Servicio.description.label("description"),
             Servicio.created_at.label("created_at"),
             Servicio.starts_at.label("started_at"),
+            Servicio.cancelled_at.label("cancelled_at"),
+            Servicio.cancelled_by.label("cancelled_by"),
+            Servicio.cancellation_refunded_amount.label("cancellation_refunded_amount"),
+            Servicio.cancellation_retained_amount.label("cancellation_retained_amount"),
             Servicio.completed_at.label("completed_at"),
             Servicio.payout_deadline_at.label("payout_deadline_at"),
             Servicio.delivery_evidence_key.label("delivery_evidence_key"),
@@ -201,12 +214,23 @@ def shape_detail(
         **_list_fields(row, viewer_role),
         chat_id=row["chat_id"],
         description=row["description"],
+        origin_region=row["origin_region"],
+        destination_region=row["destination_region"],
+        origin_address=row["origin_address"],
+        destination_address=row["destination_address"],
         created_at=row["created_at"],
         started_at=row["started_at"],
         completed_at=row["completed_at"],
         payout_deadline_at=row["payout_deadline_at"],
         viewer_role=viewer_role,
         can_manage=can_manage,
+        can_cancel=(viewer_role == "customer" or can_manage) and row["status"] == "confirmed" and row["started_at"] is None,
+        cancellation=ServiceCancellation(
+            cancelled_at=row["cancelled_at"],
+            cancelled_by=row["cancelled_by"],
+            refunded_amount=row["cancellation_refunded_amount"],
+            retained_amount=row["cancellation_retained_amount"],
+        ) if row["cancelled_at"] is not None else None,
         viewer_assigned=viewer_assigned,
         delivery_photo_available=row["delivery_evidence_key"] is not None,
         customer_consent_at=row["customer_consent_at"],

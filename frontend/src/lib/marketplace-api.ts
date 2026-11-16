@@ -105,7 +105,7 @@ export type CustomerService = {
 export type CustomerServicePage = PagedResponse<CustomerService>;
 
 // "Mis servicios": contracted services for customers and providers. Contact details are never part of these shapes.
-export type ServiceStatus = "confirmed" | "in_progress" | "completed" | "disputed";
+export type ServiceStatus = "confirmed" | "in_progress" | "completed" | "disputed" | "cancelled";
 
 export type ServiceListItem = {
   serviceId: string;
@@ -130,9 +130,24 @@ export type ServiceAssignment = {
   plate: string;
 };
 
+export type ServiceCancellation = {
+  cancelledAt: string;
+  cancelledBy: "customer" | "provider";
+  refundedAmount: number;
+  retainedAmount: number;
+  currency: "CLP";
+  simulated: true;
+};
+
 export type ServiceDetail = ServiceListItem & {
+  canCancel?: boolean;
+  cancellation?: ServiceCancellation | null;
   chatId: string | null;
   description: string | null;
+  originRegion?: string | null;
+  destinationRegion?: string | null;
+  originAddress?: string | null;
+  destinationAddress?: string | null;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -773,4 +788,13 @@ function dateBoundary(date: string, time: string) {
   }).formatToParts(reference).find((part) => part.type === "timeZoneName")?.value;
   const offset = offsetPart === "GMT" ? "+00:00" : offsetPart?.replace(/^GMT/, "") ?? "";
   return `${date}T${time}${offset}`;
+}
+
+export function requestServiceCancellation(accessToken: string, viewer: "customer" | "provider", serviceId: string) {
+  return authenticatedApiFetch(
+    `/api/${viewer}/services/${encodeURIComponent(serviceId)}/cancel`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { method: "POST", headers: { Accept: "application/json" } },
+  );
 }

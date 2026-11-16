@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from amira_api.public_schemas import PublicResponse, _to_camel
 
-ServiceStatus = Literal["confirmed", "in_progress", "completed", "disputed"]
+ServiceStatus = Literal["confirmed", "in_progress", "completed", "disputed", "cancelled"]
 
 
 class ServiceListItem(PublicResponse):
@@ -44,14 +44,30 @@ class ServiceAssignment(PublicResponse):
     plate: str
 
 
+class ServiceCancellation(PublicResponse):
+    cancelled_at: datetime
+    cancelled_by: Literal["customer", "provider"]
+    refunded_amount: float
+    retained_amount: float
+    currency: Literal["CLP"] = "CLP"
+    simulated: Literal[True] = True
+
+
 class ServiceDetail(ServiceListItem):
     chat_id: UUID
     description: str | None
+    # Full location of the service. Only the two parties of the service can read the detail.
+    origin_region: str | None = None
+    destination_region: str | None = None
+    origin_address: str | None = None
+    destination_address: str | None = None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
     payout_deadline_at: datetime | None
     viewer_role: Literal["customer", "provider"]
+    can_cancel: bool = False
+    cancellation: ServiceCancellation | None = None
     can_manage: bool
     # True when the viewer is one of the drivers assigned to the service. Always false for customers.
     viewer_assigned: bool

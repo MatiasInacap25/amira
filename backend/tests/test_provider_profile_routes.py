@@ -40,6 +40,9 @@ def db():
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
     with engine.begin() as connection:
         connection.execute(text(
+            'CREATE TABLE IF NOT EXISTS "Regiones" ("Codigo" VARCHAR(2) PRIMARY KEY, "Nombre" VARCHAR(120) NOT NULL, "Orden" SMALLINT NOT NULL)'
+        ))
+        connection.execute(text(
             'CREATE TABLE "Comunas" ("Codigo" VARCHAR(5) PRIMARY KEY, "Codigo_Region" VARCHAR(2) NOT NULL, "Nombre" VARCHAR(120) NOT NULL)'
         ))
         connection.execute(text(

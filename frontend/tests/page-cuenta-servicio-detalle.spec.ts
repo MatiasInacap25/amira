@@ -97,6 +97,10 @@ function serviceDetail(overrides: Record<string, unknown> = {}) {
     currency: "CLP",
     originCommune: "Santiago",
     destinationCommune: "Valparaíso",
+    originRegion: "Metropolitana de Santiago",
+    destinationRegion: "Valparaíso",
+    originAddress: "Av. Siempre Viva 742",
+    destinationAddress: "Calle Prat 100",
     isExclusive: false,
     counterpartName: "Transportes Andes",
     assignmentCount: 1,
@@ -187,6 +191,8 @@ test("customer sees the counterpart, route, amount, dates, description and a cha
 
   const fact = (label: string) => detail.locator(".account-service-detail-facts > div", { has: page.locator("dt", { hasText: label }) }).locator("dd");
   await expect(fact("Ruta")).toHaveText("Santiago → Valparaíso");
+  await expect(fact("Origen")).toHaveText("Av. Siempre Viva 742, Santiago, Metropolitana de Santiago");
+  await expect(fact("Destino")).toHaveText("Calle Prat 100, Valparaíso, Valparaíso");
   await expect(fact("Monto")).toHaveText("$45.000");
   await expect(fact("Exclusivo")).toHaveText("No");
   await expect(fact("Finalizado")).toHaveText(/20-10-2026, 1:00/);
@@ -584,6 +590,7 @@ function providerShareableDetail(overrides: Record<string, unknown> = {}) {
     canManage: true,
     counterpartName: "Ana Pérez",
     status: "confirmed",
+    startedAt: null,
     completedAt: null,
     payoutDeadlineAt: null,
     canClaim: false,
@@ -1073,4 +1080,89 @@ test("an unverified driver is shown but cannot be chosen for a shared trip", asy
   const dialog = page.getByRole("dialog", { name: "Publicar viaje compartido" });
   await expect(dialog.getByRole("option", { name: "Mario Rojas (sin verificar)" })).toHaveAttribute("disabled", "");
   await expect(dialog.getByRole("option", { name: "Lucía Soto" })).not.toHaveAttribute("disabled", "");
+});
+
+for (const viewer of ["customer", "provider"] as const) {
+  test(`${viewer} cancellation confirms refund policy and renders the persisted simulated result`, async ({ page }) => {
+    let cancelled = false;
+    let posts = 0;
+    const refund = viewer === "customer" ? 40500.09 : 45000.1;
+    const retained = viewer === "customer" ? 4500.01 : 0;
+    const initial = serviceDetail({ status: "confirmed", startedAt: null, completedAt: null, amount: 45000.1,
+      viewerRole: viewer, canManage: viewer === "provider", canCancel: true, canClaim: false, canConsent: false });
+    const result = { ...initial, status: "cancelled", canCancel: false, cancellation: {
+      cancelledAt: "2026-11-16T12:00:00Z", cancelledBy: viewer, refundedAmount: refund,
+      retainedAmount: retained, currency: "CLP", simulated: true,
+    } };
+    await mockServiceDetail(page, viewer, async (route) => route.fulfill({ json: cancelled ? result : initial }));
+    await page.route("**/api/provider/services/service-1/assignment-options", async (route) => route.fulfill({ json: { drivers: [], vehicles: [] } }));
+    await page.route(`**/api/${viewer}/services/service-1/cancel`, async (route) => {
+      expect(route.request().method()).toBe("POST");
+      expect(route.request().postData()).toBeNull();
+      posts += 1; cancelled = true;
+      await route.fulfill({ json: result });
+    });
+    await signInTo(page, viewer === "customer" ? "client" : "independent_driver");
+    await page.goto("/cuenta/servicios/service-1");
+    await page.getByRole("button", { name: "Cancelar servicio", exact: true }).click();
+    const confirmation = page.getByRole("region", { name: "Confirmar cancelación" });
+    await expect(confirmation).toContainText(viewer === "customer" ? "90 %" : "100 %");
+    await expect(confirmation).toContainText(viewer === "customer" ? "10 %" : "sin retención");
+    await expect(confirmation).toContainText("El viaje compartido y los servicios de otros clientes no se cancelan");
+    expect(posts).toBe(0);
+    await confirmation.getByRole("button", { name: "Confirmar cancelación", exact: true }).click();
+    await expect(page.locator(".account-service-status")).toHaveText("Cancelado");
+    const summary = page.getByRole("region", { name: "Cancelación del servicio" });
+    await expect(summary).toContainText(viewer === "customer" ? "40.500,09" : "45.000,1");
+    await expect(summary).toContainText("simulado");
+    await expect(page.getByRole("button", { name: "Publicar como viaje compartido" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Iniciar servicio" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Cancelar servicio", exact: true })).toHaveCount(0);
+    expect(posts).toBe(1);
+  });
+}
+
+test("cancellation failure stays actionable and never presents a refund as successful", async ({ page }) => {
+  const initial = serviceDetail({ status: "confirmed", startedAt: null, completedAt: null, canCancel: true });
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: initial }));
+  await page.route("**/api/customer/services/service-1/cancel", async (route) => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+  await page.getByRole("button", { name: "Cancelar servicio", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmar cancelación", exact: true }).click();
+  await expect(page.locator(".account-service-form-error[role=alert]")).toContainText("No pudimos procesar el reembolso");
+  await expect(page.getByRole("button", { name: "Confirmar cancelación", exact: true })).toBeEnabled();
+  await expect(page.getByRole("region", { name: "Cancelación del servicio" })).toHaveCount(0);
+});
+
+for (const overrides of [{ status: "in_progress", canCancel: true }, { status: "confirmed", canCancel: false }]) {
+  test(`cancellation unavailable for ${JSON.stringify(overrides)}`, async ({ page }) => {
+    await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail(overrides) }));
+    await signInTo(page, "client");
+    await page.goto("/cuenta/servicios/service-1");
+    await expect(page.getByRole("heading", { name: "Mudanzas", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancelar servicio", exact: true })).toHaveCount(0);
+  });
+}
+
+for (const state of [
+  { status: "completed", startedAt: "2026-11-16T10:00:00Z" },
+  { status: "in_progress", startedAt: "2026-11-16T10:00:00Z" },
+  { status: "confirmed", startedAt: "2026-11-16T10:00:00Z" },
+]) {
+  test(`publication requires an unstarted confirmed service: ${state.status}`, async ({ page }) => {
+    await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail(state) }));
+    await signInTo(page, "company_owner");
+    await page.goto("/cuenta/servicios/service-1");
+    await expect(page.getByRole("heading", { name: "Mudanzas", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
+  });
+}
+
+test("cancelled service keeps access to its surviving shared trip without publication", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: providerShareableDetail({ status: "cancelled", sharedTripId: "trip-9" }) }));
+  await signInTo(page, "company_owner");
+  await page.goto("/cuenta/servicios/service-1");
+  await expect(page.getByRole("link", { name: "Ver mis viajes compartidos" })).toBeVisible();
+  await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
 });
