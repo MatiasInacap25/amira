@@ -189,6 +189,7 @@ test("customer sees each completed service with provider, completion date, and a
   await expect(card.getByRole("heading", { name: "Mudanzas" })).toBeVisible();
   await expect(card.getByText("Transportes Andes · Completado el 10 de octubre de 2026", { exact: true })).toBeVisible();
   await expect(card.getByRole("link", { name: "Ver detalle" })).toHaveAttribute("href", "/cuenta/servicios/service-1");
+  await expect(card.getByRole("heading", { name: "Mudanzas" }).getByRole("link", { name: "Mudanzas" })).toHaveAttribute("href", "/cuenta/servicios/service-1");
 });
 
 test("completed service without a rating shows the rating form and blocks an empty submit", async ({ page }) => {

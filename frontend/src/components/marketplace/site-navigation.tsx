@@ -146,7 +146,10 @@ export function MarketplaceHeader({ variant = "lp" }: { variant?: NavigationVari
   const { userId, pending } = useNavUserId();
   const { signOut, signingOut, error: signOutError } = useSignOut(() => setMenuOpen(false));
   useProviderNavAccountScope();
-  const panelNav = usesPanelNavigation(useNavAccountRole());
+  const accountRole = useNavAccountRole();
+  const panelNav = usesPanelNavigation(accountRole);
+  // Signed-in customers get a direct way to their contracted services.
+  const customerNav = Boolean(userId) && accountRole === "client";
   // Hidden links wait for a confirmed panel role, so anonymous visitors and customers never see them flicker out.
 
   return (
@@ -162,6 +165,7 @@ export function MarketplaceHeader({ variant = "lp" }: { variant?: NavigationVari
           <ChatsLink />
           <ProviderRequestsLink />
           {panelNav && <Link href="/cuenta/servicios">Mis servicios</Link>}
+          {customerNav && <Link className="button button-secondary header-nav-button" href="/cuenta/servicios">Mis servicios</Link>}
           {!panelNav && <Link href="/#como-funciona">Cómo funciona</Link>}
         </nav>
         <div className="header-actions">
@@ -194,7 +198,7 @@ export function MarketplaceHeader({ variant = "lp" }: { variant?: NavigationVari
           <ChatsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <ProviderRequestsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           {panelNav && <Link className="header-nav-button" href="/panel" onClick={() => setMenuOpen(false)}>Ir al panel</Link>}
-          {panelNav && <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Mis servicios</Link>}
+          {(panelNav || customerNav) && <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Mis servicios</Link>}
           {!pending && (userId ? (
             <>
               <Link className="header-nav-button" href="/cuenta/perfil" onClick={() => setMenuOpen(false)}>Configuración del perfil</Link>

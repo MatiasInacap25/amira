@@ -196,7 +196,10 @@ export default function HomePage() {
   const router = useRouter();
   // The landing page has no chat nav, but signed-in visitors still get the in-app chat toasts.
   const { userId, pending } = useNavUserId();
-  const panelNav = usesPanelNavigation(useNavAccountRole());
+  const accountRole = useNavAccountRole();
+  const panelNav = usesPanelNavigation(accountRole);
+  // Signed-in customers get a direct way to their contracted services.
+  const customerNav = Boolean(userId) && accountRole === "client";
   // The landing page does not mount MarketplaceHeader, so it needs the same account-scope listener here.
   useProviderNavAccountScope();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -265,6 +268,7 @@ export default function HomePage() {
           <nav aria-label="Navegación principal" className="lp-nav__links">
             {!panelNav && <Link href="/servicios">Buscar servicios</Link>}
             {!panelNav && <Link href="/rutas-compartidas">Rutas compartidas</Link>}
+            {customerNav && <Link href="/cuenta/servicios">Mis servicios</Link>}
             {!panelNav && <a href="#como-funciona">Cómo funciona</a>}
             <a href="#transportistas">Transportistas</a>
           </nav>
@@ -275,7 +279,9 @@ export default function HomePage() {
                 <Link className="lp-nav__plain" href="/registro">Crear cuenta</Link>
               </>
             ))}
-            <Link className="btn lp-btn lp-btn--primary lp-nav__cta" href="/registro?intent=provider">Ofrecer mis servicios</Link>
+            {panelNav
+              ? <Link className="btn lp-btn lp-btn--primary lp-nav__cta" href="/panel">Ir al panel</Link>
+              : <Link className="btn lp-btn lp-btn--primary lp-nav__cta" href="/registro?intent=provider">Ofrecer mis servicios</Link>}
             <button
               aria-controls="lp-sheet"
               aria-expanded={menuOpen}
@@ -294,6 +300,7 @@ export default function HomePage() {
           <nav aria-label="Navegación móvil" className="lp-sheet" id="lp-sheet">
             {!panelNav && <Link href="/servicios" onClick={closeMenu}>Buscar servicios</Link>}
             {!panelNav && <Link href="/rutas-compartidas" onClick={closeMenu}>Rutas compartidas</Link>}
+            {customerNav && <Link href="/cuenta/servicios" onClick={closeMenu}>Mis servicios</Link>}
             {!panelNav && <a href="#como-funciona" onClick={closeMenu}>Cómo funciona</a>}
             <a href="#empresas" onClick={closeMenu}>Empresas</a>
             <a href="#transportistas" onClick={closeMenu}>Transportistas</a>
@@ -310,7 +317,9 @@ export default function HomePage() {
               </>
             ))}
             <Link href="/registro?intent=provider" onClick={closeMenu}>Registrar mi vehículo</Link>
-            <Link className="btn lp-btn lp-btn--primary" href="/registro?intent=provider" onClick={closeMenu}>Ofrecer mis servicios</Link>
+            {panelNav
+              ? <Link className="btn lp-btn lp-btn--primary" href="/panel" onClick={closeMenu}>Ir al panel</Link>
+              : <Link className="btn lp-btn lp-btn--primary" href="/registro?intent=provider" onClick={closeMenu}>Ofrecer mis servicios</Link>}
           </nav>
         )}
       </header>

@@ -122,6 +122,14 @@ for (const role of PANEL_ROLES) {
     await expect(header.getByRole("link", { name: "Ir al panel" })).toHaveAttribute("href", "/panel");
     await expect(header.getByRole("link", { name: /Ofrecer mis servicios/ })).toHaveCount(0);
   });
+
+  test(`${role} gets Ir al panel on the landing page header`, async ({ page }) => {
+    await signInWithRole(page, role, "/servicios");
+    await page.goto("/");
+    const header = page.locator("header.lp-nav");
+    await expect(header.getByRole("link", { name: "Ir al panel" })).toHaveAttribute("href", "/panel");
+    await expect(header.getByRole("link", { name: "Ofrecer mis servicios" })).toHaveCount(0);
+  });
 }
 
 test("anonymous visitors keep the public search links in the desktop header and the mobile menu", async ({ page }) => {
@@ -154,11 +162,31 @@ test("anonymous visitors see no provider-only Mis servicios link in the header o
   await expect(mobileNav(page).getByRole("link", { name: "Mis servicios" })).toHaveCount(0);
 });
 
-test("customers see no provider-only Mis servicios link in the header", async ({ page }) => {
+test("signed-in customers get a Mis servicios button to their services in the header and the mobile menu", async ({ page }) => {
   await signInWithRole(page, "client", "/servicios");
   await expect(desktopNav(page).getByRole("link", { name: "Buscar servicios" })).toBeVisible();
-  await expect(desktopNav(page).getByRole("link", { name: "Mis servicios" })).toHaveCount(0);
+  await expect(desktopNav(page).getByRole("link", { name: "Mis servicios" })).toHaveAttribute("href", "/cuenta/servicios");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  await expect(mobileNav(page).getByRole("link", { name: "Mis servicios" })).toHaveAttribute("href", "/cuenta/servicios");
+  await page.getByRole("button", { name: "Cerrar menú" }).click();
+  await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.locator("header .header-actions").getByRole("link", { name: "Ir al panel" })).toHaveCount(0);
+});
+
+test("signed-in customers get Mis servicios on the landing page header and mobile sheet", async ({ page }) => {
+  await signInWithRole(page, "client", "/servicios");
+  await page.goto("/");
+  const header = page.locator("header.lp-nav");
+  await expect(header.getByRole("navigation", { name: "Navegación principal" }).getByRole("link", { name: "Mis servicios", exact: true })).toHaveAttribute("href", "/cuenta/servicios");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  await expect(page.locator("#lp-sheet").getByRole("link", { name: "Mis servicios", exact: true })).toHaveAttribute("href", "/cuenta/servicios");
+});
+
+test("anonymous visitors see no Mis servicios on the landing page", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("header.lp-nav").getByRole("link", { name: "Mis servicios", exact: true })).toHaveCount(0);
 });
 
 test("customers keep the public search links in the desktop header", async ({ page }) => {

@@ -406,3 +406,5 @@
 .lp-app .customer-service-card :is(form, .customer-service-rating, .customer-submit-error) { position: relative; z-index: 2; }
 .lp-app :is(.account-service-card, .customer-service-card):has(.service-card-selection-link:hover) { border-color: var(--lp-action); }
 .lp-app .account-service-status-cancelled { color: var(--lp-muted); }
+.customer-service-title-link { color: inherit; text-decoration: none; }
+.customer-service-title-link:hover, .customer-service-title-link:focus-visible { text-decoration: underline; }
