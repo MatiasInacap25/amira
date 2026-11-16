@@ -352,3 +352,19 @@ def test_services_other_service_types_still_filter_as_before() -> None:
     assert "\"slug\" = 'mudanza'" in _literal_sql(sessions[0].statements[0])
     assert "\"slug\" = 'mudanza'" in _literal_sql(sessions[0].statements[1])
 
+
+
+def test_shared_routes_expose_regions_instead_of_exact_addresses() -> None:
+    sessions = []
+    response = run_get(
+        "/api/shared-routes",
+        [FakeResult(scalar=0), FakeResult(rows=[])],
+        sessions=sessions,
+    )
+
+    assert response.status_code == 200
+    rows_sql = str(sessions[0].statements[1].compile(dialect=postgresql.dialect()))
+    select_clause = rows_sql.split("FROM", 1)[0]
+    assert '"Viaje"."Origen"' not in select_clause
+    assert '"Viaje"."Destino"' not in select_clause
+    assert '"Regiones"' in rows_sql or "regiones" in rows_sql.lower()

@@ -1,0 +1,31 @@
+# Selectable services and pre-start cancellation
+Objective: service selection, existing detail management, and simulated cancellation refunds. Branch: feat/service-detail-cancellation.
+Delivery: ask-on-risk, chain strategy pending; forecast 700-1000 authored lines. Runners: backend pytest; frontend Playwright, tsc, lint.
+
+## Specs
+- S1: "en https://amira-blush.vercel.app/cuenta/servicios quiero que los servicios se puedan seleccionar y lleven a una pagina con la informacion del servicio donde se pueden, asignar los conductores, vehiculos, publicar como servicio compartido(en caso de que el cliente acepto al enviar la cotizacion), cancelar, etc". Make cards selectable and preserve existing detail management and consent restrictions.
+- S2: "se le devuelve al cliente". "tambien el clientes, pero en ese caso el adelanto no se devuelve". "10% fijo". Provider cancellation refunds 100%; customer cancellation retains 10% of total and refunds 90%.
+- S3: "si" in answer to "¿Ambos podrán cancelar únicamente antes de iniciar el servicio?". Customer and provider owner may cancel only confirmed, unstarted services.
+- S4: "no, el viaje compartido sigue, se tendria que cancelar aparte". Cancellation affects only the service, not the trip or other services.
+- Implementation assumptions: existing simulated payments mean simulated refunds, explicitly labeled. Retention is recorded, not automatically paid to any beneficiary. Use exact Decimal arithmetic at persisted four-decimal precision; UI shows sufficient precision for fractional amounts. No remote deployment or production migration authorized.
+- Checks: HTTP authorization, status transitions, persisted refund amounts and idempotency; rejected operations unchanged; trip preservation; navigation and confirmation UI; regression tests and independent high-risk verification.
+
+## Tasks
+- T1 | S2-S4 | delegated (parallel independent backend/frontend edit surfaces) | implemented; checks passed; commit pending | backend persistence, migration, endpoints, regression tests, docs | commit pending.
+- T2 | S1-S4 | delegated (parallel independent backend/frontend edit surfaces) | implemented; checks passed; commit pending | accessible cards, cancellation detail UI, API integration, tests | commit pending.
+- T3 | S1-S4 | inline integration plus independent verifier (risk items 1-4) | verification passed with baseline advisory; delivery strategy/native consent pending | seam verification and native review assessment | commit pending.
+
+## Log
+- L1 User request: "en https://amira-blush.vercel.app/cuenta/servicios quiero que los servicios se puedan seleccionar y lleven a una pagina con la informacion del servicio donde se pueden, asignar los conductores, vehiculos, publicar como servicio compartido(en caso de que el cliente acepto al enviar la cotizacion), cancelar, etc"
+- L2 User refinements: "se le devuelve al cliente"; "tambien el clientes, pero en ese caso el adelanto no se devuelve"; "10% fijo"; "si" (both before start); "no, el viaje compartido sigue, se tendria que cancelar aparte".
+- L3 Existing detail supports assignments, shared publication and lifecycle, but provider card only title links. No cancellation route/state. Reuse Reembolso. Lock service row like start; preserve trip/membership. No application code edits before this document.
+- L4 Contract: POST /api/provider/services/{id}/cancel and /api/customer/services/{id}/cancel, no payload, returns ServiceDetail. Add status cancelled; canCancel bool; cancellation nullable object {cancelledAt ISO, cancelledBy customer|provider, refundedAmount number, retainedAmount number, currency CLP, simulated true}. Service and refund atomic/idempotent; owner-only provider; unrelated users 404. Non-simulated providers refuse safely without mutation. Repeat by authorized owner/customer returns same result, never recalculates or creates another refund.
+- L5 Parallel writers returned within declared edit surfaces; no commits. Backend RED10fail2pass ->12pass; related137pass; suite1206pass199skip1xfail1fail, address validation ordering fixed and45targetedpass. Parent spot check14pass. PostgreSQL execution/concurrency not yet proven.
+- L6 Frontend RED5fail ->9scopedpass, publicationRED4fail ->4pass. tsc/lint pass. Two service specs62pass2fail (one stale snapshot alert selector, fixed; one role lookup failure awaiting baseline causality). Runner snapshots source at start. Independent verifier launched from baseline506409b, scratch-only probes.
+- L7 Cancellation never closes/deletes shared trip or changes other paid services. Retention remains recorded, not automatically disbursed. All financial effects simulated; no deployment/migration to production.
+
+- L8 Independent verifier S1-S4 PASS, no introduced blocker. Scratch44backendpass and11UIpass plus baseline flake. Baseline and candidate repeat3 each2pass1fail at role lookup test line177. Actual PG17.11 proved upgrade/downgrade preservation/refused lossy downgrade, concurrent customer/provider200 same summary exactly1refund, denied wholeDB hashes unchanged, existing GET output unchanged except new fields.
+- L9 Preserved verifier probes in optional isolated-schema PostgreSQL tests and SQLite invariants. Parent executed committed-form PG tests:2passed on disposable localhost PG55439, then stopped container. Final backend suite1208passed201skipped1xfail. No remote DB used.
+- L10 Full frontend suite once445tests:438passed7failed13.5min. Six failures had shareable fixture inheriting startedAt from completed service; added explicit startedAt:null only in that fixture; one correction recheck10passed. Remaining failure is independently proven baseline role flake. tsc/lint pass; no second full-suite run.
+- L11 Native risk assess high/unassessable due untracked selection; STATUS inventory obtained, no START/review authority created. Needs explicit intended file selection (exclude pre-existing mejoras-pruebas.md and output PDF), final candidate consent after delivery strategy.
+- L12 Authored change exceeds400 (~880lines including tests). No commits/push/PR/deploy/migration applied. Ask-on-risk chain strategy must be selected before work-unit commits; code preserved on feat/service-detail-cancellation.

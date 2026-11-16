@@ -402,3 +402,28 @@ test("provider whose list is forbidden sees the provider-only message", async ({
   await expect(alert.getByRole("heading", { name: "Esta cuenta no tiene servicios de prestador" })).toBeVisible();
   await expect(alert.getByText("Los servicios como prestador solo están disponibles para conductores y empresas de transporte.", { exact: true })).toBeVisible();
 });
+
+test("provider service card route area selects the detail and its title remains keyboard accessible", async ({ page }) => {
+  await mockProviderServices(page, async (_url, route) => route.fulfill({ json: { items: [providerService()], total: 1, limit: 20, offset: 0 } }));
+  await signInTo(page, "independent_driver");
+  const card = page.locator(".account-service-card");
+  const link = card.getByRole("link", { name: "Mudanzas" });
+  await link.focus();
+  await expect(link).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/cuenta\/servicios\/service-provider-1$/);
+  await page.goto("/cuenta/servicios");
+  const routeArea = await card.locator("dd").first().boundingBox();
+  await page.mouse.click(routeArea!.x + 10, routeArea!.y + 10);
+  await expect(page).toHaveURL(/\/cuenta\/servicios\/service-provider-1$/);
+});
+
+test("customer service card heading selects detail without replacing rating controls", async ({ page }) => {
+  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService()], 1) }));
+  await signInTo(page, "client");
+  const card = page.locator(".customer-service-card");
+  await expect(card.getByRole("button", { name: "Enviar valoración" })).toBeVisible();
+  const headingArea = await card.getByRole("heading", { name: "Mudanzas" }).boundingBox();
+  await page.mouse.click(headingArea!.x + 10, headingArea!.y + 10);
+  await expect(page).toHaveURL(/\/cuenta\/servicios\/service-1$/);
+});

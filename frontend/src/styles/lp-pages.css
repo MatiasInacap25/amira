@@ -398,3 +398,11 @@
 }
 .invitation-share { margin: 16px 0; }
 .invitation-share-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+/* A native link covers non-interactive card content; rating controls keep their own hit targets. */
+.lp-app :is(.account-service-card, .customer-service-card) { position: relative; }
+.lp-app .service-card-selection-link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: 1; }
+.lp-app .service-card-selection-link:focus-visible::after { outline: 2px solid var(--lp-action); outline-offset: 4px; }
+.lp-app .customer-service-card :is(form, .customer-service-rating, .customer-submit-error) { position: relative; z-index: 2; }
+.lp-app :is(.account-service-card, .customer-service-card):has(.service-card-selection-link:hover) { border-color: var(--lp-action); }
+.lp-app .account-service-status-cancelled { color: var(--lp-muted); }

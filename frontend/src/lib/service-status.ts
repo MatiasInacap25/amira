@@ -2,13 +2,14 @@ import { ServiceRequestError, type ServiceStatus } from "@/lib/marketplace-api";
 
 // Pure display rules for "Mis servicios". Kept free of React so they can be reused by list and detail views.
 
-export const SERVICE_STATUSES: readonly ServiceStatus[] = ["confirmed", "in_progress", "completed", "disputed"];
+export const SERVICE_STATUSES: readonly ServiceStatus[] = ["confirmed", "in_progress", "completed", "disputed", "cancelled"];
 
 const STATUS_LABELS: Record<ServiceStatus, string> = {
   confirmed: "Confirmado",
   in_progress: "En curso",
   completed: "Finalizado",
   disputed: "En reclamo",
+  cancelled: "Cancelado",
 };
 
 const NO_VALUE_LABEL = "No indicado";
@@ -50,7 +51,7 @@ export function deliveryPhotoRejection(photo: Pick<File, "type" | "size">): stri
   return null;
 }
 
-export type ServiceAction = "load-options" | "assign" | "start" | "complete" | "delivery-photo" | "consent" | "claim";
+export type ServiceAction = "load-options" | "assign" | "start" | "complete" | "delivery-photo" | "consent" | "claim" | "cancel";
 
 const SESSION_EXPIRED_MESSAGE = "Tu sesión expiró. Inicia sesión nuevamente para continuar.";
 const NOT_FOUND_MESSAGE = "Este servicio no existe o ya no está disponible en tu cuenta.";
@@ -63,6 +64,11 @@ export const CLAIM_REASON_MAX_LENGTH = 1000;
 // Status-specific copy per action. Anything not listed falls back to the generic message.
 const ACTION_STATUS_MESSAGES: Record<ServiceAction, Partial<Record<number, string>>> = {
   "load-options": { 403: OWNER_ONLY_MESSAGE },
+  cancel: {
+    403: "No tienes permiso para cancelar este servicio.",
+    409: "Solo puedes cancelar un servicio confirmado que todavía no se haya iniciado. Actualizamos la información.",
+    503: "No pudimos procesar el reembolso. El servicio no fue cancelado; inténtalo nuevamente.",
+  },
   assign: {
     403: OWNER_ONLY_MESSAGE,
     409: "Solo se pueden asignar servicios confirmados.",

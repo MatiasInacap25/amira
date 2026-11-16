@@ -72,6 +72,8 @@ def _contains(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
 
+UNKNOWN_REGION_LABEL = "Región por confirmar"
+
 
 def _profile_location(commune_name: str | None, region_name: str | None, legacy_location: str | None) -> str | None:
     """Join only the catalog parts that exist; fall back to the legacy free text when none do."""
@@ -727,6 +729,10 @@ def list_shared_routes(
     if departure_to:
         filters.append(Viaje.departure_at <= departure_to)
 
+    origin_commune = aliased(Commune)
+    destination_commune = aliased(Commune)
+    origin_region = aliased(Region)
+    destination_region = aliased(Region)
     total = session.execute(
         select(func.count()).select_from(Viaje).where(*filters)
     ).scalar_one()
@@ -738,14 +744,19 @@ def list_shared_routes(
                 (Perfil.kind == "independent_driver", Usuario.first_name + " " + Usuario.last_name),
                 else_=Perfil.name,
             ).label("provider_name"),
-            Viaje.origin.label("origin"),
-            Viaje.destination.label("destination"),
+            # Public listings show only the region; the trip's exact addresses stay private.
+            func.coalesce(origin_region.name, UNKNOWN_REGION_LABEL).label("origin"),
+            func.coalesce(destination_region.name, UNKNOWN_REGION_LABEL).label("destination"),
             Viaje.origin_commune_code.label("origin_commune_code"),
             Viaje.destination_commune_code.label("destination_commune_code"),
             Viaje.departure_at.label("departure_at"),
         )
         .join(Perfil, Perfil.id == Viaje.profile_id)
         .join(Usuario, Usuario.id == Perfil.owner_user_id)
+        .outerjoin(origin_commune, origin_commune.code == Viaje.origin_commune_code)
+        .outerjoin(origin_region, origin_region.code == origin_commune.region_code)
+        .outerjoin(destination_commune, destination_commune.code == Viaje.destination_commune_code)
+        .outerjoin(destination_region, destination_region.code == destination_commune.region_code)
         .where(*filters)
         .order_by(Viaje.departure_at.asc().nulls_last(), Viaje.id.asc())
         .limit(limit)
