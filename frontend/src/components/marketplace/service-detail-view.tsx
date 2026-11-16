@@ -9,6 +9,7 @@ import { PublishSharedTripDialog } from "@/components/account/publish-shared-tri
 import { CustomerServiceActions } from "@/components/marketplace/customer-service-actions";
 import { DeliveryPhoto } from "@/components/marketplace/delivery-photo";
 import { DriverLocationSharing } from "@/components/marketplace/driver-location-sharing";
+import { ServiceCancellation } from "@/components/marketplace/service-cancellation";
 import { ServiceActions } from "@/components/marketplace/service-actions";
 import { ServiceAssignmentForm } from "@/components/marketplace/service-assignment-form";
 import { MarketplaceSkeleton, SERVICE_DETAIL_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
@@ -32,6 +33,7 @@ import {
   requestProviderServiceLocationUpdate,
   requestProviderServiceStart,
   requestServiceLocation,
+  requestServiceCancellation,
   ServiceRequestError,
   type ServiceAssignmentOptions,
   type ServiceAssignmentUpdate,
@@ -203,6 +205,19 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
     retry: false,
   });
 
+  const queryClient = useQueryClient();
+  const cancelService = useMutation({
+    mutationFn: async () => {
+      const response = await sendAuthorizedRequest((token) => requestServiceCancellation(token, provider ? "provider" : "customer", serviceId));
+      return parseServiceResponse<ServiceDetailData>(response);
+    },
+    onSuccess: (result) => queryClient.setQueryData(["service-detail", provider ? "provider" : "customer", serviceId], result),
+    onSettled: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: SERVICE_DETAIL_KEY }),
+      queryClient.invalidateQueries({ queryKey: PROVIDER_SERVICES_KEY }),
+      queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY }),
+    ]),
+  });
   const detail = detailQuery.data;
   // Only the profile owner can manage assignments, and only before the service starts.
   const showAssignmentForm = Boolean(detail?.canManage && detail.status === "confirmed");
@@ -304,6 +319,7 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
             <MarketplaceSkeleton label="Cargando servicio…" layout={SERVICE_DETAIL_LAYOUT} loading={loading} name="service-detail">
               {detail && (
                 <ServiceDetail
+                  cancellation={<ServiceCancellation service={detail} pending={cancelService.isPending} onCancel={() => cancelService.mutateAsync()} />}
                   actions={isProviderViewer ? (
                     <>
                       <ServiceActions
@@ -354,19 +370,21 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
                     </>
                   ) : undefined}
                   sharedTrip={isProviderViewer && detail.canManage ? (
-                    detail.isExclusive ? (
-                      <p className="account-service-empty">El cliente no aceptó compartir el viaje.</p>
-                    ) : detail.sharedTripId ? (
+                    detail.sharedTripId ? (
                       <>
                         <p className="account-service-empty">Publicado como viaje compartido.</p>
                         <Link className="button button-secondary" href="/cuenta/viajes-compartidos">Ver mis viajes compartidos</Link>
                       </>
-                    ) : (
-                      <>
-                        <button className="button button-secondary" onClick={() => setPublishOpen(true)} type="button">Publicar como viaje compartido</button>
-                        <PublishSharedTripDialog onClose={() => setPublishOpen(false)} open={publishOpen} serviceId={serviceId} />
-                      </>
-                    )
+                    ) : detail.status === "confirmed" && detail.startedAt === null ? (
+                      detail.isExclusive ? (
+                        <p className="account-service-empty">El cliente no aceptó compartir el viaje.</p>
+                      ) : (
+                        <>
+                          <button className="button button-secondary" onClick={() => setPublishOpen(true)} type="button">Publicar como viaje compartido</button>
+                          <PublishSharedTripDialog onClose={() => setPublishOpen(false)} open={publishOpen} serviceId={serviceId} />
+                        </>
+                      )
+                    ) : undefined
                   ) : undefined}
                   customerResolution={showCustomerResolution ? (
                     <CustomerServiceActions

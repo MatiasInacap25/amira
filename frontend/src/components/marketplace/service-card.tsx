@@ -16,7 +16,7 @@ export function ServiceCard({ service, counterpartLabel }: ServiceCardProps) {
       <div className="account-service-card-heading">
         <div>
           <h2 id={titleId}>
-            <Link className="account-service-card-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>
+            <Link className="account-service-card-link service-card-selection-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>
               {service.serviceTypeName}
             </Link>
           </h2>

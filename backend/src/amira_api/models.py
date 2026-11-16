@@ -452,7 +452,7 @@ class Servicio(Base):
             name="ck_service_trip_stops_pair",
         ),
         CheckConstraint(
-            "\"Estado\" IN ('confirmed', 'in_progress', 'completed', 'disputed')",
+            "\"Estado\" IN ('confirmed', 'in_progress', 'completed', 'disputed', 'cancelled')",
             name="ck_service_status_allowed",
         ),
         ForeignKeyConstraint(
@@ -504,6 +504,11 @@ class Servicio(Base):
     customer_consent_at: Mapped[datetime | None] = mapped_column("Fecha_Conformidad_Cliente", DateTime(timezone=True))
     payout_deadline_at: Mapped[datetime | None] = mapped_column("Fecha_Limite_Liberacion", DateTime(timezone=True))
     delivery_evidence_key: Mapped[str | None] = mapped_column("Referencia_Entrega_Privada", String(512))
+
+    cancelled_at: Mapped[datetime | None] = mapped_column("Fecha_Cancelacion", DateTime(timezone=True))
+    cancelled_by: Mapped[str | None] = mapped_column("Cancelado_Por", String(20))
+    cancellation_refunded_amount: Mapped[Decimal | None] = mapped_column("Monto_Devuelto_Cancelacion", Numeric(18, 4))
+    cancellation_retained_amount: Mapped[Decimal | None] = mapped_column("Monto_Retenido_Cancelacion", Numeric(18, 4))
 
     provider_profile: Mapped[Perfil] = relationship(back_populates="services", foreign_keys=[profile_id])
     customer: Mapped[Usuario] = relationship(foreign_keys=[customer_id])

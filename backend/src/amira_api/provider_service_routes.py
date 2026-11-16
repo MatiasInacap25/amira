@@ -58,6 +58,7 @@ from amira_api.service_views import (
     signed_delivery_photo,
 )
 from amira_api.settings import Settings, get_settings
+from amira_api.service_cancellation import cancel_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/provider", tags=["provider-services"])
@@ -548,3 +549,14 @@ def get_provider_delivery_photo(
         return signed_delivery_photo(storage, row[0], settings.service_evidence_url_ttl_seconds)
     except EvidenceStorageError as error:
         raise HTTPException(status_code=502, detail=DELIVERY_PHOTO_LINK_MESSAGE) from error
+
+
+@router.post("/services/{service_id}/cancel", response_model=ServiceDetail)
+def cancel_provider_service(service_id: UUID, current_user: CurrentUser, session: Database) -> ServiceDetail:
+    viewer = _provider_viewer(session, current_user)
+    _lock_visible_service(session, viewer, service_id)
+    if not viewer.is_owner:
+        raise HTTPException(status_code=403, detail="Only the profile owner can manage this service.")
+    cancel_service(session, service_id, "provider")
+    session.commit()
+    return _visible_detail(session, viewer, service_id)

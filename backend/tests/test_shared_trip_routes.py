@@ -586,3 +586,44 @@ def test_provider_drivers_list_marks_unverified_drivers(api, scenario: Scenario,
     response = api("GET", "/api/provider/drivers", as_auth_id=OWNER_AUTH)
 
     assert response.json()["items"] == [{"driverId": str(scenario.driver.id), "name": "Eli Test", "verified": False}]
+
+
+@pytest.mark.parametrize("status", ["cancelled", "in_progress", "completed", "disputed"])
+def test_publish_refuses_non_confirmed_service(api, scenario, db, status):
+    scenario.shareable.status = status
+    db.commit()
+    response = api("POST", f"/api/provider/services/{scenario.shareable.id}/shared-trip",
+                   as_auth_id=OWNER_AUTH, json=_publish_body(scenario))
+    assert response.status_code == 409
+    assert db.query(Viaje).count() == 0
+
+
+def test_cancelling_origin_service_keeps_shared_trip_and_other_service(api, scenario, db):
+    from amira_api.models import Pago, Reembolso, Reclamo, Desembolso, CuentaDesembolso
+    from claim_support import add_approved_payment
+    # This fixture normally exercises only shared-trip tables. Add the payment/read-model dependencies.
+    for table in (Pago.__table__, Reclamo.__table__, Reembolso.__table__, CuentaDesembolso.__table__, Desembolso.__table__):
+        table.create(db.get_bind(), checkfirst=True)
+    published = api("POST", f"/api/provider/services/{scenario.shareable.id}/shared-trip",
+                    as_auth_id=OWNER_AUTH, json=_publish_body(scenario))
+    assert published.status_code == 201
+    trip = db.query(Viaje).one()
+    other = scenario.exclusive
+    vehicle_id, pickup_id, delivery_id = (scenario.shareable.vehicle_id, scenario.shareable.pickup_stop_id, scenario.shareable.delivery_stop_id)
+    other.trip_id = trip.id
+    other.vehicle_id = vehicle_id
+    other.pickup_stop_id = pickup_id
+    other.delivery_stop_id = delivery_id
+    db.commit()
+    add_approved_payment(db, scenario.shareable)
+    stops_before = [(row.id, row.order, row.address) for row in db.query(ParadaViaje).order_by(ParadaViaje.order)]
+    result = api("POST", f"/api/provider/services/{scenario.shareable.id}/cancel", as_auth_id=OWNER_AUTH)
+    assert result.status_code == 200, result.text
+    db.refresh(trip)
+    db.refresh(other)
+    db.refresh(scenario.shareable)
+    assert trip.is_published and trip.accepts_requests and trip.status == "scheduled"
+    assert other.status == "confirmed" and other.trip_id == trip.id
+    assert scenario.shareable.status == "cancelled" and scenario.shareable.trip_id == trip.id
+    assert [(row.id, row.order, row.address) for row in db.query(ParadaViaje).order_by(ParadaViaje.order)] == stops_before
+    assert db.query(ViajeVehiculo).count() == 1

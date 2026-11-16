@@ -320,3 +320,30 @@ not load the repository `.env`, and never imports application code for assertion
 A local in-memory Storage fake accepts uploads and signed-URL requests; it does
 not prove Supabase bucket policies, real signed-URL expiry or production delivery.
 Specifications and the live `/openapi.json` are the oracle.
+
+### Service cancellation (simulated refunds)
+
+`POST /api/customer/services/{serviceId}/cancel` and
+`POST /api/provider/services/{serviceId}/cancel` take no body and return the updated
+service detail. Only the service's customer or provider profile owner may cancel,
+while it is confirmed and has not started; employed drivers cannot cancel.
+The detail exposes `canCancel` and an optional `cancellation` summary containing
+`cancelledAt`, `cancelledBy`, `refundedAmount`, `retainedAmount`, `currency`, and
+`simulated`. The service remains visible with status `cancelled`.
+
+Provider cancellation refunds 100% of the approved payment. Customer cancellation
+retains 10% and refunds the remaining 90%. Retention is rounded half up at the
+persisted four-decimal precision; refund equals payment minus retention. Retention
+is recorded only, not paid automatically to a beneficiary. Refund records and the
+service transition are committed atomically, and retries preserve the original
+actor and refund rather than issuing another refund. Only simulated CLP payments
+are supported: no money is transferred; unsupported providers return 503 without
+changing the service. Missing or ambiguous approved payments return 409.
+
+Cancelling one service preserves its shared trip, stops, assignments and other
+customers' services; closing the trip to requests remains a separate action.
+Cancelled services cannot start, change driver assignments, publish a new shared
+trip, or enter the normal completed-service payout process.
+Apply migration `20261116_0001` before deploying this code. It adds nullable audit
+columns and extends the status constraint without rewriting existing service rows.
+Downgrade refuses while cancelled services exist to avoid losing their history.
