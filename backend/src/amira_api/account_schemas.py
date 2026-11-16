@@ -9,6 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_core import PydanticCustomError
 
 
+def normalize_phone(value: str) -> str:
+    """E.164 without spaces, parentheses or dashes; anything else is a phone_invalid validation error."""
+    normalized = re.sub(r"[\s()-]", "", value)
+    if not re.fullmatch(r"\+[1-9]\d{7,14}", normalized):
+        raise PydanticCustomError("phone_invalid", "Ingresa un teléfono en formato internacional, por ejemplo +56912345678.")
+    return normalized
+
+
 class AccountRole(StrEnum):
     CLIENT = "client"
     COMPANY_OWNER = "company_owner"
@@ -64,10 +72,7 @@ class AccountProvisionRequest(BaseModel):
     @field_validator("phone")
     @classmethod
     def validate_phone(cls, value: str) -> str:
-        normalized = re.sub(r"[\s()-]", "", value)
-        if not re.fullmatch(r"\+[1-9]\d{7,14}", normalized):
-            raise PydanticCustomError("phone_invalid", "Ingresa un teléfono en formato internacional, por ejemplo +56912345678.")
-        return normalized
+        return normalize_phone(value)
 
     @model_validator(mode="after")
     def validate_role_fields(self):
@@ -92,3 +97,26 @@ class AccountResponse(BaseModel):
     user_id: UUID
     role: AccountRoleCode
     profile_id: UUID | None = None
+
+
+class AccountDetailsResponse(AccountResponse):
+    """The caller's own account with its private identity data, for the profile page only."""
+
+    first_name: str
+    last_name: str
+    national_id: str | None
+    phone: str | None
+
+
+class PhoneChangeRequest(BaseModel):
+    """The new number and the Supabase phone factor whose SMS code proved it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    factor_id: UUID
+    phone: str = Field(min_length=9, max_length=32)
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        return normalize_phone(value)

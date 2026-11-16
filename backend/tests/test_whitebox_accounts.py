@@ -37,7 +37,7 @@ def records(role="client"):
 
 @pytest.mark.parametrize("existing", [False, True])
 def test_get_account_returns_provisioned_identity_or_404(existing):
-    user = NS(id=uuid4())
+    user = NS(id=uuid4(), first_name="Casey", last_name="Client", national_id=PERSONAL_RUT, phone=PHONE)
     profile_id = uuid4()
     session = Mock()
     session.execute.side_effect = [NS(one_or_none=lambda: (user, "client") if existing else None),
@@ -49,6 +49,8 @@ def test_get_account_returns_provisioned_identity_or_404(existing):
     else:
         response = get_account(identity(), session)
         assert (response.user_id, response.role, response.profile_id) == (user.id, "client", profile_id)
+        assert (response.first_name, response.last_name, response.national_id, response.phone) == (
+            "Casey", "Client", PERSONAL_RUT, PHONE)
     session.commit.assert_not_called()
 
 
