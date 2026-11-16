@@ -42,9 +42,19 @@ class EmailConfirmationVerifier(Protocol):
 
 
 def get_invitation_sender(settings: Annotated[Settings, Depends(get_settings)]) -> InvitationSender | None:
-    if not settings.resend_api_key or not settings.invitation_sender_email or not settings.frontend_base_url:
+    if not settings.frontend_base_url:
         return None
+    # Without Resend the owner shares the returned link with the driver themselves; no email is sent.
+    if not settings.resend_api_key or not settings.invitation_sender_email:
+        return ShareLinkInvitationSender()
     return ResendInvitationSender(settings.resend_api_key.get_secret_value(), settings.invitation_sender_email)
+
+
+class ShareLinkInvitationSender:
+    """Sends nothing: the invitation link goes back to the owner in the API response, to share it by any channel."""
+
+    def send_invitation(self, email: str, link: str) -> bool:
+        return True
 
 
 def get_email_confirmation_verifier(settings: Annotated[Settings, Depends(get_settings)]) -> EmailConfirmationVerifier | None:
@@ -151,6 +161,8 @@ class InvitationResult(BaseModel):
     id: UUID
     email: str
     expires_at: datetime
+    # Only on create and reissue: the link the owner shares with the invited driver. It carries the raw token.
+    link: str | None = None
 
 
 class InvitationAccepted(BaseModel):
@@ -275,7 +287,7 @@ def _new_invitation(session: Session, owner: Usuario, profile: Perfil, email: st
         session.rollback()
         raise HTTPException(status_code=503, detail="Invitation delivery is unavailable.")
     session.commit()
-    return InvitationResult(id=invitation.id, email=email, expires_at=invitation.expires_at)
+    return InvitationResult(id=invitation.id, email=email, expires_at=invitation.expires_at, link=link)
 
 
 @router.post("/api/company/profiles/me/driver-invitations", response_model=InvitationResult, status_code=201)

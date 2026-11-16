@@ -174,6 +174,7 @@ export function MarketplaceHeader({ variant = "lp" }: { variant?: NavigationVari
             </div>
           ))}
           {!panelNav && <Link className="button button-primary header-cta" href="/registro?intent=provider">Ofrecer mis servicios <ArrowRight aria-hidden="true" size={16} /></Link>}
+          {panelNav && <Link className="button button-primary header-cta" href="/panel">Ir al panel <ArrowRight aria-hidden="true" size={16} /></Link>}
           <button
             aria-controls="marketplace-mobile-navigation"
             aria-expanded={menuOpen}
@@ -192,6 +193,7 @@ export function MarketplaceHeader({ variant = "lp" }: { variant?: NavigationVari
           {!panelNav && <Link className="header-nav-button" href="/rutas-compartidas" onClick={() => setMenuOpen(false)}>Rutas compartidas</Link>}
           <ChatsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
           <ProviderRequestsLink className="header-nav-button" onNavigate={() => setMenuOpen(false)} />
+          {panelNav && <Link className="header-nav-button" href="/panel" onClick={() => setMenuOpen(false)}>Ir al panel</Link>}
           {panelNav && <Link className="header-nav-button" href="/cuenta/servicios" onClick={() => setMenuOpen(false)}>Mis servicios</Link>}
           {!pending && (userId ? (
             <>

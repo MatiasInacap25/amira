@@ -31,6 +31,8 @@ export default function CompanyInvitationsPage() {
   const [companyTaxId, setCompanyTaxId] = useState("");
   const [companyTaxIdError, setCompanyTaxIdError] = useState("");
   const [notice, setNotice] = useState("");
+  const [shareLink, setShareLink] = useState("");
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
 
@@ -80,7 +82,7 @@ export default function CompanyInvitationsPage() {
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(""); setNotice("");
+    setError(""); setNotice(""); setShareLink(""); setCopied(false);
     const companyRut = companyTaxId.trim() ? normalizeRut(companyTaxId) : null;
     if (companyTaxId.trim() && !companyRut) {
       setCompanyTaxIdError("El RUT no es válido. Revisa el dígito verificador.");
@@ -92,22 +94,34 @@ export default function CompanyInvitationsPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, ...(companyRut ? { company_tax_id: companyRut } : {}) }),
       });
-      if (!response.ok) throw new Error("No pudimos enviar la invitación. Revisa la dirección o intenta más tarde.");
-      setEmail(""); setNotice("Invitación enviada. El vínculo vence en siete días."); await reload();
+      if (!response.ok) throw new Error("No pudimos crear la invitación. Revisa la dirección o intenta más tarde.");
+      const created = await response.json() as { link?: string | null };
+      setShareLink(created.link ?? "");
+      setEmail(""); setNotice("Invitación creada. Comparte el link con la persona invitada; vence en siete días."); await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos enviar la invitación."); }
     finally { setBusy(false); }
   }
 
   async function act(invitation: Invitation, action: "revoke" | "reissue") {
-    setBusy(true); setError(""); setNotice("");
+    setBusy(true); setError(""); setNotice(""); setShareLink(""); setCopied(false);
     try {
       const path = `/api/company/profiles/me/driver-invitations/${invitation.id}${action === "reissue" ? "/reissue" : ""}`;
       const response = await api(path, action === "reissue" ? { method: "POST" } : { method: "DELETE" });
       if (!response.ok) throw new Error("No pudimos actualizar esta invitación.");
-      setNotice(action === "reissue" ? "Nuevo vínculo enviado; el anterior dejó de funcionar." : "Invitación revocada.");
+      if (action === "reissue") setShareLink(((await response.json()) as { link?: string | null }).link ?? "");
+      setNotice(action === "reissue" ? "Nuevo link generado; el anterior dejó de funcionar." : "Invitación revocada.");
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos actualizar esta invitación."); }
     finally { setBusy(false); }
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setCopied(true);
+    } catch {
+      setError("No pudimos copiar el link. Selecciónalo y cópialo manualmente.");
+    }
   }
 
   return (
@@ -117,10 +131,20 @@ export default function CompanyInvitationsPage() {
           <Link className="auth-back-link" href="/servicios">Volver a Amira</Link>
           <p className="auth-kicker">GESTIÓN DE EMPRESA</p>
           <h1 id="invitations-title">Invitar conductores</h1>
-          <p>Las personas invitadas deberán confirmar su correo, completar la verificación de acceso y aceptar antes de quedar vinculadas.</p>
+          <p>Genera un link de invitación y compártelo con el conductor. Las personas invitadas deberán confirmar su correo, completar la verificación de acceso y aceptar antes de quedar vinculadas.</p>
           <p>El perfil independiente se convierte en empresa solo cuando la primera persona invitada acepta.</p>
           {notice && <p role="status" aria-live="polite" className="auth-notice">{notice}</p>}
           {error && <p role="alert" aria-live="assertive" className="auth-error">{error}</p>}
+          {shareLink && <div className="invitation-share">
+            <label className="auth-field" htmlFor="driver-invitation-link">Link de invitación
+              <input id="driver-invitation-link" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} />
+            </label>
+            <p className="auth-help">Envíaselo a la persona invitada por WhatsApp, correo u otro medio. Debe abrirlo con la cuenta del correo invitado.</p>
+            <div className="invitation-share-actions">
+              <button className="auth-submit" onClick={() => void copyLink()} type="button">{copied ? "Link copiado" : "Copiar link"}</button>
+              <a className="auth-secondary-action" href={`https://wa.me/?text=${encodeURIComponent(`Te invito a unirte a mi empresa en Amira: ${shareLink}`)}`} rel="noopener noreferrer" target="_blank">Compartir por WhatsApp</a>
+            </div>
+          </div>}
           <form className="auth-form" onSubmit={create}>
             <label className="auth-field" htmlFor="driver-invitation-email">Correo de la persona invitada
               <input id="driver-invitation-email" autoComplete="email" type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} />
@@ -129,7 +153,7 @@ export default function CompanyInvitationsPage() {
               <input aria-describedby={companyTaxIdError ? "driver-invitation-company-tax-id-error" : undefined} aria-invalid={companyTaxIdError ? true : undefined} id="driver-invitation-company-tax-id" autoComplete="off" maxLength={14} onChange={(event) => { const { masked, caret } = maskRutWithCaret(event.target.value, event.target.selectionStart); setCompanyTaxId(masked); setCompanyTaxIdError(""); restoreRutCaret(event.currentTarget, caret); }} value={companyTaxId} />
               {companyTaxIdError && <span className="auth-field-error" id="driver-invitation-company-tax-id-error">{companyTaxIdError}</span>}
             </label>
-            <button className="auth-submit" disabled={busy || !token} type="submit">{busy ? "Procesando…" : "Enviar invitación"}</button>
+            <button className="auth-submit" disabled={busy || !token} type="submit">{busy ? "Procesando…" : "Generar link de invitación"}</button>
           </form>
           <h2>Invitaciones</h2>
           {invitationsLoaded && invitations.length === 0 && <p>No hay invitaciones todavía.</p>}
@@ -137,7 +161,7 @@ export default function CompanyInvitationsPage() {
             {invitations.map((invitation) => <li key={invitation.id}>
               <strong className="invitation-email">{invitation.email}</strong> · {statusLabel(invitation.status)} · vence {new Date(invitation.expires_at).toLocaleDateString("es-CL")}
               {invitation.status === "pending" && <>
-                <button className="auth-secondary-action" disabled={busy} onClick={() => void act(invitation, "reissue")} type="button">Reenviar</button>
+                <button className="auth-secondary-action" disabled={busy} onClick={() => void act(invitation, "reissue")} type="button">Generar nuevo link</button>
                 <button className="auth-secondary-action" disabled={busy} onClick={() => void act(invitation, "revoke")} type="button">Revocar</button>
               </>}
             </li>)}
