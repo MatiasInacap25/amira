@@ -275,7 +275,9 @@ export default function HomePage() {
                 <Link className="lp-nav__plain" href="/registro">Crear cuenta</Link>
               </>
             ))}
-            <Link className="btn lp-btn lp-btn--primary lp-nav__cta" href="/registro?intent=provider">Ofrecer mis servicios</Link>
+            {panelNav
+              ? <Link className="btn lp-btn lp-btn--primary lp-nav__cta" href="/panel">Ir al panel</Link>
+              : <Link className="btn lp-btn lp-btn--primary lp-nav__cta" href="/registro?intent=provider">Ofrecer mis servicios</Link>}
             <button
               aria-controls="lp-sheet"
               aria-expanded={menuOpen}
@@ -310,7 +312,9 @@ export default function HomePage() {
               </>
             ))}
             <Link href="/registro?intent=provider" onClick={closeMenu}>Registrar mi vehículo</Link>
-            <Link className="btn lp-btn lp-btn--primary" href="/registro?intent=provider" onClick={closeMenu}>Ofrecer mis servicios</Link>
+            {panelNav
+              ? <Link className="btn lp-btn lp-btn--primary" href="/panel" onClick={closeMenu}>Ir al panel</Link>
+              : <Link className="btn lp-btn lp-btn--primary" href="/registro?intent=provider" onClick={closeMenu}>Ofrecer mis servicios</Link>}
           </nav>
         )}
       </header>
