@@ -113,6 +113,14 @@ for (const role of PANEL_ROLES) {
       await expect(mobileNav(page).getByRole("link", { name })).toHaveCount(0);
     }
     await expect(mobileNav(page).getByRole("link", { name: "Mis servicios" })).toBeVisible();
+    await expect(mobileNav(page).getByRole("link", { name: "Ir al panel" })).toHaveAttribute("href", "/panel");
+  });
+
+  test(`${role} gets an Ir al panel button in the header instead of Ofrecer mis servicios`, async ({ page }) => {
+    await signInWithRole(page, role, "/servicios");
+    const header = page.locator("header .header-actions");
+    await expect(header.getByRole("link", { name: "Ir al panel" })).toHaveAttribute("href", "/panel");
+    await expect(header.getByRole("link", { name: /Ofrecer mis servicios/ })).toHaveCount(0);
   });
 }
 
@@ -150,6 +158,7 @@ test("customers see no provider-only Mis servicios link in the header", async ({
   await signInWithRole(page, "client", "/servicios");
   await expect(desktopNav(page).getByRole("link", { name: "Buscar servicios" })).toBeVisible();
   await expect(desktopNav(page).getByRole("link", { name: "Mis servicios" })).toHaveCount(0);
+  await expect(page.locator("header .header-actions").getByRole("link", { name: "Ir al panel" })).toHaveCount(0);
 });
 
 test("customers keep the public search links in the desktop header", async ({ page }) => {

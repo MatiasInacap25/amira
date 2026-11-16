@@ -485,7 +485,8 @@ test("client keeps the read-only view without the provider form", async ({ page 
   await installProfileMocks(page, { role: "client" });
   await signIn(page);
   await page.goto("/cuenta/perfil");
-  await expect(main(page).getByText("Cliente")).toBeVisible();
+  await expect(main(page).getByText("Correo", { exact: true })).toBeVisible();
+  await expect(main(page).getByText("Tipo de cuenta")).toHaveCount(0);
   await expect(main(page).getByRole("heading", { name: "Perfil público" })).toHaveCount(0);
   await expect(main(page).getByRole("button", { name: "Guardar" })).toHaveCount(0);
 });
@@ -495,7 +496,8 @@ test("company driver does not see the provider form", async ({ page }) => {
   await signIn(page);
   await page.goto("/cuenta/perfil");
 
-  await expect(main(page).getByText("Conductor de empresa")).toBeVisible();
+  await expect(main(page).getByText("Correo", { exact: true })).toBeVisible();
+  await expect(main(page).getByText("Tipo de cuenta")).toHaveCount(0);
   await expect(main(page).getByRole("heading", { name: "Perfil público" })).toHaveCount(0);
   await expect(main(page).getByRole("button", { name: "Publicar perfil" })).toHaveCount(0);
 });

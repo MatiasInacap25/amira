@@ -29,6 +29,15 @@ The bypass is fail-closed: it is active only when `DEV_SKIP_SMS_MFA=true` and `A
 
 The frontend also needs its own switch: set `NEXT_PUBLIC_DEV_SKIP_SMS_MFA=true` and `NEXT_PUBLIC_APP_ENV=development` (or `local` or `test`) in the frontend environment alongside `DEV_SKIP_SMS_MFA=true` and `APP_ENV` here. The frontend variables are inlined at build time, so a Vercel redeploy is needed after changing them. The frontend does not depend on `NODE_ENV` for this switch. The backend flag alone does not change what the browser asks for, and the backend guard above is what actually rejects sessions without SMS.
 
+## Account details and phone change
+
+- `GET /api/account/me` returns the caller's own `user_id`, `role`, `profile_id`, `first_name`, `last_name`, `national_id` (RUT) and `phone`, for the profile page. `POST /api/account/provision` keeps answering only `user_id`, `role` and `profile_id`.
+- `PUT /api/account/phone`: body `{factor_id, phone}` (E.164, spaces, parentheses and dashes are dropped). The browser first enrolls the new number as a Supabase SMS factor and verifies its code; the API then saves the number only when the session is `aal2` (403 otherwise, including `dev_password_bypass`) and Supabase Auth reports `factor_id` as a verified phone factor holding that same number (422 otherwise). It reads the factors with `GET {SUPABASE_URL}/auth/v1/admin/users/{id}` and the service-role key (`auth_phone_factors.py`); without `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, or when Supabase Auth fails, it answers 503 and changes nothing. After a 200 the browser unenrolls the old verified phone factors, so the sign-in SMS goes to the new number.
+
+## Driver invitations
+
+`POST /api/company/profiles/me/driver-invitations` and `POST .../{id}/reissue` return the invitation with a `link` (`{FRONTEND_BASE_URL}/invitacion/conductor#token=...`) that the owner shares with the driver by any channel. `FRONTEND_BASE_URL` is required (503 without it). With `RESEND_API_KEY` and `INVITATION_SENDER_EMAIL` the link is also emailed through Resend; without them no email is sent. The link carries the raw token, so it is returned only to the owner and only on create and reissue.
+
 ## Public browse API
 
 - `GET /api/services?q=&regionCode=&communeCode=&limit=20&offset=0` returns provider/service catalog entries. `regionCode` (2 digits) and `communeCode` (5 digits) are official CUT codes from `GET /api/locations`.

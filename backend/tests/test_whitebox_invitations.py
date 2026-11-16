@@ -41,6 +41,9 @@ def test_invitation_adapter_factories(configured):
     sender = routes.get_invitation_sender(settings)
     verifier = routes.get_email_confirmation_verifier(settings)
     assert isinstance(sender, routes.ResendInvitationSender) if configured else sender is None
+    # Without Resend but with the frontend URL, the owner shares the link and no email is sent.
+    share_only = routes.get_invitation_sender(Settings(_env_file=None, frontend_base_url="https://frontend.test"))
+    assert isinstance(share_only, routes.ShareLinkInvitationSender)
     assert isinstance(verifier, routes.SupabaseEmailConfirmationVerifier) if configured else verifier is None
 
 
