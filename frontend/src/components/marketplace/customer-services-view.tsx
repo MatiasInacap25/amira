@@ -143,7 +143,9 @@ function ServiceRatingRow({ alreadyRated, onAlreadyRated, service }: { alreadyRa
   return (
     <article aria-labelledby={`service-${service.serviceId}-title`} className="customer-service-card">
       <header>
-        <h2 id={`service-${service.serviceId}-title`}>{service.serviceTypeName}</h2>
+        <h2 id={`service-${service.serviceId}-title`}>
+          <Link className="customer-service-title-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>{service.serviceTypeName}</Link>
+        </h2>
         <p>{service.providerName}{service.completedAt ? ` · Completado el ${formatDate(service.completedAt)}` : ""}</p>
         <Link className="account-service-detail-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>Ver detalle</Link>
       </header>
