@@ -408,3 +408,14 @@
 .lp-app .account-service-status-cancelled { color: var(--lp-muted); }
 .customer-service-title-link { color: inherit; text-decoration: none; }
 .customer-service-title-link:hover, .customer-service-title-link:focus-visible { text-decoration: underline; }
+
+.linked-drivers-list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 12px; }
+.linked-driver { border: 1px solid var(--lp-border, #e5e5e5); border-radius: 12px; padding: 14px 16px; }
+.linked-driver-name { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 8px; }
+.linked-driver-tag { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--lp-surface-muted, #f2f2f2); }
+.linked-driver-facts { display: grid; gap: 4px; margin: 0; }
+.linked-driver-facts > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.linked-driver-facts dt { color: var(--lp-muted); }
+.linked-driver-facts dd { margin: 0; overflow-wrap: anywhere; }
+.linked-driver-verified { color: var(--lp-success, #1a7f37); }
+.linked-driver-unverified { color: var(--lp-muted); }

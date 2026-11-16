@@ -61,6 +61,25 @@ export function requestProviderDrivers(accessToken: string, signal?: AbortSignal
   );
 }
 
+export type CompanyDriver = {
+  driverId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  verified: boolean;
+  isOwner: boolean;
+};
+
+export function requestCompanyDrivers(accessToken: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    "/api/company/profiles/me/drivers",
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
 export function requestSharedTripPublish(accessToken: string, serviceId: string, input: SharedTripPublishInput) {
   return authenticatedApiFetch(
     `/api/provider/services/${encodeURIComponent(serviceId)}/shared-trip`,

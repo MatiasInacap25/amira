@@ -19,8 +19,11 @@ from sqlalchemy.orm import Session
 from amira_api.account_schemas import AccountProvisionRequest
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
+from amira_api.driver_verification import verified_driver_condition
 from amira_api.models import Conductor, DriverInvitation, DriverInvitationAttempt, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
+from amira_api.public_schemas import PublicResponse
 from amira_api.settings import Settings, get_settings
+from amira_api.shared_trip_service import provider_drivers_query
 
 router = APIRouter(tags=["company invitations"])
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
@@ -155,6 +158,22 @@ class InvitationItem(BaseModel):
 
 class InvitationList(BaseModel):
     invitations: list[InvitationItem]
+
+
+class CompanyDriverItem(PublicResponse):
+    driver_id: UUID
+    first_name: str
+    last_name: str
+    email: str
+    phone: str | None
+    # True once both driver certificates are verified.
+    verified: bool
+    # True for the company owner's own driver record.
+    is_owner: bool
+
+
+class CompanyDriverList(PublicResponse):
+    items: list[CompanyDriverItem]
 
 
 class InvitationResult(BaseModel):
@@ -322,6 +341,26 @@ def list_invitations(current_user: CurrentUser, session: Database) -> Invitation
         InvitationItem(id=row.id, email=row.target_email, created_at=row.created_at,
                        expires_at=row.expires_at, status=_invitation_status(row, now))
         for row in rows
+    ])
+
+
+@router.get("/api/company/profiles/me/drivers", response_model=CompanyDriverList)
+def list_company_drivers(current_user: CurrentUser, session: Database) -> CompanyDriverList:
+    """Drivers linked to the caller's company, with contact data. Company owners only."""
+    owner, profile, owner_role, _ = _owned_provider(session, current_user.id)
+    if owner_role != "company_owner":
+        raise HTTPException(status_code=403, detail="A company owner profile is required.")
+    rows = session.execute(
+        provider_drivers_query(profile.id, owner.id)
+        .add_columns(Usuario.email, Usuario.phone, Usuario.id, verified_driver_condition(Conductor.user_id))
+        .order_by(Usuario.first_name, Conductor.id)
+    ).all()
+    return CompanyDriverList(items=[
+        CompanyDriverItem(
+            driver_id=driver_id, first_name=first_name, last_name=last_name, email=email, phone=phone,
+            verified=bool(verified), is_owner=user_id == owner.id,
+        )
+        for driver_id, first_name, last_name, email, phone, user_id, verified in rows
     ])
 
 
