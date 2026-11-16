@@ -88,6 +88,7 @@ test("independent driver sees the provider action buttons without the invitation
   await expect(panel(page).getByRole("link", { name: "Servicios", exact: true })).toHaveAttribute("href", "/cuenta/servicios");
   await expect(panel(page).getByRole("link", { name: "Configuración del perfil" })).toHaveAttribute("href", "/cuenta/perfil");
   await expect(panel(page).getByRole("link", { name: "Invitaciones" })).toHaveCount(0);
+  await expect(panel(page).getByRole("link", { name: "Conductores" })).toHaveCount(0);
 });
 
 test("company owner sees the provider buttons and the invitations button", async ({ page }) => {
@@ -99,6 +100,7 @@ test("company owner sees the provider buttons and the invitations button", async
   await expect(panel(page).getByRole("link", { name: "Servicios", exact: true })).toHaveAttribute("href", "/cuenta/servicios");
   await expect(panel(page).getByRole("link", { name: "Configuración del perfil" })).toHaveAttribute("href", "/cuenta/perfil");
   await expect(panel(page).getByRole("link", { name: "Invitaciones" })).toHaveAttribute("href", "/cuenta/invitaciones");
+  await expect(panel(page).getByRole("link", { name: "Conductores" })).toHaveAttribute("href", "/cuenta/conductores");
 });
 
 test("company driver sees the assigned services area and the profile button", async ({ page }) => {
