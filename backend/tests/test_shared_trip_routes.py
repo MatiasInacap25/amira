@@ -627,3 +627,41 @@ def test_cancelling_origin_service_keeps_shared_trip_and_other_service(api, scen
     assert scenario.shareable.status == "cancelled" and scenario.shareable.trip_id == trip.id
     assert [(row.id, row.order, row.address) for row in db.query(ParadaViaje).order_by(ParadaViaje.order)] == stops_before
     assert db.query(ViajeVehiculo).count() == 1
+
+
+# Company drivers list (owner panel)
+
+def test_company_drivers_list_returns_contact_and_verification_of_own_drivers(api, scenario: Scenario, db: Session):
+    db.get(Usuario, scenario.driver.user_id).phone = "+56912345678"
+    db.commit()
+
+    response = api("GET", "/api/company/profiles/me/drivers", as_auth_id=OWNER_AUTH)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == [{
+        "driverId": str(scenario.driver.id),
+        "firstName": "Eli",
+        "lastName": "Test",
+        "email": "eli@example.test",
+        "phone": "+56912345678",
+        "verified": True,
+        "isOwner": False,
+    }]
+
+
+def test_company_drivers_list_includes_owner_who_is_also_a_driver(api, scenario: Scenario, db: Session):
+    owner = db.query(Usuario).filter(Usuario.auth_user_id == OWNER_AUTH).one()
+    db.add(Conductor(id=uuid4(), user_id=owner.id, employer_profile_id=scenario.company.id,
+                     driver_type_id=scenario.driver.driver_type_id, registered_at=scenario.driver.registered_at))
+    db.commit()
+
+    items = api("GET", "/api/company/profiles/me/drivers", as_auth_id=OWNER_AUTH).json()["items"]
+
+    assert [(item["firstName"], item["isOwner"], item["phone"]) for item in items] == [
+        ("Eli", False, None), ("Pat", True, None),
+    ]
+
+
+@pytest.mark.parametrize("auth_id", [INDEPENDENT_AUTH, EMPLOYED_DRIVER_AUTH, CUSTOMER_AUTH])
+def test_company_drivers_list_is_forbidden_to_non_owners(api, scenario: Scenario, auth_id):
+    assert api("GET", "/api/company/profiles/me/drivers", as_auth_id=auth_id).status_code == 403

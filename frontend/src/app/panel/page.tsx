@@ -107,7 +107,10 @@ export default function PanelPage() {
             <li><Link className="panel-action" href="/cuenta/perfil">Configuración del perfil <ArrowRight aria-hidden="true" size={16} /></Link></li>
             <li><Link className="panel-action" href="/cuenta/verificacion">Verificación de conductor <ArrowRight aria-hidden="true" size={16} /></Link></li>
             {role === "company_owner" && (
-              <li><Link className="panel-action" href="/cuenta/invitaciones">Invitaciones <ArrowRight aria-hidden="true" size={16} /></Link></li>
+              <>
+                <li><Link className="panel-action" href="/cuenta/conductores">Conductores <ArrowRight aria-hidden="true" size={16} /></Link></li>
+                <li><Link className="panel-action" href="/cuenta/invitaciones">Invitaciones <ArrowRight aria-hidden="true" size={16} /></Link></li>
+              </>
             )}
           </ul>
         </nav>
