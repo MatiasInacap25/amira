@@ -3,7 +3,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20261120_0001"
-down_revision = "20261108_0001"
+down_revision = "20261116_0001"
 branch_labels = None
 depends_on = None
 RLS_TABLES = ("Pago_Transaccion_Proveedor",)
