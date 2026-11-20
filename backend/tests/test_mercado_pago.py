@@ -29,7 +29,7 @@ def test_creates_checkout_with_bound_reference_and_amount():
 
 
 @pytest.mark.parametrize("change", [
-    {"live_mode": True}, {"live_mode": None}, {"transaction_amount": 1},
+    {"live_mode": None}, {"collector_id": 999}, {"transaction_amount": 1},
     {"currency_id": "USD"}, {"external_reference": "different"},
 ])
 def test_payment_lookup_rejects_unbound_or_live_evidence(change):
@@ -97,3 +97,13 @@ def test_seller_mismatch_is_logged(caplog):
         provider(handler).create_checkout(uuid4(), Decimal("1000"))
     assert "seller mismatch" in caplog.text.lower()
     assert "999" in caplog.text
+
+
+def test_payment_lookup_accepts_live_mode_payment_from_configured_test_seller():
+    # Test-account payments made with the test seller's production credentials report live_mode=true.
+    payment_id = uuid4()
+    item = {"id": 123, "collector_id": 1234, "live_mode": True, "status": "approved", "transaction_amount": 150000,
+            "currency_id": "CLP", "external_reference": str(payment_id)}
+    def handler(request):
+        return httpx.Response(200, json={"results": [item]})
+    assert provider(handler).lookup(payment_id, Decimal("150000"), "CLP") == [("123", "approved")]
