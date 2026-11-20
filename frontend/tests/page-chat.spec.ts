@@ -639,9 +639,9 @@ test("customer rejects a quotation after confirming, and the card updates to rej
 test("customer pay action opens the checkout URL returned by the payment request", async ({ page }) => {
   await mockThread(page, async (route) => route.fulfill({ json: threadPage({ timeline: [quotationEntry()] }) }));
   await page.route("**/api/quotations/quotation-1/payments", async (route) =>
-    route.fulfill({ json: { paymentId: "payment-1", checkoutUrl: "https://checkout.example.test/session/1" } }),
+    route.fulfill({ json: { paymentId: "payment-1", checkoutUrl: "https://sandbox.mercadopago.com/checkout/v1/redirect?pref_id=1" } }),
   );
-  await page.route("https://checkout.example.test/**", async (route) =>
+  await page.route("https://sandbox.mercadopago.com/**", async (route) =>
     route.fulfill({ contentType: "text/html", body: "<h1>Checkout de prueba</h1>" }),
   );
 
@@ -649,7 +649,19 @@ test("customer pay action opens the checkout URL returned by the payment request
 
   await page.getByRole("article", { name: "Cotización" }).getByRole("button", { name: "Pagar" }).click();
 
-  await expect(page).toHaveURL("https://checkout.example.test/session/1");
+  await expect(page).toHaveURL("https://sandbox.mercadopago.com/checkout/v1/redirect?pref_id=1");
+});
+
+test("customer pay rejects an untrusted checkout URL", async ({ page }) => {
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ timeline: [quotationEntry()] }) }));
+  await page.route("**/api/quotations/quotation-1/payments", async (route) =>
+    route.fulfill({ json: { paymentId: "payment-1", checkoutUrl: "https://mercadopago.cl.attacker.test/steal" } }),
+  );
+  await signInToChat(page, "customer");
+  const quotation = page.getByRole("article", { name: "Cotización" });
+  await quotation.getByRole("button", { name: "Pagar" }).click();
+  await expect(quotation.getByRole("alert")).toHaveText("No pudimos iniciar el pago. Inténtalo nuevamente.");
+  expect(new URL(page.url()).hostname).not.toBe("mercadopago.cl.attacker.test");
 });
 
 test("a quotation that can no longer be paid explains it and refreshes the conversation", async ({ page }) => {

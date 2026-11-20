@@ -97,7 +97,8 @@ export function canRejectQuotation(quotation: QuotationWindow, now: Date): boole
 
 // Payment statuses are not enumerated by the contract, so only an explicit "rejected" is a failure.
 // A paid quotation is the single source of truth for success.
-export function paymentResultState(input: { quotationStatus: string; status?: string }): "success" | "failure" | "pending" {
+export function paymentResultState(input: { quotationStatus: string; status?: string | null }): "success" | "failure" | "pending" | "review" {
+  if (input.status === "review") return "review";
   if (input.quotationStatus === "paid") return "success";
   if (input.status === "rejected") return "failure";
   return "pending";

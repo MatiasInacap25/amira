@@ -71,6 +71,7 @@ def _settings(omit: tuple[str, ...] = (), **overrides) -> Settings:
     values = {
         "app_env": "test",
         "payment_simulator_secret": SecretStr(SECRET),
+        "payment_provider": "simulated",
         "frontend_base_url": FRONTEND,
         "payment_webhook_secret": SecretStr(WEBHOOK),
     }
@@ -761,3 +762,181 @@ def test_approval_of_a_request_without_a_trip_leaves_the_service_unlinked(pay, s
         None, None, None, None,
     )
     assert db.query(ParadaViaje).count() == 0
+
+
+def test_mercado_pago_checkout_reconciles_provider_approval_on_read(pay, scenario, db, monkeypatch):
+    from amira_api.mercado_pago_provider import MercadoPagoProvider
+    from amira_api.models import PaymentProviderTransaction
+    PaymentProviderTransaction.__table__.create(db.get_bind(), checkfirst=True)
+    calls = []
+    def request(self, method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        if path == "/checkout/preferences":
+            return {"id": "pref-real", "collector_id": 1234, "sandbox_init_point": "https://sandbox.mercadopago.com/checkout"}
+        if path == "/v1/payments/search":
+            payment = db.query(Pago).one()
+            return {"results": [{"id": 123, "collector_id": 1234, "external_reference": str(payment.id), "live_mode": False,
+                                 "transaction_amount": 150000, "currency_id": "CLP", "status": "approved"}]}
+        raise AssertionError(path)
+    monkeypatch.setattr(MercadoPagoProvider, "_request", request)
+    settings = _settings(payment_provider="mercado_pago", mercado_pago_access_token=SecretStr("token"), mercado_pago_test_seller_id="1234")
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_payment_provider] = lambda: MercadoPagoProvider(access_token="token", frontend_base_url=FRONTEND, test_seller_id="1234")
+    started = _start(pay, _quote(pay, scenario))
+    assert started.status_code == 201
+    assert started.json()["checkoutUrl"].startswith("https://sandbox.mercadopago.com/")
+    payment_id = started.json()["paymentId"]
+    assert db.query(Servicio).count() == 0
+    result = pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH)
+    assert result.status_code == 200
+    assert result.json()["status"] == "approved"
+    assert db.query(Servicio).count() == 1
+    assert pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH).json()["status"] == "approved"
+    assert db.query(Servicio).count() == 1
+
+
+def test_mercado_pago_late_approval_is_retained_and_projected_as_review(pay, scenario, db, monkeypatch):
+    from amira_api.mercado_pago_provider import MercadoPagoProvider
+    from amira_api.models import PaymentProviderTransaction
+    PaymentProviderTransaction.__table__.create(db.get_bind(), checkfirst=True)
+    def request(self, method, path, **kwargs):
+        if path == "/checkout/preferences":
+            return {"id": "pref-late", "collector_id": 1234, "sandbox_init_point": "https://sandbox.mercadopago.com/checkout"}
+        payment = db.query(Pago).one()
+        return {"results": [{"id": 123, "collector_id": 1234, "external_reference": str(payment.id), "live_mode": False,
+                             "transaction_amount": 150000, "currency_id": "CLP", "status": "approved"}]}
+    monkeypatch.setattr(MercadoPagoProvider, "_request", request)
+    settings = _settings(payment_provider="mercado_pago", mercado_pago_access_token=SecretStr("token"), mercado_pago_test_seller_id="1234")
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_payment_provider] = lambda: MercadoPagoProvider(access_token="token", frontend_base_url=FRONTEND, test_seller_id="1234")
+    payment_id = _start(pay, _quote(pay, scenario)).json()["paymentId"]
+    quotation = db.query(Cotizacion).one()
+    quotation.created_at = utc_now() - timedelta(days=3)
+    quotation.expires_at = utc_now() - timedelta(days=1)
+    db.commit()
+    first = pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH)
+    second = pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["status"] == second.json()["status"] == "review"
+    assert db.query(Pago).one().status == "approved"
+    assert db.query(Servicio).count() == 0
+
+
+def test_mercado_pago_webhook_rejects_forgery_then_reconciles_signed_payment(pay, scenario, db, monkeypatch):
+    import hashlib
+    import hmac
+    from amira_api.mercado_pago_provider import MercadoPagoProvider
+    from amira_api.models import PaymentProviderTransaction
+    PaymentProviderTransaction.__table__.create(db.get_bind(), checkfirst=True)
+    provider_status = ["rejected"]
+    def request(self, method, path, **kwargs):
+        if path == "/checkout/preferences":
+            return {"id": "pref-webhook", "collector_id": 1234,
+                    "sandbox_init_point": "https://sandbox.mercadopago.com/checkout"}
+        assert path == "/v1/payments/123"
+        payment = db.query(Pago).one()
+        return {"id": 123, "collector_id": 1234, "external_reference": str(payment.id), "live_mode": False,
+                "transaction_amount": 150000, "currency_id": "CLP", "status": provider_status[0]}
+    monkeypatch.setattr(MercadoPagoProvider, "_request", request)
+    settings = _settings(payment_provider="mercado_pago", mercado_pago_access_token=SecretStr("token"),
+                         mercado_pago_test_seller_id="1234", mercado_pago_webhook_secret=SecretStr("webhook"))
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_payment_provider] = lambda: MercadoPagoProvider(access_token="token", frontend_base_url=FRONTEND, test_seller_id="1234")
+    _start(pay, _quote(pay, scenario))
+    endpoint = "/api/payments/mercado-pago/webhook?data.id=123"
+    digest = hmac.new(b"webhook", b"id:123;request-id:req;ts:100;", hashlib.sha256).hexdigest()
+    client = TestClient(app)
+    assert client.post(endpoint, headers={"x-request-id": "req", "x-signature": "ts=100,v1=bad"}).status_code == 401
+    assert db.query(Servicio).count() == 0
+    assert client.post(endpoint, headers={"x-request-id": "req", "x-signature": f"ts=100,v1={digest}"}).status_code == 200
+    assert db.query(Pago).one().status == "rejected"
+    assert db.query(Servicio).count() == 0
+    provider_status[0] = "approved"
+    for _ in range(2):
+        assert client.post(endpoint, headers={"x-request-id": "req", "x-signature": f"ts=100,v1={digest}"}).status_code == 200
+    assert db.query(Pago).one().status == "approved"
+    assert db.query(Servicio).count() == 1
+
+
+def test_mercado_pago_duplicate_approvals_are_both_recorded_without_duplicate_service(pay, scenario, db, monkeypatch):
+    from amira_api.models import PaymentProviderTransaction
+    from amira_api.mercado_pago_provider import MercadoPagoProvider
+    PaymentProviderTransaction.__table__.create(db.get_bind(), checkfirst=True)
+    def request(self, method, path, **kwargs):
+        if path == "/checkout/preferences":
+            return {"id": "pref-double", "collector_id": 1234,
+                    "sandbox_init_point": "https://sandbox.mercadopago.com/checkout"}
+        payment = db.query(Pago).one()
+        return {"results": [{"id": transaction_id, "collector_id": 1234, "external_reference": str(payment.id),
+                             "live_mode": False, "transaction_amount": 150000, "currency_id": "CLP", "status": "approved"}
+                            for transaction_id in (123, 124)]}
+    monkeypatch.setattr(MercadoPagoProvider, "_request", request)
+    settings = _settings(payment_provider="mercado_pago", mercado_pago_access_token=SecretStr("token"), mercado_pago_test_seller_id="1234")
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_payment_provider] = lambda: MercadoPagoProvider(access_token="token", frontend_base_url=FRONTEND, test_seller_id="1234")
+    payment_id = _start(pay, _quote(pay, scenario)).json()["paymentId"]
+    result = pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH)
+    assert result.json()["status"] == "review"
+    assert db.query(PaymentProviderTransaction).count() == 2
+    assert db.query(Servicio).count() == 1
+
+
+def test_mercado_pago_superseded_approval_is_retained_for_review(pay, scenario, db, monkeypatch):
+    from amira_api.models import PaymentProviderTransaction
+    from amira_api.mercado_pago_provider import MercadoPagoProvider
+    PaymentProviderTransaction.__table__.create(db.get_bind(), checkfirst=True)
+    def request(self, method, path, **kwargs):
+        if path == "/checkout/preferences":
+            return {"id": "pref-superseded", "collector_id": 1234,
+                    "sandbox_init_point": "https://sandbox.mercadopago.com/checkout"}
+        payment = db.query(Pago).one()
+        return {"results": [{"id": 125, "collector_id": 1234, "external_reference": str(payment.id),
+                             "live_mode": False, "transaction_amount": 150000, "currency_id": "CLP", "status": "approved"}]}
+    monkeypatch.setattr(MercadoPagoProvider, "_request", request)
+    settings = _settings(payment_provider="mercado_pago", mercado_pago_access_token=SecretStr("token"), mercado_pago_test_seller_id="1234")
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_payment_provider] = lambda: MercadoPagoProvider(access_token="token", frontend_base_url=FRONTEND, test_seller_id="1234")
+    payment_id = _start(pay, _quote(pay, scenario)).json()["paymentId"]
+    _supersede(pay, scenario)
+    result = pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH)
+    assert result.json()["status"] == "review"
+    assert db.query(Pago).one().status == "approved"
+    assert db.query(PaymentProviderTransaction).count() == 1
+    assert db.query(Servicio).count() == 0
+
+def test_verifier_rejected_evidence_is_persisted(pay, scenario, db, monkeypatch):
+    from amira_api.mercado_pago_provider import MercadoPagoProvider
+    from amira_api.models import PaymentProviderTransaction
+    PaymentProviderTransaction.__table__.create(db.get_bind(), checkfirst=True)
+    calls = []
+    provider_status = ["rejected"]
+    def request(self, method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        if path == "/checkout/preferences":
+            return {"id": "pref-real", "collector_id": 1234, "sandbox_init_point": "https://sandbox.mercadopago.com/checkout"}
+        if path == "/v1/payments/search":
+            payment = db.query(Pago).one()
+            return {"results": [{"id": 123, "collector_id": 1234, "external_reference": str(payment.id), "live_mode": False,
+                                 "transaction_amount": 150000, "currency_id": "CLP", "status": provider_status[0]}]}
+        raise AssertionError(path)
+    monkeypatch.setattr(MercadoPagoProvider, "_request", request)
+    settings = _settings(payment_provider="mercado_pago", mercado_pago_access_token=SecretStr("token"), mercado_pago_test_seller_id="1234")
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_payment_provider] = lambda: MercadoPagoProvider(access_token="token", frontend_base_url=FRONTEND, test_seller_id="1234")
+    started = _start(pay, _quote(pay, scenario))
+    assert started.status_code == 201
+    assert started.json()["checkoutUrl"].startswith("https://sandbox.mercadopago.com/")
+    payment_id = started.json()["paymentId"]
+    assert db.query(Servicio).count() == 0
+    result = pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH)
+    assert result.status_code == 200
+    assert result.json()["status"] == "rejected"
+    assert db.query(Pago).one().status == "rejected"
+    assert db.query(Servicio).count() == 0
+
+    provider_status[0] = "approved"
+    later = pay(f"/api/payments/{payment_id}", as_auth_id=CUSTOMER_AUTH)
+    assert later.status_code == 200
+    assert later.json()["status"] == "approved"
+    assert db.query(Pago).one().status == "approved"
+    assert db.query(Servicio).count() == 1

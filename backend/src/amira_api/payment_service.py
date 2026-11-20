@@ -12,7 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from amira_api.models import Chat, Cotizacion, Pago, Servicio
+from amira_api.models import Chat, Cotizacion, Pago, Servicio, PaymentProviderTransaction
 from amira_api.payment_provider import PaymentProvider
 from amira_api.quotation_service import PENDING, chat_is_settled, effective_status
 from amira_api.realtime import ChatEventKind, publish_chat_event
@@ -53,6 +53,8 @@ def start_payment(session: Session, provider: PaymentProvider, quotation_id: UUI
     ).scalar_one_or_none()
     customer_id = session.get(Chat, quotation.chat_id).form.customer_id
     if in_progress is not None:
+        if in_progress.provider != provider.name:
+            raise PaymentConflict("El pago existente usa otro proveedor.")
         return in_progress, provider.checkout_url(in_progress.id, in_progress.provider_payment_id, customer_id)
 
     # Attempts are numbered per quotation, so a new attempt after a rejection gets a new idempotency key.
@@ -63,7 +65,7 @@ def start_payment(session: Session, provider: PaymentProvider, quotation_id: UUI
         id=uuid4(),
         quotation_id=quotation.id,
         provider=provider.name,
-        provider_payment_id=provider.new_provider_payment_id(),
+        provider_payment_id=provider.new_provider_payment_id() if provider.name != "mercado_pago" else "pending",
         idempotency_key=f"quotation:{quotation.id}:attempt:{attempts + 1}",
         amount=quotation.amount,
         currency="CLP",
@@ -71,10 +73,14 @@ def start_payment(session: Session, provider: PaymentProvider, quotation_id: UUI
         created_at=now,
         updated_at=now,
     )
+    if provider.name == "mercado_pago":
+        payment.provider_payment_id, checkout_url = provider.create_checkout(payment.id, payment.amount)
+    else:
+        checkout_url = provider.checkout_url(payment.id, payment.provider_payment_id, customer_id)
     session.add(payment)
     session.commit()
     session.refresh(payment)
-    return payment, provider.checkout_url(payment.id, payment.provider_payment_id, customer_id)
+    return payment, checkout_url
 
 
 def _closed_quotation_reason(quotation: Cotizacion, now: datetime) -> str:
@@ -106,16 +112,18 @@ def confirm_payment(
     status: str,
     signature: str,
     now: datetime,
+    verified: bool = False,
+    provider_transaction_id: str | None = None,
 ) -> Pago:
     """Apply a signed provider result. An approval marks the quotation paid and creates the service atomically."""
-    if not provider.verify_confirmation(payment_id, provider_payment_id, status, signature):
+    if not verified and not provider.verify_confirmation(payment_id, provider_payment_id, status, signature):
         raise ConfirmationRefused()
 
     payment = session.execute(select(Pago).where(Pago.id == payment_id).with_for_update()).scalar_one_or_none()
     # A confirmation from another provider is treated as unknown: nothing is applied and nothing is revealed.
     if payment is None or payment.provider_payment_id != provider_payment_id or payment.provider != provider.name:
         raise PaymentNotFound()
-    if payment.status != IN_PROGRESS:
+    if payment.status != IN_PROGRESS and not (provider.name == "mercado_pago" and payment.status == REJECTED and status == APPROVED):
         if payment.status == status:
             return payment
         raise PaymentConflict("El pago ya tiene un resultado distinto.")
@@ -132,13 +140,23 @@ def confirm_payment(
         select(Cotizacion).where(Cotizacion.id == payment.quotation_id).with_for_update()
     ).scalar_one()
     if effective_status(quotation, now) != PENDING:
-        # The quotation moved on while the customer was paying: record the payment as rejected, apply nothing.
+        # Preserve verified real approvals for manual review; legacy simulator behavior stays unchanged.
+        if provider.name == "mercado_pago":
+            payment.status = APPROVED
+            session.commit()
+            session.refresh(payment)
+            return payment
         payment.status = REJECTED
         session.commit()
         raise PaymentConflict(_closed_quotation_reason(quotation, now))
     chat = session.get(Chat, quotation.chat_id)
     form = chat.form
     if form.profile_id is None:
+        if provider.name == "mercado_pago":
+            payment.status = APPROVED
+            session.commit()
+            session.refresh(payment)
+            return payment
         raise PaymentConflict("La solicitud no tiene un prestador asignado.")
 
     trip_link = None
@@ -154,8 +172,11 @@ def confirm_payment(
                 is_exclusive=form.is_exclusive,
             )
         except SharedTripConflict as error:
-            payment.status = REJECTED
+            payment.status = APPROVED if provider.name == "mercado_pago" else REJECTED
             session.commit()
+            if provider.name == "mercado_pago":
+                session.refresh(payment)
+                return payment
             raise PaymentConflict(str(error)) from None
 
     payment.status = APPROVED
@@ -217,6 +238,16 @@ def confirm_payment(
     except IntegrityError:
         # A concurrent confirmation for the same request won the unique service constraint.
         session.rollback()
+        if provider.name == "mercado_pago":
+            payment = session.execute(select(Pago).where(Pago.id == payment_id).with_for_update()).scalar_one()
+            if provider_transaction_id is not None and session.get(PaymentProviderTransaction, provider_transaction_id) is None:
+                session.add(PaymentProviderTransaction(provider_transaction_id=provider_transaction_id, payment_id=payment.id, created_at=now))
+            if payment.status in (IN_PROGRESS, REJECTED):
+                payment.status = APPROVED
+                payment.confirmed_at = now
+                payment.updated_at = now
+            session.commit()
+            return payment
         raise PaymentConflict("La solicitud ya tiene un servicio confirmado.") from None
     session.refresh(payment)
     return payment

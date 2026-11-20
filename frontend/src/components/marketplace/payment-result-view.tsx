@@ -71,8 +71,18 @@ export function PaymentResultView({ paymentId, status }: Props) {
     );
   }
 
-  const result = paymentResultState({ quotationStatus: data.quotationStatus, status: data.status ?? status });
+  const result = paymentResultState({ quotationStatus: data.quotationStatus, status: data.status });
   const chatLink = <Link className="button button-primary" href={chatHref(data.chatId)}>Volver a la conversación</Link>;
+
+  if (result === "review") {
+    return (
+      <article className="marketplace-state marketplace-empty chat-result chat-result-pending" role="status">
+        <h1>Pago en revisión</h1>
+        <p>Recibimos tu pago y estamos revisando su estado. Consulta la conversación para más información.</p>
+        <div className="chat-result-actions">{chatLink}</div>
+      </article>
+    );
+  }
 
   if (result === "success") {
     return (
