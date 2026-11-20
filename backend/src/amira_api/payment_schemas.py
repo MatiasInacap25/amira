@@ -8,7 +8,7 @@ from pydantic import ConfigDict, Field
 from amira_api.public_schemas import PublicResponse
 from amira_api.quotation_schemas import QuotationStatus
 
-PaymentStatus = Literal["pending", "approved", "rejected"]
+PaymentStatus = Literal["pending", "approved", "rejected", "review"]
 
 
 class PaymentCheckout(PublicResponse):

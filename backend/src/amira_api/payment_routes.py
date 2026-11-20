@@ -8,15 +8,17 @@ import hmac
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.chat_access import caller_account, caller_chats
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
-from amira_api.models import Chat, Cotizacion, Pago, Servicio
+from amira_api.models import Chat, Cotizacion, Pago, Servicio, PaymentProviderTransaction
 from amira_api.payment_provider import SIMULATED_PROVIDER_NAME, PaymentProvider
+from amira_api.mercado_pago_provider import MercadoPagoError, MercadoPagoProvider, verify_webhook_signature
 from amira_api.payment_schemas import (
     PaymentCheckout,
     PaymentConfirmationRequest,
@@ -66,7 +68,15 @@ def _simulated_provider(settings: Settings, *, not_found_outside_dev: bool) -> S
 
 
 def get_payment_provider(settings: AppSettings) -> PaymentProvider:
-    """Composition root for the payment port. Only the simulated adapter exists today."""
+    """Choose an explicitly configured provider, failing closed for missing credentials."""
+    if settings.payment_provider == "mercado_pago":
+        token = settings.mercado_pago_access_token.get_secret_value() if settings.mercado_pago_access_token else ""
+        if not token or not settings.frontend_base_url or not settings.mercado_pago_test_seller_id:
+            raise HTTPException(status_code=503, detail=PAYMENTS_NOT_CONFIGURED)
+        return MercadoPagoProvider(access_token=token, frontend_base_url=settings.frontend_base_url,
+                                   test_seller_id=settings.mercado_pago_test_seller_id)
+    if settings.payment_provider != "simulated":
+        raise HTTPException(status_code=503, detail=PAYMENTS_NOT_CONFIGURED)
     return _simulated_provider(settings, not_found_outside_dev=False)
 
 
@@ -110,12 +120,43 @@ def _caller_payment(session: Session, current_user: AuthenticatedUser, payment_i
     return account.id, payment, quotation, row
 
 
+def _payment_status(session: Session, payment: Pago, service_id) -> str:
+    if payment.provider == "mercado_pago" and payment.status == "approved":
+        count = session.scalar(select(func.count()).select_from(PaymentProviderTransaction).where(
+            PaymentProviderTransaction.payment_id == payment.id))
+        if service_id is None or count > 1:
+            return "review"
+    return payment.status
+
+
+def _reconcile(session: Session, provider: MercadoPagoProvider, payment: Pago, transaction_evidence: list[tuple[str, str]]) -> Pago:
+    for transaction_id, status in transaction_evidence:
+        payment = session.execute(select(Pago).where(Pago.id == payment.id).with_for_update()).scalar_one()
+        if status == "rejected":
+            if payment.status == "pending":
+                payment = confirm_payment(session, provider, payment_id=payment.id, provider_payment_id=payment.provider_payment_id,
+                                          status=status, signature="", now=utc_now(), verified=True)
+            continue
+        existing = session.get(PaymentProviderTransaction, transaction_id)
+        if existing is not None:
+            if existing.payment_id != payment.id:
+                raise PaymentConflict("La transacción corresponde a otro pago.")
+            continue
+        session.add(PaymentProviderTransaction(provider_transaction_id=transaction_id, payment_id=payment.id, created_at=utc_now()))
+        session.flush()
+        payment = confirm_payment(session, provider, payment_id=payment.id, provider_payment_id=payment.provider_payment_id,
+                                  status="approved", signature="", now=utc_now(), verified=True,
+                                  provider_transaction_id=transaction_id)
+        session.commit()
+    return payment
+
+
 def _result(session: Session, payment: Pago) -> PaymentResult:
     quotation = session.get(Cotizacion, payment.quotation_id)
     service_id = session.query(Servicio.id).filter(Servicio.accepted_quotation_id == quotation.id).scalar()
     return PaymentResult(
         payment_id=payment.id,
-        status=payment.status,
+        status=_payment_status(session, payment, service_id),
         quotation_id=quotation.id,
         quotation_status=effective_status(quotation, utc_now()),
         service_id=service_id,
@@ -164,6 +205,9 @@ def start_quotation_payment(
         payment, checkout_url = start_payment(session, provider, quotation.id, utc_now())
     except PaymentConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except MercadoPagoError:
+        session.rollback()
+        raise HTTPException(status_code=503, detail="Payment provider unavailable.") from None
     return PaymentCheckout(payment_id=payment.id, checkout_url=checkout_url)
 
 
@@ -178,7 +222,7 @@ def confirm_payment_route(
     provider: Annotated[PaymentProvider, Depends(get_payment_provider)],
 ) -> PaymentResult:
     """Server-to-server confirmation from a real provider. Browser sessions never reach this route."""
-    if provider.name == SIMULATED_PROVIDER_NAME:
+    if provider.name in (SIMULATED_PROVIDER_NAME, "mercado_pago"):
         raise HTTPException(status_code=403, detail="Las confirmaciones simuladas no pasan por el webhook.")
     return _apply_confirmation(
         session,
@@ -230,14 +274,55 @@ def complete_simulated_payment(
 
 
 @router.get("/payments/{payment_id}", response_model=PaymentDetail)
-def read_payment(payment_id: UUID, current_user: CurrentUser, session: Database) -> PaymentDetail:
+def read_payment(payment_id: UUID, current_user: CurrentUser, session: Database,
+                 settings: AppSettings) -> PaymentDetail:
     caller_id, payment, quotation, row = _caller_payment(session, current_user, payment_id)
     if row["customer_id"] != caller_id:
         raise HTTPException(status_code=403, detail="Solo el cliente puede consultar este pago.")
+    if payment.provider == "mercado_pago":
+        provider = get_payment_provider(settings)
+        if provider.name != "mercado_pago":
+            raise HTTPException(status_code=503, detail=PAYMENTS_NOT_CONFIGURED)
+        try:
+            transaction_ids = provider.lookup(payment.id, payment.amount, payment.currency)
+            payment = _reconcile(session, provider, payment, transaction_ids)
+        except MercadoPagoError:
+            raise HTTPException(status_code=503, detail="Payment provider unavailable.") from None
+    service_id = session.query(Servicio.id).filter(Servicio.accepted_quotation_id == quotation.id).scalar()
     return PaymentDetail(
         payment_id=payment.id,
-        status=payment.status,
+        status=_payment_status(session, payment, service_id),
         quotation_id=quotation.id,
         quotation_status=effective_status(quotation, utc_now()),
         chat_id=quotation.chat_id,
     )
+
+
+@router.post("/payments/mercado-pago/webhook", status_code=200)
+def mercado_pago_webhook(request: Request, session: Database, settings: AppSettings):
+    secret = settings.mercado_pago_webhook_secret.get_secret_value() if settings.mercado_pago_webhook_secret else ""
+    if not secret:
+        raise HTTPException(status_code=503, detail=PAYMENTS_NOT_CONFIGURED)
+    resource_id = request.query_params.get("data.id", "")
+    if not verify_webhook_signature(secret, resource_id, request.headers.get("x-request-id", ""),
+                                    request.headers.get("x-signature", "")):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature.")
+    provider = get_payment_provider(settings)
+    if provider.name != "mercado_pago":
+        raise HTTPException(status_code=503, detail=PAYMENTS_NOT_CONFIGURED)
+    try:
+        evidence = provider._request("GET", f"/v1/payments/{resource_id}")
+        try:
+            payment_id = UUID(str(evidence.get("external_reference")))
+        except ValueError:
+            return {"ok": True}
+        payment = session.get(Pago, payment_id)
+        if payment is None or payment.provider != "mercado_pago":
+            return {"ok": True}
+        transaction_ids = provider.lookup(payment.id, payment.amount, payment.currency, resource_id)
+        _reconcile(session, provider, payment, transaction_ids)
+    except MercadoPagoError:
+        raise HTTPException(status_code=503, detail="Payment provider unavailable.") from None
+    except PaymentConflict:
+        raise HTTPException(status_code=409, detail="Payment could not be reconciled.") from None
+    return {"ok": True}

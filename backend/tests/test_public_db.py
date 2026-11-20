@@ -80,7 +80,7 @@ def test_database_engine_forces_psycopg_tls_and_bounded_timeouts(monkeypatch) ->
 def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
     migration = load_public_migration()
 
-    assert len(Base.metadata.tables) == 33
+    assert len(Base.metadata.tables) == 34
     assert (
         (set(migration.PUBLIC_TABLES) - {"alembic_version"})
         | set(load_auth_migration().RLS_TABLES)
@@ -88,6 +88,7 @@ def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
         | set(load_location_migration().RLS_TABLES)
         | set(load_service_assignment_migration().RLS_TABLES)
         | set(load_live_location_migration().RLS_TABLES)
+        | set(load_payment_provider_transaction_migration().RLS_TABLES)
     ) == set(Base.metadata.tables)
     assert "alembic_version" in migration.PUBLIC_TABLES
 
@@ -346,3 +347,20 @@ def test_destructive_test_is_skipped_when_database_url_is_unset(monkeypatch) -> 
 
     with pytest.raises(pytest.skip.Exception, match="is not set"):
         test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
+
+
+def load_payment_provider_transaction_migration():
+    migration_path = Path(__file__).parents[1] / "alembic" / "versions" / "20261120_0001_payment_provider_transactions.py"
+    spec = spec_from_file_location("payment_provider_transaction_migration", migration_path)
+    migration = module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(migration)
+    return migration
+
+
+def test_payment_provider_transactions_migration_enables_rls_and_revokes_client_access():
+    migration = load_payment_provider_transaction_migration()
+    source = Path(migration.__file__).read_text(encoding="utf-8")
+    assert migration.RLS_TABLES == ("Pago_Transaccion_Proveedor",)
+    assert 'ALTER TABLE "Pago_Transaccion_Proveedor" ENABLE ROW LEVEL SECURITY' in source
+    assert 'REVOKE ALL ON TABLE "Pago_Transaccion_Proveedor" FROM PUBLIC, anon, authenticated' in source

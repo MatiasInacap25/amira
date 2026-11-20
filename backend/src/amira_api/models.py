@@ -651,6 +651,14 @@ class Pago(Base):
     payouts: Mapped[list[Desembolso]] = relationship(back_populates="payment")
 
 
+class PaymentProviderTransaction(Base):
+    __tablename__ = "Pago_Transaccion_Proveedor"
+
+    provider_transaction_id: Mapped[str] = mapped_column("ID_Transaccion", String(200), primary_key=True)
+    payment_id: Mapped[UUID] = mapped_column("ID_Pago", ForeignKey("Pago.ID", ondelete="RESTRICT"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False)
+
+
 class Reembolso(Base):
     __tablename__ = "Reembolso"
     __table_args__ = (

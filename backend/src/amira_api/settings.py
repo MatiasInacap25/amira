@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     email_fallback_secret: SecretStr | None = None
     # Development-only: signs simulated payment checkouts and confirmations. Required for the simulated adapter.
     payment_simulator_secret: SecretStr | None = None
+    payment_provider: str = "mercado_pago"
+    mercado_pago_access_token: SecretStr | None = None
+    mercado_pago_test_seller_id: str | None = None
+    mercado_pago_webhook_secret: SecretStr | None = None
     # Server-to-server secret for POST /api/payments/confirm, sent in the X-Amira-Payment-Webhook-Secret header.
     payment_webhook_secret: SecretStr | None = None
     # Supabase Storage for delivery photos. The service-role key is server-side only; never a NEXT_PUBLIC_* value.
