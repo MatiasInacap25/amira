@@ -36,7 +36,12 @@ export function ChatQuotationCard({ quotation, viewerRole, onChanged }: Props) {
     setError("");
     try {
       const { checkoutUrl } = await createQuotationPayment(await currentAccessToken(), quotation.quotationId);
-      window.location.assign(checkoutUrl);
+      const destination = new URL(checkoutUrl);
+      const allowedHosts = new Set(["sandbox.mercadopago.com"]);
+      if (destination.protocol !== "https:" || !allowedHosts.has(destination.hostname) || destination.port || destination.username || destination.password) {
+        throw new Error("Invalid checkout destination");
+      }
+      window.location.assign(destination.href);
     } catch (cause) {
       setError(actionErrorMessage(cause, "pagar"));
       setBusy(null);

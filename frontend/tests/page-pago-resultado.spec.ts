@@ -206,3 +206,29 @@ test("result fits a phone-width viewport without horizontal page scroll", async 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("an approved payment requiring review does not claim a service was confirmed", async ({ page }) => {
+  await signInToResult(page);
+  await page.route(statusPath, async (route) => route.fulfill({ json: { ...pendingPayment, status: "review", quotationStatus: "expired" } }));
+  await page.goto(resultPath);
+  await expect(page.getByRole("heading", { name: "Pago en revisión" })).toBeVisible();
+  await expect(page.getByText("Tu servicio quedó confirmado.", { exact: false })).toHaveCount(0);
+});
+
+test("return URL status cannot override a missing server payment status", async ({ page }) => {
+  await signInToResult(page, "/pagos/resultado?paymentId=payment-1&status=rejected");
+  await page.route(statusPath, async (route) => route.fulfill({ json: { ...pendingPayment, status: null } }));
+  await page.goto("/pagos/resultado?paymentId=payment-1&status=rejected");
+  await expect(page.getByRole("heading", { name: "Estamos confirmando tu pago" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "El pago no se completó" })).toHaveCount(0);
+});
+
+test("a payment in review with an existing service does not imply that no service exists", async ({ page }) => {
+  await signInToResult(page);
+  await page.route(statusPath, async (route) => route.fulfill({ json: { ...pendingPayment, status: "review", quotationStatus: "paid", serviceId: "service-1" } }));
+  await page.goto(resultPath);
+  await expect(page.getByRole("heading", { name: "Pago en revisión" })).toBeVisible();
+  await expect(page.getByText("Recibimos tu pago y estamos revisando su estado. Consulta la conversación para más información.")).toBeVisible();
+  await expect(page.getByText("El servicio no fue confirmado", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("intentarlo nuevamente", { exact: false })).toHaveCount(0);
+});
