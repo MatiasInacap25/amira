@@ -21,6 +21,7 @@ def test_creates_checkout_with_bound_reference_and_amount():
         assert body["external_reference"] == str(payment_id)
         assert body["items"][0]["unit_price"] == 150000
         assert body["items"][0]["currency_id"] == "CLP"
+        assert body["auto_return"] == "approved"
         return httpx.Response(201, json={"id": "pref-1", "collector_id": 1234, "sandbox_init_point": "https://sandbox.mercadopago.com/checkout?pref_id=1"})
     pref, url = provider(handler).create_checkout(payment_id, Decimal("150000"))
     assert pref == "pref-1"
