@@ -639,9 +639,9 @@ test("customer rejects a quotation after confirming, and the card updates to rej
 test("customer pay action opens the checkout URL returned by the payment request", async ({ page }) => {
   await mockThread(page, async (route) => route.fulfill({ json: threadPage({ timeline: [quotationEntry()] }) }));
   await page.route("**/api/quotations/quotation-1/payments", async (route) =>
-    route.fulfill({ json: { paymentId: "payment-1", checkoutUrl: "https://sandbox.mercadopago.com/checkout/v1/redirect?pref_id=1" } }),
+    route.fulfill({ json: { paymentId: "payment-1", checkoutUrl: "https://sandbox.mercadopago.cl/checkout/v1/redirect?pref_id=1" } }),
   );
-  await page.route("https://sandbox.mercadopago.com/**", async (route) =>
+  await page.route("https://sandbox.mercadopago.cl/**", async (route) =>
     route.fulfill({ contentType: "text/html", body: "<h1>Checkout de prueba</h1>" }),
   );
 
@@ -649,7 +649,7 @@ test("customer pay action opens the checkout URL returned by the payment request
 
   await page.getByRole("article", { name: "Cotización" }).getByRole("button", { name: "Pagar" }).click();
 
-  await expect(page).toHaveURL("https://sandbox.mercadopago.com/checkout/v1/redirect?pref_id=1");
+  await expect(page).toHaveURL("https://sandbox.mercadopago.cl/checkout/v1/redirect?pref_id=1");
 });
 
 test("customer pay rejects an untrusted checkout URL", async ({ page }) => {
