@@ -80,6 +80,8 @@ class MercadoPagoProvider:
             "items": [{"title": "Cotización de servicio", "quantity": 1, "unit_price": int(amount), "currency_id": "CLP"}],
             "external_reference": str(payment_id),
             "back_urls": {"success": result_url, "failure": result_url, "pending": result_url},
+            # Return approved buyers to Amira automatically so the result page reconciles the payment.
+            "auto_return": "approved",
         })
         if str(data.get("collector_id")) != self._seller_id:
             logger.warning("Mercado Pago preference seller mismatch: collector_id=%s, configured test seller=%s",
