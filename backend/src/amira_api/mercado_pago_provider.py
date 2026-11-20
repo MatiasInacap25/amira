@@ -2,11 +2,19 @@
 
 import hashlib
 import hmac
+import logging
+import re
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode, urlparse
 from uuid import UUID
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+# Checkout Pro returns a country-specific sandbox host (for example sandbox.mercadopago.cl for Chile).
+SANDBOX_HOST = re.compile(r"sandbox\.mercadopago\.(?:com|cl|com\.(?:ar|br|mx|co|pe|uy))")
+PROVIDER_BODY_LOG_LIMIT = 300
 
 
 def verify_webhook_signature(secret: str, resource_id: str, request_id: str, signature: str) -> bool:
@@ -39,12 +47,18 @@ class MercadoPagoProvider:
             with httpx.Client(base_url="https://api.mercadopago.com", transport=self._transport,
                               timeout=10, follow_redirects=False, headers={"Authorization": f"Bearer {self._token}"}) as client:
                 response = client.request(method, path, **kwargs)
+                if response.is_error:
+                    # The provider body explains the rejection; it never contains our access token.
+                    logger.warning("Mercado Pago %s %s answered %s: %s", method, path, response.status_code,
+                                   response.text[:PROVIDER_BODY_LOG_LIMIT])
                 response.raise_for_status()
                 data = response.json()
                 if not isinstance(data, dict):
                     raise ValueError("Invalid provider response")
                 return data
         except (httpx.HTTPError, ValueError) as exc:
+            if not isinstance(exc, httpx.HTTPStatusError):
+                logger.warning("Mercado Pago %s %s failed: %s", method, path, type(exc).__name__)
             raise MercadoPagoError("Mercado Pago is unavailable.") from exc
 
     @staticmethod
@@ -53,7 +67,8 @@ class MercadoPagoProvider:
         if not isinstance(url, str):
             raise MercadoPagoError("Missing sandbox checkout URL.")
         parsed = urlparse(url)
-        if parsed.scheme != "https" or parsed.hostname != "sandbox.mercadopago.com" or parsed.username or parsed.password or parsed.port not in (None, 443):
+        if parsed.scheme != "https" or not SANDBOX_HOST.fullmatch(parsed.hostname or "") or parsed.username or parsed.password or parsed.port not in (None, 443):
+            logger.warning("Mercado Pago returned an unexpected sandbox checkout host: %s", parsed.hostname)
             raise MercadoPagoError("Invalid sandbox checkout URL.")
         return url
 
@@ -67,6 +82,8 @@ class MercadoPagoProvider:
             "back_urls": {"success": result_url, "failure": result_url, "pending": result_url},
         })
         if str(data.get("collector_id")) != self._seller_id:
+            logger.warning("Mercado Pago preference seller mismatch: collector_id=%s, configured test seller=%s",
+                           data.get("collector_id"), self._seller_id)
             raise MercadoPagoError("Preference seller mismatch.")
         if not isinstance(data.get("id"), str) or not data["id"]:
             raise MercadoPagoError("Missing preference ID.")

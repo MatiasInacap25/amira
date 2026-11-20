@@ -60,3 +60,39 @@ def test_webhook_signature_binds_resource_and_request_id():
     assert verify_webhook_signature("secret", "123", "request", f"ts=100,v1={digest}")
     assert not verify_webhook_signature("secret", "124", "request", f"ts=100,v1={digest}")
     assert not verify_webhook_signature("secret", "123", "request", "ts=100,v1=invalid")
+
+
+@pytest.mark.parametrize("host", ["sandbox.mercadopago.cl", "sandbox.mercadopago.com.ar", "sandbox.mercadopago.com"])
+def test_checkout_accepts_country_sandbox_hosts(host):
+    def handler(request):
+        return httpx.Response(201, json={"id": "pref-1", "collector_id": 1234, "sandbox_init_point": f"https://{host}/checkout/v1/redirect?pref_id=1"})
+    _, url = provider(handler).create_checkout(uuid4(), Decimal("1000"))
+    assert url.startswith(f"https://{host}/")
+
+
+@pytest.mark.parametrize("host", ["mercadopago.cl", "sandbox.mercadopago.cl.evil.test", "www.mercadopago.cl", "sandbox.evil.cl"])
+def test_checkout_rejects_non_sandbox_hosts(host):
+    def handler(request):
+        return httpx.Response(201, json={"id": "pref-1", "collector_id": 1234, "sandbox_init_point": f"https://{host}/checkout?pref_id=1"})
+    with pytest.raises(MercadoPagoError):
+        provider(handler).create_checkout(uuid4(), Decimal("1000"))
+
+
+def test_provider_failure_is_logged_with_status_and_without_token(caplog):
+    def handler(request):
+        return httpx.Response(401, json={"message": "invalid access token"})
+    with caplog.at_level("WARNING", logger="amira_api.mercado_pago_provider"), pytest.raises(MercadoPagoError):
+        provider(handler).create_checkout(uuid4(), Decimal("1000"))
+    assert "401" in caplog.text
+    assert "/checkout/preferences" in caplog.text
+    assert "invalid access token" in caplog.text
+    assert "secret" not in caplog.text
+
+
+def test_seller_mismatch_is_logged(caplog):
+    def handler(request):
+        return httpx.Response(201, json={"id": "pref-1", "collector_id": 999, "sandbox_init_point": "https://sandbox.mercadopago.cl/x"})
+    with caplog.at_level("WARNING", logger="amira_api.mercado_pago_provider"), pytest.raises(MercadoPagoError):
+        provider(handler).create_checkout(uuid4(), Decimal("1000"))
+    assert "seller mismatch" in caplog.text.lower()
+    assert "999" in caplog.text
