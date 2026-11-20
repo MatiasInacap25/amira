@@ -14,6 +14,9 @@ type Props = {
 
 const dateFormatter = new Intl.DateTimeFormat("es-CL", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Santiago" });
 
+// Checkout Pro returns a country-specific sandbox host (for example sandbox.mercadopago.cl); mirrors the backend check.
+const SANDBOX_CHECKOUT_HOST = /^sandbox\.mercadopago\.(?:com|cl|com\.(?:ar|br|mx|co|pe|uy))$/;
+
 // The customer's actions are offered only while the quotation is pending and unexpired. The backend re-checks both.
 function actionErrorMessage(cause: unknown, verb: "pagar" | "rechazar"): string {
   if (cause instanceof ChatRequestError && cause.status === 409) {
@@ -37,8 +40,7 @@ export function ChatQuotationCard({ quotation, viewerRole, onChanged }: Props) {
     try {
       const { checkoutUrl } = await createQuotationPayment(await currentAccessToken(), quotation.quotationId);
       const destination = new URL(checkoutUrl);
-      const allowedHosts = new Set(["sandbox.mercadopago.com"]);
-      if (destination.protocol !== "https:" || !allowedHosts.has(destination.hostname) || destination.port || destination.username || destination.password) {
+      if (destination.protocol !== "https:" || !SANDBOX_CHECKOUT_HOST.test(destination.hostname) || destination.port || destination.username || destination.password) {
         throw new Error("Invalid checkout destination");
       }
       window.location.assign(destination.href);
