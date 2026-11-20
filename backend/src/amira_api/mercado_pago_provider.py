@@ -111,7 +111,9 @@ class MercadoPagoProvider:
             raise MercadoPagoError("Invalid payment search response.")
         evidence = []
         for item in results:
-            if not isinstance(item, dict) or item.get("live_mode") is not False:
+            # Test-account payments made with the test seller's production credentials report live_mode=true,
+            # so the sandbox boundary is the configured test seller (collector_id), checked below.
+            if not isinstance(item, dict) or not isinstance(item.get("live_mode"), bool):
                 continue
             if item.get("external_reference") != str(payment_id) or item.get("currency_id") != currency or str(item.get("collector_id")) != self._seller_id:
                 continue
