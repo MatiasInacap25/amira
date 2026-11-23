@@ -497,13 +497,6 @@ h1, h2, h3, p { margin-top: 0; }
 .route-provider { margin: 0; color: #657980; font-size: 12px; }
 .route-provider strong { color: #355561; }
 .route-departure { margin-top: 15px; }
-.route-stops { margin-top: 19px; padding-top: 15px; border-top: 1px solid #e8eeee; }
-.route-stops h4 { margin: 0 0 11px; color: #516a73; font-size: 11px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
-.route-stops ol { display: grid; gap: 10px; margin: 0; padding-left: 20px; color: #a7613d; }
-.route-stops li { padding-left: 2px; font-size: 12px; }
-.route-stops li::marker { color: #be815c; font-weight: 700; }
-.route-stops li span { display: block; color: #365863; font-weight: 650; }
-.route-stops li time { display: block; margin-top: 2px; color: #71858a; font-size: 11px; }
 .route-confirmation-note { margin: 19px 0 0; padding: 12px 13px; border-radius: 8px; background: #f7f4eb; color: #725d42; font-size: 11px; line-height: 1.55; }
 .pagination-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
 .pagination-controls .button { min-height: 41px; padding-inline: 13px; font-size: 12px; }

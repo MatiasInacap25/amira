@@ -207,8 +207,7 @@ test("shared-route search sends supported filters and shows ordered stops withou
   expect(query.get("departureTo")).toMatch(/[+-]\d{2}:\d{2}$/);
   await expect(page.getByRole("heading", { name: "Santiago a Concepción" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Transportista de prueba" })).toHaveAttribute("href", "/prestadores/profile-test-1");
-  await expect(page.getByText("Parada intermedia 1")).toBeVisible();
-  await expect(page.getByText("Parada intermedia 2")).toBeVisible();
+  await expect(page.getByText(/Parada intermedia|Paradas informadas/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /reservar|contratar|consultar espacio/i })).toHaveCount(0);
   await expect(page.getByText(/No es una reserva/)).toBeVisible();
 });

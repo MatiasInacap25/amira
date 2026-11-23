@@ -155,12 +155,6 @@ export default function SharedRoutesPage() {
                     <h3 id={`route-${route.tripId}`}>{route.origin} a {route.destination}</h3>
                     <p className="route-provider">Transportista: <strong><Link className="route-provider-link" href={`/prestadores/${encodeURIComponent(route.profileId)}`}>{route.providerName}</Link></strong></p>
                     <p className="route-departure"><CalendarDays aria-hidden="true" size={15} />Salida: {formatDeparture(route.departureAt)}</p>
-                    {route.stops && route.stops.length > 0 && (
-                      <div className="route-stops">
-                        <h4>Paradas informadas</h4>
-                        <ol>{route.stops.map((stop) => <li key={stop.stopNumber}><span>Parada intermedia {stop.stopNumber}</span>{stop.estimatedAt && <time dateTime={stop.estimatedAt}>{formatDeparture(stop.estimatedAt)}</time>}</li>)}</ol>
-                      </div>
-                    )}
                     <p className="route-confirmation-note">No es una reserva: el transportista debe confirmar espacio, carga compatible y condiciones del viaje.</p>
                     <button className="button button-secondary route-join-button" disabled={joiningTripId === route.tripId} onClick={() => void startJoin(route)} type="button">
                       {joiningTripId === route.tripId ? "Abriendo…" : "Sumarme a este viaje"}
