@@ -185,12 +185,6 @@
 .lp-app .route-provider strong { color: var(--lp-ink); font-weight: 500; }
 .lp-app .route-provider-link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 4px; }
 .lp-app .route-provider-link:hover { text-decoration-color: currentColor; }
-.lp-app .route-stops { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--lp-line); }
-.lp-app .route-stops h4 { margin: 0 0 12px; color: var(--lp-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; }
-.lp-app .route-stops ol { gap: 10px; color: var(--lp-action); }
-.lp-app .route-stops li { font-size: 15px; }
-.lp-app .route-stops li span { color: var(--lp-ink); font-weight: 500; }
-.lp-app .route-stops li time { color: var(--lp-muted); font-size: 14px; }
 .lp-app .route-confirmation-note { margin-top: 20px; padding: 14px 16px; border: 0; border-radius: var(--lp-r-md); background: var(--lp-surface); color: var(--lp-ink); font-size: 14px; line-height: 1.5; }
 .lp-app .route-join-button { width: 100%; min-height: 48px; margin-top: 16px; }
 
