@@ -1,5 +1,7 @@
+import "./admin.css";
+import { Sidebar } from "@/components/admin/sidebar";
 import Link from "next/link";
-import { checkAdmin } from "@/lib/admin/server";
+import { checkAdmin, serverAdminFetch } from "@/lib/admin/server";
 
 function AdminAccessDenied() {
   return (
@@ -13,14 +15,13 @@ function AdminAccessDenied() {
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const access = await checkAdmin();
   if (!access) return <AdminAccessDenied />;
+  const badges = await serverAdminFetch("/api/admin/badges", access.accessToken).catch(() => null);
+  const counts = badges?.ok ? await badges.json() as Record<string, number> : {};
+
   return (
-    <>
-      <header className="flex gap-4 p-6">
-        <Link href="/admin">Amira Admin</Link>
-        <Link href="/admin/auditoria">Auditoría</Link>
-        <span>{access.admin.email}</span>
-      </header>
-      {children}
-    </>
+    <div className="admin-frame">
+      <Sidebar email={access.admin.email} counts={counts} />
+      <div className="admin-main">{children}</div>
+    </div>
   );
 }

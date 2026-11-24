@@ -111,3 +111,23 @@ def test_audit_listing_is_filtered_paginated_and_read_only(api, monkeypatch, tmp
     assert result["items"][0]["action"] == "rating.hide"
     assert api.post("/api/admin/audit", headers=headers()).status_code == 405
     engine.dispose()
+
+
+def test_admin_badges_counts_pending_work(api, monkeypatch, tmp_path):
+    from amira_api.models import CuentaDesembolso, Desembolso, Reclamo, Servicio, VerificacionIdentidad
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'badges.db'}")
+    for model in (CuentaDesembolso, Desembolso, Reclamo, Servicio, VerificacionIdentidad):
+        model.__table__.create(engine)
+    def database():
+        with Session(engine) as session:
+            yield session
+
+    app.dependency_overrides[get_db_session] = database
+    assert api.get("/api/admin/badges").status_code == 401
+    assert api.get("/api/admin/badges", headers=headers()).status_code == 403
+    monkeypatch.setenv("ADMIN_USER_IDS", USER_ID)
+    response = api.get("/api/admin/badges", headers=headers())
+    assert response.status_code == 200
+    assert response.json() == {"documentos": 0, "cuentas-bancarias": 0, "reclamos": 0, "desembolsos": 0}
+    engine.dispose()

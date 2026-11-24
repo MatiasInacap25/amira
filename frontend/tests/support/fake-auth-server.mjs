@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 
 const host = "127.0.0.1";
-const port = 54329;
+const port = Number(process.env.AMIRA_TEST_AUTH_PORT ?? 54329);
 const issuer = `http://${host}:${port}/auth/v1`;
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicJwk = { ...publicKey.export({ format: "jwk" }), kid: "amira-e2e", alg: "RS256", use: "sig" };
@@ -69,6 +69,7 @@ const server = createServer((request, response) => {
     if (!token) return send(response, 401, {});
     if (!adminTokens.has(token)) return send(response, 403, { detail: "Admin access required." });
     if (url.pathname === "/api/admin/me") return send(response, 200, { user_id: user.id, email: user.email });
+    if (url.pathname === "/api/admin/badges") return send(response, 200, { documentos: 2, reclamos: 1, "cuentas-bancarias": 0, desembolsos: 0 });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";
       const items = [{ id: "audit-1", admin_user_id: user.id, action, entity_type: "rating", entity_id: "rating-1", reason: "Fixture", created_at: "2026-11-20T14:00:00Z" }];

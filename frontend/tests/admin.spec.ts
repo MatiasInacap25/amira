@@ -8,10 +8,13 @@ for (const path of ["/admin", "/admin/auditoria"]) {
 }
 
 
+const authOrigin = `http://127.0.0.1:${process.env.AMIRA_TEST_AUTH_PORT ?? "54329"}`;
+const appOrigin = `http://127.0.0.1:${process.env.AMIRA_TEST_APP_PORT ?? "3179"}`;
+
 async function login(context: BrowserContext, admin: boolean) {
-  const response = await context.request.get(`http://127.0.0.1:54329/__admin_session?admin=${admin}`);
+  const response = await context.request.get(`${authOrigin}/__admin_session?admin=${admin}`);
   const value = Buffer.from(JSON.stringify(await response.json())).toString("base64url");
-  await context.addCookies([{ name: "sb-127-auth-token", value: `base64-${value}`, url: "http://127.0.0.1:3179" }]);
+  await context.addCookies([{ name: "sb-127-auth-token", value: `base64-${value}`, url: appOrigin }]);
 }
 
 test("a signed-in non-admin sees the server-side denial", async ({ page, context }) => {
@@ -30,4 +33,36 @@ test("audit filters reach the backend and results link to their entity", async (
   await expect(page).toHaveURL(/action=rating.hide/);
   await expect(page.getByRole("cell", { name: "rating.hide" })).toBeVisible();
   await expect(page.getByRole("link", { name: "rating: rating-1" })).toHaveAttribute("href", "/admin/valoraciones?detail=rating-1");
+});
+
+test("admin sidebar follows navigation and browser history", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin");
+  const sidebar = page.getByRole("navigation", { name: "Administración" });
+  await expect(sidebar.getByRole("link", { name: "Principal" })).toHaveAttribute("aria-current", "page");
+  await expect(sidebar.getByLabel("2 pendientes")).toBeVisible();
+  await sidebar.getByRole("link", { name: "Auditoría" }).click();
+  await expect(page).toHaveURL(/\/admin\/auditoria$/);
+  await expect(page.getByRole("heading", { name: "Auditoría" })).toBeVisible();
+  await page.goBack();
+  await expect(sidebar.getByRole("link", { name: "Principal" })).toHaveAttribute("aria-current", "page");
+});
+
+test("mobile opens and dismisses the menu without page overflow", async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(context, true);
+  await page.goto("/admin/auditoria");
+  await expect(page.getByRole("navigation", { name: "Administración" })).not.toBeVisible();
+  await page.getByRole("button", { name: "Abrir menú" }).click();
+  await expect(page.getByRole("dialog", { name: "Menú de administración" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Menú de administración" })).not.toBeVisible();
+  const layout = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    pageWidth: document.documentElement.scrollWidth,
+    tableViewport: document.querySelector(".admin-table-scroll")?.clientWidth ?? 0,
+    tableWidth: document.querySelector(".admin-table-scroll")?.scrollWidth ?? 0,
+  }));
+  expect(layout.pageWidth).toBe(layout.viewport);
+  expect(layout.tableWidth).toBeGreaterThan(layout.tableViewport);
 });

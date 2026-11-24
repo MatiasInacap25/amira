@@ -285,6 +285,8 @@ Additive Alembic migrations only (new tables, new nullable columns, new indexes)
 
 ### S29. Tests and checks
 
+- Build exception (L7): compilation and type-check must pass; the sole known `SecurityFatalError` does not block. No Next.js upgrade on this branch. If `page-cuenta-servicios.spec.ts:149` fails, rerun it in isolation and record the result; that case alone does not block.
+
 - Backend (`backend/tests/admin/`): 401 without token, 403 for non-admin, 200 for admin on every route; each state-changing action: happy path, invalid state → 409, audit row written, reason required; dashboard sums with known fixtures (including the 80.000 → 8.000 / 6.723 / 1.277 example); blocked user gets 403 on a normal endpoint; suspended profile hidden from public browse.
 - Frontend: node unit tests for formatters (CLP, RUT, IVA extraction) and filter ⇄ query-string mapping; Playwright spec for the admin layout (sidebar navigation changes content and URL, non-admin sees the no-access message, a reject-with-reason flow).
 - Must pass: `uv run pytest`, `uv lock --check`, `npm run lint`, `npm run build`, `node --test tests/unit/*.mjs`, `npx playwright test`.
@@ -293,7 +295,7 @@ Additive Alembic migrations only (new tables, new nullable columns, new indexes)
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S1, S26 (audit table), S24, S27 skeleton | inline, independent verifier (security) | implemented; blocked on build gate | `7be1749` |
+| T1 | S1, S26 (audit table), S24, S27 skeleton | inline, independent verifier (security) | done | `7be1749` |
 | T2 | S2, S3, S28 (layout + shared components) | delegated (Codex) | pending | |
 | T3 | S4, S22, S25 (dashboard, finanzas, configuración) | delegated (Codex) | pending | |
 | T4 | S5, S6, S7, S8, S18 (personas + vehículos, block/suspend) | delegated (Codex) | pending | |
@@ -314,3 +316,5 @@ Each task closes with one Conventional Commit on `feat/admin-panel` with its tes
 
 - L5 (2026-11-24): T1 implemented in `7be1749`; backend RED 7 failures before the admin API existed; focused GREEN 32 passed/1 skipped; full backend suite only the allowed payment-adapter failure; lock/offline migration passed. Playwright admin RED reproduced missing access/filter behavior; GREEN 4/4. Independent verification and scoped audit UI recheck passed. Latest production build compiled and type-checked, then stopped with Next.js `SecurityFatalError`; no dependency upgrade or bypass attempted. T2–T8 were not started.
 - L6 (2026-11-24): Full Playwright stopped with 279 passed, 1 failure, 1 interrupted and 187 not run. The failing role-lookup case passed in isolation on both baseline and T1; no cause confirmed. See `odd/tasks/admin-panel-report.md`.
+- L7 (2026-11-24, user): “Decisión del usuario sobre el bloqueo de T1: NO actualices Next.js en esta rama. Trata el SecurityFatalError de npm run build (Next 16.4.2) como un fallo conocido y previo (ya ocurría en develop en 8441ff1 y es intermitente); la actualización de Next.js se hace en una rama aparte que después se integrará a feat/admin-panel. Para cada tarea, el gate de build queda así: npm run build debe compilar y pasar el type-check; si el único error es SecurityFatalError, regístralo en el Log como conocido y sigue. Marca T1 como done en la tabla. Continúa con T2..T8 con las mismas reglas de antes (worktree /mnt/data/projects/amira-worktrees/admin-panel, un commit por tarea, sin push/PR/merge/review, y el reporte final en odd/tasks/admin-panel-report.md). Si el flaky page-cuenta-servicios.spec.ts:149 vuelve a fallar, reejecútalo aislado y regístralo; no bloquees por él.”
+- L8 (2026-11-24): T2 RED reproduced missing navigation, formatters, URL filters, and badges; mobile later exposed a page overflow from an absolutely positioned table descendant. GREEN: admin Playwright 6/6 on isolated ports, backend focused 56 passed/1 skipped, full backend only the expected adapter failure, lock/lint passed, Node 233 passed/1 TODO. Intermediate build compiled and type-checked, then hit the known SecurityFatalError (L7); final build completed with the advisory. No package updates.
