@@ -54,6 +54,11 @@ async function fillRegistrationForm(
   await page.getByLabel("Correo electrónico").fill("persona@example.test");
   await page.locator("#auth-password").fill(overrides.password ?? validPassword);
   await page.locator("#auth-password-confirm").fill(overrides.passwordConfirm ?? validPassword);
+  await acceptTerms(page);
+}
+
+async function acceptTerms(page: Page) {
+  await page.getByLabel("Acepto los Términos y Condiciones").check();
 }
 
 test("registration page presents its title and Spanish copy", async ({ page }) => {
@@ -130,6 +135,7 @@ test("password reveal toggles both password fields together", async ({ page }) =
 test("empty registration submit is stopped by native validation before any signup request", async ({ page }) => {
   const signupRequests = await mockSignup(page);
   await page.goto("/registro");
+  await acceptTerms(page);
   await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page.locator("#auth-first-name")).toBeFocused();
   await expect(page.locator("#auth-first-name")).toHaveJSProperty("validity.valueMissing", true);
@@ -180,4 +186,65 @@ test("corrected RUT clears its inline error on the next submit and lets signup p
   await expect(page.getByRole("heading", { name: "Confirma tu correo" })).toBeVisible();
   await expect(page.locator("#auth-national-id-error")).toHaveCount(0);
   expect(signupRequests).toHaveLength(1);
+});
+
+test("create account stays disabled until the terms checkbox is checked", async ({ page }) => {
+  const signupRequests = await mockSignup(page);
+  await page.goto("/registro");
+  await fillRegistrationForm(page);
+  await page.getByLabel("Acepto los Términos y Condiciones").uncheck();
+  await expect(page.getByRole("button", { name: "Crear cuenta" })).toBeDisabled();
+  await page.getByLabel("Acepto los Términos y Condiciones").check();
+  await expect(page.getByRole("button", { name: "Crear cuenta" })).toBeEnabled();
+  expect(signupRequests).toHaveLength(0);
+});
+
+test("terms link opens the dialog without toggling the checkbox", async ({ page }) => {
+  await page.goto("/registro");
+  await page.getByRole("button", { name: "Términos y Condiciones" }).click();
+  const dialog = page.getByRole("dialog", { name: "Términos y Condiciones de Uso de Amira" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(page.getByLabel("Acepto los Términos y Condiciones")).not.toBeChecked();
+});
+
+test("accepting in the terms dialog closes it and checks the box", async ({ page }) => {
+  await page.goto("/registro");
+  await page.getByRole("button", { name: "Términos y Condiciones" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Aceptar" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByLabel("Acepto los Términos y Condiciones")).toBeChecked();
+});
+
+test("Tab and Shift+Tab cycle focus inside the terms dialog and never reach the form behind it", async ({ page }) => {
+  await page.goto("/registro");
+  await page.getByRole("button", { name: "Términos y Condiciones" }).click();
+  const dialog = page.getByRole("dialog", { name: "Términos y Condiciones de Uso de Amira" });
+  await expect(dialog).toBeVisible();
+
+  const focusInside = () => page.evaluate(() => !!document.querySelector('[role="dialog"]')?.contains(document.activeElement));
+  const cancel = dialog.getByRole("button", { name: "Cerrar" });
+  const accept = dialog.getByRole("button", { name: "Aceptar" });
+
+  // Forward wraps Aceptar -> Cerrar; backward wraps Cerrar -> Aceptar. Each direction then cycles several times.
+  for (const [key, from, wrapsTo] of [["Tab", accept, cancel], ["Shift+Tab", cancel, accept]] as const) {
+    await from.focus();
+    await page.keyboard.press(key);
+    await expect(wrapsTo).toBeFocused();
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press(key);
+      expect(await focusInside()).toBe(true);
+    }
+  }
+});
+
+test("Escape closes the terms dialog without checking the box and returns focus to the link", async ({ page }) => {
+  await page.goto("/registro");
+  const trigger = page.getByRole("button", { name: "Términos y Condiciones" });
+  await trigger.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByLabel("Acepto los Términos y Condiciones")).not.toBeChecked();
+  await expect(trigger).toBeFocused();
 });

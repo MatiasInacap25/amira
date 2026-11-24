@@ -13,6 +13,7 @@ from sqlalchemy import UniqueConstraint
 from amira_api import auth
 from amira_api.account_routes import provision_account
 from amira_api.account_schemas import AccountProvisionRequest
+from amira_api.terms import TERMS_VERSION
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
 from amira_api.main import app
@@ -253,7 +254,7 @@ def test_provisioning_accepts_aal1_password_session_under_bypass():
             None,
         ]
     )
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="client",
         first_name="Casey",
         last_name="Customer",
@@ -299,6 +300,8 @@ class FakeProvisioningSession:
         self.commits = 0
 
     def execute(self, statement):
+        if statement.is_insert:  # terms acceptance ON CONFLICT insert consumes no lookup value
+            return Result(None)
         return Result(self.values.pop(0))
 
     def add(self, value):

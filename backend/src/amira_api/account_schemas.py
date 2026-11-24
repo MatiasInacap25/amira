@@ -43,6 +43,9 @@ class AccountProvisionRequest(BaseModel):
     company_tax_id: str | None = Field(default=None, min_length=1, max_length=16)
     commune_code: str | None = Field(default=None, pattern=r"^\d{5}$")
     also_driver: bool = False
+    # Optional at the schema level so a missing value gets the same 422 shape as a stale one; the route enforces
+    # the exact TERMS_VERSION match. No length limit here, so any other value gets the S1 message, not a Pydantic 422.
+    accepted_terms_version: str | None = Field(default=None)
 
     @staticmethod
     def normalize_rut(value: str) -> str:
