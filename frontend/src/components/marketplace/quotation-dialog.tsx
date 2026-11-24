@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChatRequestError } from "@/lib/chats";
 import {
+  formatClp,
   QUOTATION_DEFAULT_VALIDITY_HOURS,
   QUOTATION_MAX_VALIDITY_HOURS,
   QUOTATION_MIN_VALIDITY_HOURS,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/chat-quotations";
 import { createQuotation } from "@/lib/marketplace-api";
 import { currentAccessToken } from "@/lib/provider-request-access";
+import { splitIva } from "@/lib/tax";
 
 type Props = {
   chatId: string;
@@ -39,6 +41,10 @@ export function QuotationDialog({ chatId, onClose, onCreated, serviceName }: Pro
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [minServiceAt] = useState(() => localDateTimeNow());
+  const [amountInput, setAmountInput] = useState("");
+  // Live preview of the IVA split; shown only while the typed total is a positive whole number of pesos.
+  const amountValue = Number(amountInput);
+  const preview = amountInput.trim() !== "" && Number.isInteger(amountValue) && amountValue > 0 ? splitIva(amountValue) : null;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -105,9 +111,22 @@ export function QuotationDialog({ chatId, onClose, onCreated, serviceName }: Pro
           <p>{serviceName}</p>
         </div>
         <label className="marketplace-field" htmlFor="quotation-amount">
-          <span>Monto (CLP)</span>
-          <input id="quotation-amount" inputMode="numeric" min={1} name="amount" placeholder="Ej: 125000" step={1} type="number" />
+          <span>Monto total (IVA incluido)</span>
+          <input
+            id="quotation-amount"
+            inputMode="numeric"
+            min={1}
+            name="amount"
+            onChange={(event) => setAmountInput(event.target.value)}
+            placeholder="Ej: 125000"
+            step={1}
+            type="number"
+            value={amountInput}
+          />
         </label>
+        {preview && (
+          <p aria-live="polite" className="quotation-field-hint">Neto {formatClp(preview.net)} · IVA {formatClp(preview.iva)}</p>
+        )}
         <label className="marketplace-field" htmlFor="quotation-service-at">
           <span>Fecha del servicio</span>
           <input id="quotation-service-at" min={minServiceAt} name="serviceAt" type="datetime-local" />

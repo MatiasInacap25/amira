@@ -59,6 +59,8 @@ from amira_api.service_views import (
 )
 from amira_api.settings import Settings, get_settings
 from amira_api.service_cancellation import cancel_service
+from amira_api.tax_document_schemas import TaxDocumentView
+from amira_api.tax_document_service import BOLETA, COMMISSION_INVOICE, document_views
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/provider", tags=["provider-services"])
@@ -250,6 +252,18 @@ def list_provider_services(
     return ServicePage(
         items=[shape_list_item(row, "provider") for row in rows], total=total, limit=limit, offset=offset
     )
+
+
+@router.get("/services/{service_id}/documents", response_model=list[TaxDocumentView])
+def get_provider_service_documents(service_id: UUID, current_user: CurrentUser, session: Database) -> list[TaxDocumentView]:
+    viewer = _provider_viewer(session, current_user)
+    # A service the viewer cannot see is a 404; a visible service read by an employed driver is a 403 (money data).
+    visible = session.execute(select(Servicio.id).where(Servicio.id == service_id, *viewer.visibility())).first()
+    if visible is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    if not viewer.is_owner:
+        raise HTTPException(status_code=403, detail="Only the profile owner can read the documents of this service.")
+    return document_views(session, service_id, (BOLETA, COMMISSION_INVOICE))
 
 
 @router.get("/services/{service_id}", response_model=ServiceDetail)

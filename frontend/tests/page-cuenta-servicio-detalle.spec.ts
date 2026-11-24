@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { locationsResponse } from "./support/catalog-fixtures";
 
 const user = {
@@ -94,6 +94,15 @@ function serviceDetail(overrides: Record<string, unknown> = {}) {
     serviceTypeName: "Mudanzas",
     serviceAt: "2026-10-20T13:00:00Z",
     amount: 45000,
+    amountBreakdown: {
+      total: 45000,
+      net: 37815,
+      iva: 7185,
+      commission: null,
+      commissionNet: null,
+      commissionIva: null,
+      carrierAmount: null,
+    },
     currency: "CLP",
     originCommune: "Santiago",
     destinationCommune: "Valparaíso",
@@ -193,7 +202,11 @@ test("customer sees the counterpart, route, amount, dates, description and a cha
   await expect(fact("Ruta")).toHaveText("Santiago → Valparaíso");
   await expect(fact("Origen")).toHaveText("Av. Siempre Viva 742, Santiago, Metropolitana de Santiago");
   await expect(fact("Destino")).toHaveText("Calle Prat 100, Valparaíso, Valparaíso");
-  await expect(fact("Monto")).toHaveText("$45.000");
+  await expect(exactFact(detail, page, "Total (IVA incluido)")).toHaveText("$45.000");
+  await expect(exactFact(detail, page, "Neto")).toHaveText("$37.815");
+  await expect(exactFact(detail, page, "IVA")).toHaveText("$7.185");
+  await expect(detail.getByText("Comisión Amira (IVA incluido)", { exact: true })).toHaveCount(0);
+  await expect(detail.getByText("Recibirás", { exact: true })).toHaveCount(0);
   await expect(fact("Exclusivo")).toHaveText("No");
   await expect(fact("Finalizado")).toHaveText(/20-10-2026, 1:00/);
   await expect(detail.getByRole("heading", { name: "Descripción" })).toBeVisible();
@@ -579,6 +592,123 @@ test("service detail fits a phone-width viewport without horizontal page scroll"
   await expect(page.getByRole("heading", { level: 1, name: "Mudanzas" })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+// Exact-label lookup of one fact (the label is matched in full, so "IVA" does not match "Total (IVA incluido)").
+function exactFact(detail: Locator, page: Page, label: string) {
+  const pattern = new RegExp(`^${label.replace(/[()]/g, "\\$&")}$`);
+  return detail.locator(".account-service-detail-facts > div", { has: page.locator("dt", { hasText: pattern }) }).locator("dd");
+}
+
+const boletaDocument = {
+  id: "doc-boleta-1",
+  type: "boleta",
+  folio: 1,
+  issuedAt: "2026-10-20T16:00:00Z",
+  issuerName: "Transportes Andes",
+  issuerTaxId: "76.123.456-7",
+  recipientName: "Persona Test",
+  recipientTaxId: "12.345.678-5",
+  net: 37815,
+  iva: 7185,
+  total: 45000,
+  currency: "CLP",
+  simulated: true,
+  serviceId: "service-1",
+};
+
+const facturaDocument = {
+  id: "doc-factura-1",
+  type: "factura_comision",
+  folio: 1,
+  issuedAt: "2026-10-20T17:00:00Z",
+  issuerName: "[DEMO] Amira SpA",
+  issuerTaxId: "76.000.000-0",
+  recipientName: "Transportes Andes",
+  recipientTaxId: "76.123.456-7",
+  net: 6723,
+  iva: 1277,
+  total: 8000,
+  currency: "CLP",
+  simulated: true,
+  serviceId: "service-1",
+};
+
+async function mockDocuments(page: Page, viewer: "customer" | "provider", items: unknown[]) {
+  await page.route(`**/api/${viewer}/services/service-1/documents`, async (route) => route.fulfill({ json: items }));
+}
+
+test("provider sees the commission with IVA and the amount the carrier receives", async ({ page }) => {
+  const breakdown = { total: 80000, net: 67227, iva: 12773, commission: 8000, commissionNet: 6723, commissionIva: 1277, carrierAmount: 72000 };
+  await mockServiceDetail(page, "provider", async (route) =>
+    route.fulfill({ json: providerShareableDetail({ status: "confirmed", amount: 80000, amountBreakdown: breakdown }) }),
+  );
+  await mockDocuments(page, "provider", [boletaDocument, facturaDocument]);
+  await signInTo(page, "company_owner");
+
+  await page.goto("/cuenta/servicios/service-1");
+
+  const detail = page.locator(".account-service-detail");
+  await expect(exactFact(detail, page, "Total (IVA incluido)")).toHaveText("$80.000");
+  await expect(exactFact(detail, page, "Neto")).toHaveText("$67.227");
+  await expect(exactFact(detail, page, "IVA")).toHaveText("$12.773");
+  await expect(exactFact(detail, page, "Comisión Amira (IVA incluido)")).toHaveText("$8.000");
+  await expect(exactFact(detail, page, "Recibirás")).toHaveText("$72.000");
+});
+
+test("customer sees the boleta in the documents section and the factura de comisión is never listed", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
+  await mockDocuments(page, "customer", [boletaDocument]);
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+
+  const documents = page.getByRole("region", { name: "Documentos" });
+  await expect(documents.getByText("Boleta", { exact: true })).toBeVisible();
+  await expect(documents.getByText("Folio 1", { exact: true })).toBeVisible();
+  await expect(documents.getByText("$45.000", { exact: true })).toBeVisible();
+  await expect(documents.getByText("Factura de comisión", { exact: true })).toHaveCount(0);
+});
+
+test("documents section shows the empty state when the service has no documents", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
+  await mockDocuments(page, "customer", []);
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+
+  const documents = page.getByRole("region", { name: "Documentos" });
+  await expect(documents.getByText("Aún no hay documentos para este servicio.", { exact: true })).toBeVisible();
+  await expect(documents.getByRole("button", { name: "Ver", exact: true })).toHaveCount(0);
+});
+
+test("documents modal opens as a simulated boleta receipt, prints from it and closes with Escape", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
+  await mockDocuments(page, "customer", [boletaDocument]);
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+
+  const ver = page.getByRole("button", { name: "Ver", exact: true });
+  await ver.click();
+  const modal = page.getByRole("dialog", { name: "Boleta" });
+  await expect(modal).toBeVisible();
+  await expect(modal.getByText("DOCUMENTO SIMULADO · SIN VALIDEZ TRIBUTARIA", { exact: true })).toBeVisible();
+  await expect(modal.getByText("Folio N° 1", { exact: true })).toBeVisible();
+  await expect(modal.getByText("Transportes Andes", { exact: true })).toBeVisible();
+  await expect(modal.getByText("76.123.456-7", { exact: true })).toBeVisible();
+  await expect(modal.getByText("Persona Test", { exact: true })).toBeVisible();
+  await expect(modal.getByText("12.345.678-5", { exact: true })).toBeVisible();
+  await expect(modal.getByText("Servicio de transporte", { exact: true })).toBeVisible();
+  await expect(modal.getByText("$37.815", { exact: true })).toBeVisible();
+  await expect(modal.getByText("IVA 19 %", { exact: true })).toBeVisible();
+  await expect(modal.getByText("$7.185", { exact: true })).toBeVisible();
+  await expect(modal.getByText("$45.000", { exact: true })).toBeVisible();
+  await expect(modal.getByRole("button", { name: "Imprimir" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Boleta" })).toHaveCount(0);
+  await expect(ver).toBeFocused();
 });
 
 // Shared trip publishing: provider side of the contracted service.

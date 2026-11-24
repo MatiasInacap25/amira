@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     service_claim_window_hours: int = Field(default=24, gt=0)
     # Platform commission withheld from each payout, as a whole percent of the gross payment (0 to 99).
     payout_commission_percent: int = Field(default=10, ge=0, lt=100)
+    # Issuer of the simulated commission invoices. Demo values by default; the real legal identity is set per deployment.
+    amira_legal_name: str = "[DEMO] Amira SpA"
+    amira_tax_id: str = "76.000.000-0"
 
     @property
     def allowed_origins(self) -> list[str]:

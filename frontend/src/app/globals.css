@@ -1011,6 +1011,31 @@ h1, h2, h3, p { margin-top: 0; }
 .chat-quotation-reject { background: #a4381a; }
 .chat-quotation-reject:hover { background: #87290f; }
 .chat-quotation-error { margin: 0; color: #9b3a1c; font-size: 13px; line-height: 1.45; }
+.chat-quotation-tax { margin: 0; color: #5c7078; font-size: 12px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+
+.service-documents { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.service-documents li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.service-documents time { color: #5c7078; font-size: 13px; }
+
+.document-receipt { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; display: grid; gap: 14px; padding: 22px; border-radius: 12px; background: #fff; color: #173f55; box-sizing: border-box; }
+.document-receipt-banner { margin: 0; padding: 8px 10px; border: 2px dashed #a4381a; color: #a4381a; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-align: center; }
+.document-receipt-header h2 { margin: 0; font-size: 20px; }
+.document-receipt-header p, .document-receipt-concept { margin: 4px 0 0; font-size: 14px; }
+.document-receipt dl { display: grid; gap: 8px; margin: 0; }
+.document-receipt dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.document-receipt dt { color: #5c7078; font-size: 13px; }
+.document-receipt dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.document-receipt-amounts { padding-top: 10px; border-top: 1px solid #dde6e8; }
+.document-receipt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.document-receipt-actions .button { min-height: 44px; }
+
+@media print {
+  body * { visibility: hidden; }
+  .document-receipt, .document-receipt * { visibility: visible; }
+  .terms-dialog-backdrop { position: static; background: none; }
+  .document-receipt { position: absolute; top: 0; left: 0; width: 100%; max-height: none; overflow: visible; box-shadow: none; }
+  .document-receipt-actions { display: none; }
+}
 .chat-result { display: grid; justify-items: start; gap: 12px; padding: 28px 24px; }
 .chat-result h1 { margin: 0; color: #173f55; font-size: clamp(24px, 3.4vw, 30px); letter-spacing: -.03em; }
 .chat-result p { margin: 0; color: #4f676f; font-size: 15px; line-height: 1.6; }

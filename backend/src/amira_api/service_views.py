@@ -29,7 +29,16 @@ from amira_api.models import (
     Usuario,
     Vehiculo,
 )
-from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceAssignment, ServiceCancellation, ServiceDetail, ServiceListItem
+from amira_api.provider_service_schemas import (
+    AmountBreakdownView,
+    DeliveryPhotoUrl,
+    ServiceAssignment,
+    ServiceCancellation,
+    ServiceDetail,
+    ServiceListItem,
+)
+from amira_api.settings import get_settings
+from amira_api.tax import amount_breakdown
 
 DELIVERY_PHOTO_LINK_MESSAGE = "The delivery photo could not be retrieved. Try again."
 PROVIDER_FALLBACK_NAME = "Prestador"
@@ -201,6 +210,23 @@ def _customer_actions(row, viewer_role: ViewerRole) -> tuple[bool, bool]:
     return within_window, True
 
 
+def _amount_breakdown(amount, viewer_role: ViewerRole) -> AmountBreakdownView | None:
+    if amount is None:
+        return None
+    breakdown = amount_breakdown(int(amount), get_settings().payout_commission_percent)
+    if viewer_role != "provider":
+        return AmountBreakdownView(total=breakdown.total, net=breakdown.net, iva=breakdown.iva)
+    return AmountBreakdownView(
+        total=breakdown.total,
+        net=breakdown.net,
+        iva=breakdown.iva,
+        commission=breakdown.commission,
+        commission_net=breakdown.commission_net,
+        commission_iva=breakdown.commission_iva,
+        carrier_amount=breakdown.carrier_amount,
+    )
+
+
 def shape_detail(
     row,
     viewer_role: ViewerRole,
@@ -239,6 +265,7 @@ def shape_detail(
         can_consent=can_consent,
         assignments=assignments,
         shared_trip_id=row["shared_trip_id"] if viewer_role == "provider" else None,
+        amount_breakdown=_amount_breakdown(row["amount"], viewer_role),
     )
 
 

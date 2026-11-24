@@ -72,6 +72,8 @@ export function ChatQuotationCard({ quotation, viewerRole, onChanged }: Props) {
         <span className="chat-quotation-status">{quotationStatusLabel(quotation.status)}</span>
       </header>
       <p className="chat-quotation-amount">{formatClp(quotation.amount)}</p>
+      <p className="chat-quotation-tax">IVA incluido</p>
+      <p className="chat-quotation-tax">Neto {formatClp(quotation.netAmount)} · IVA {formatClp(quotation.ivaAmount)}</p>
       <dl className="chat-quotation-details">
         <div>
           <dt>Servicio</dt>

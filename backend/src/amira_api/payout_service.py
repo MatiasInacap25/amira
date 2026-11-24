@@ -26,6 +26,7 @@ from amira_api.payment_service import APPROVED
 from amira_api.payout_provider import PayoutProvider, PayoutRequest
 from amira_api.service_views import open_claim_exists
 from amira_api.settings import get_settings
+from amira_api.tax_document_service import issue_commission_invoice
 
 logger = logging.getLogger(__name__)
 
@@ -119,22 +120,31 @@ def _release_one(
             destination_account_id=account.provider_account_id,
         )
     )
-    session.add(
-        Desembolso(
-            id=uuid4(),
-            payment_id=payment.id,
-            service_id=service.id,
-            beneficiary_profile_id=service.profile_id,
-            payout_account_id=account.id,
-            provider=provider.name,
-            provider_payout_id=result.provider_payout_id,
-            idempotency_key=idempotency_key,
-            net_amount=net_amount,
-            currency=CURRENCY,
-            status=RELEASED,
-            requested_at=now,
-            confirmed_at=now,
-        )
+    payout = Desembolso(
+        id=uuid4(),
+        payment_id=payment.id,
+        service_id=service.id,
+        beneficiary_profile_id=service.profile_id,
+        payout_account_id=account.id,
+        provider=provider.name,
+        provider_payout_id=result.provider_payout_id,
+        idempotency_key=idempotency_key,
+        net_amount=net_amount,
+        currency=CURRENCY,
+        status=RELEASED,
+        requested_at=now,
+        confirmed_at=now,
+    )
+    session.add(payout)
+    # Amira's commission invoice to the carrier is written in this same transaction as the payout it belongs to.
+    issue_commission_invoice(
+        session,
+        service=service,
+        payment=payment,
+        payout=payout,
+        carrier=service.provider_profile,
+        commission=int(commission),
+        now=now,
     )
     return RELEASED
 
