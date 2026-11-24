@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from amira_api.account_routes import get_account, provision_account
 from amira_api.account_schemas import AccountProvisionRequest
+from amira_api.terms import TERMS_VERSION
 from amira_api.settings import Settings
 from test_account_provisioning import FakeSession, identity, PERSONAL_RUT, COMPANY_RUT, PHONE
 
@@ -27,7 +28,7 @@ def values(role="client", **overrides):
 
 
 def records(role="client"):
-    payload = AccountProvisionRequest(**values(role))
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, **values(role))
     user = NS(id=uuid4(), role_id=uuid4(), email=identity().email,
               **{key: getattr(payload, key) for key in ("first_name", "last_name", "national_id", "birth_date", "phone")})
     profile = NS(id=uuid4(), kind="company" if role == "company_owner" else "independent_driver",
@@ -68,7 +69,7 @@ def test_existing_account_rejects_each_changed_private_field(field):
 def test_legacy_account_fills_missing_private_fields_once():
     payload, user, _ = records()
     user.national_id = user.birth_date = user.phone = None
-    session = FakeSession([NS(id=user.role_id), user])
+    session = FakeSession([NS(id=user.role_id), user, None])
     response = Response()
     result = provision_account(payload, identity(), session, Settings(), response)
     assert (user.national_id, user.birth_date, user.phone) == (payload.national_id, payload.birth_date, payload.phone)
@@ -78,7 +79,7 @@ def test_legacy_account_fills_missing_private_fields_once():
 def test_missing_account_role_refuses_before_writes():
     session = FakeSession([None])
     with pytest.raises(HTTPException) as caught:
-        provision_account(AccountProvisionRequest(**values()), identity(), session, Settings(), Response())
+        provision_account(AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, **values()), identity(), session, Settings(), Response())
     assert caught.value.status_code == 503
     assert not session.added and session.commits == 0
 
@@ -89,7 +90,7 @@ def test_user_insert_race_checks_every_recovered_field(field):
     role_id = winner.role_id
     if field not in {None, "matching"}:
         setattr(winner, field, uuid4() if field == "role_id" else date(1991, 1, 1) if field == "birth_date" else "different")
-    session = FakeSession([NS(id=role_id), None, None if field is None else winner])
+    session = FakeSession([NS(id=role_id), None, None if field is None else winner, None])
     session.flush = Mock(side_effect=IntegrityError("insert", {}, Exception("unique")))
     if field == "matching":
         response = Response()
@@ -108,7 +109,7 @@ def test_existing_profile_replay_checks_each_field(field):
     role_id = profile.role_id
     if field:
         setattr(profile, field, uuid4() if field == "role_id" else "different")
-    session = FakeSession(["13101", NS(id=user.role_id), user, NS(id=role_id), profile, None])
+    session = FakeSession(["13101", NS(id=user.role_id), user, NS(id=role_id), profile, None, None])
     if field:
         with pytest.raises(HTTPException) as caught:
             provision_account(payload, identity(), session, Settings(), Response())
@@ -125,7 +126,7 @@ def test_profile_insert_race_is_validated(field):
     if field not in {None, "matching"}:
         setattr(winner, field, uuid4() if field == "role_id" else "different")
     session = FakeSession(["13101", NS(id=user.role_id), user, NS(id=role_id), None,
-                           None if field is None else winner, None])
+                           None if field is None else winner, None, None])
     session.flush = Mock(side_effect=IntegrityError("insert", {}, Exception("unique")))
     if field == "matching":
         assert provision_account(payload, identity(), session, Settings(), Response()).profile_id == winner.id
@@ -143,7 +144,7 @@ def test_profile_insert_race_is_validated(field):
 def test_driver_replay_and_race_states(role, race, state):
     payload, user, profile = records(role)
     if role == "company_owner":
-        payload = AccountProvisionRequest(**values(role, also_driver=True))
+        payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, **values(role, also_driver=True))
     driver_type = NS(id=uuid4())
     driver = NS(employer_profile_id=profile.id if role == "company_owner" else None,
                 driver_type_id=driver_type.id, commune_code=None)
@@ -157,7 +158,7 @@ def test_driver_replay_and_race_states(role, race, state):
         results += [None, None if state == "missing" else driver]
     else:
         results += [None if state == "missing" else driver]
-    session = FakeSession(results)
+    session = FakeSession([*results, None])
     if race:
         session.flush = Mock(side_effect=IntegrityError("insert", {}, Exception("unique")))
     settings = Settings(independent_driver_type_id=driver_type.id, company_driver_type_id=driver_type.id)
@@ -176,7 +177,7 @@ def test_driver_replay_and_race_states(role, race, state):
 @pytest.mark.parametrize("overrides", [{"display_name": None}, {"company_tax_id": COMPANY_RUT}, {"also_driver": True}, {"national_id": "abc-12345"}])
 def test_independent_schema_rejects_incompatible_capabilities(overrides):
     with pytest.raises(ValidationError):
-        AccountProvisionRequest(**values("independent_driver", **overrides))
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, **values("independent_driver", **overrides))
 
 
 def test_existing_account_cannot_change_role():
@@ -207,6 +208,6 @@ def test_independent_replay_preserves_existing_commune():
     payload, user, profile = records("independent_driver")
     driver_type = uuid4()
     driver = NS(employer_profile_id=None, driver_type_id=driver_type, commune_code="13101")
-    session = FakeSession(["13101", NS(id=user.role_id), user, NS(id=profile.role_id), profile, driver])
+    session = FakeSession(["13101", NS(id=user.role_id), user, NS(id=profile.role_id), profile, driver, None])
     assert provision_account(payload, identity(), session, Settings(independent_driver_type_id=driver_type), Response()).profile_id == profile.id
     assert driver.commune_code == "13101" and session.commits == 1

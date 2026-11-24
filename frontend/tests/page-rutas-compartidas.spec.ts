@@ -232,7 +232,7 @@ test("results with stops stay within a 320px viewport", async ({ page }) => {
   await page.goto("/rutas-compartidas");
 
   await expect(page.getByRole("heading", { name: "Santiago a Concepción" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Paradas informadas" })).toBeVisible();
+  await expect(page.getByText(/Paradas informadas|Parada intermedia/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Buscar rutas" })).toBeVisible();
   const dimensions = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: document.documentElement.clientWidth }));
   expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport);

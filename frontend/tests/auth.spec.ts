@@ -138,6 +138,7 @@ async function fillRegistrationCredentials(page: Page, email = "persona@example.
   await page.getByLabel("Correo electrónico").fill(email);
   await page.locator("#auth-password").fill("un-password-seguro");
   await page.locator("#auth-password-confirm").fill("un-password-seguro");
+  await page.getByLabel("Acepto los Términos y Condiciones").check();
 }
 
 async function fillAccountPrivateDetails(page: Page) {
@@ -156,6 +157,11 @@ async function selectProviderCommune(page: Page) {
   await page.getByLabel("Comuna").selectOption("13101");
 }
 
+// Login-path accounts have no registration draft, so the provisioning step asks for the terms acceptance itself.
+async function acceptAccountTerms(page: Page) {
+  await page.getByLabel("Acepto los Términos y Condiciones").check();
+}
+
 test("registration waits for email confirmation before asking for account details", async ({ page }) => {
   const mocks = await installAuthMocks(page);
   await page.goto("/registro");
@@ -170,6 +176,8 @@ test("registration waits for email confirmation before asking for account detail
   expect(signup?.body?.email).toBe("persona@example.test");
   expect(signup?.body?.password).toBe("un-password-seguro");
   expect(signup?.body?.data).toEqual({});
+  const termsDraft = JSON.parse(await page.evaluate(() => window.sessionStorage.getItem("amira-registration-draft") ?? "{}")) as { acceptedTermsVersion?: string };
+  expect(termsDraft.acceptedTermsVersion).toBe("2026-11-23");
   expect(JSON.stringify(signup?.body)).not.toContain("12.345.678-5");
   const draft = await page.evaluate(() => sessionStorage.getItem("amira-registration-draft"));
   expect(draft).not.toContain("un-password-seguro");
@@ -212,13 +220,33 @@ test("login requires SMS, retries a rejected challenge, and provisions only afte
   await page.getByLabel("Nombre").fill("Camila");
   await page.getByLabel("Apellido").fill("Rojas");
   await fillAccountPrivateDetails(page);
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
   const provisionRequest = mocks.events.find((event) => event.path === "/api/account/provision");
   expect(provisionRequest?.authorization).toBe(`Bearer ${accessToken("aal2", "refreshed-aal2-token")}`);
-  expect(provisionRequest?.body).toEqual({ role: "client", first_name: "Camila", last_name: "Rojas", national_id: "12345678-5", birth_date: "1990-01-01", phone: "+56912345678" });
+  expect(provisionRequest?.body).toEqual({ role: "client", first_name: "Camila", last_name: "Rojas", national_id: "12345678-5", birth_date: "1990-01-01", phone: "+56912345678", accepted_terms_version: "2026-11-23" });
   expect(mocks.events.some((event) => event.method === "POST" && event.path === "/factors" && event.body?.phone === "+56912345678")).toBe(true);
   expect(mocks.events.filter((event) => event.path === "/factors/factor-sms-1/challenge")).toHaveLength(2);
+});
+
+test("login-path provisioning keeps the submit disabled until the terms checkbox is checked", async ({ page }) => {
+  await installAuthMocks(page, { refresh: true });
+  await page.goto("/login");
+  await page.getByLabel("Correo electrónico").fill("persona@example.test");
+  await page.locator("#auth-password").fill("un-password-seguro");
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await page.getByLabel("Número de teléfono móvil").fill("+56912345678");
+  await page.getByRole("button", { name: "Enviar código SMS" }).click();
+  await page.getByLabel("Código de verificación").fill("246810");
+  await page.getByRole("button", { name: "Verificar teléfono" }).click();
+  await page.getByLabel("Nombre").fill("Camila");
+  await page.getByLabel("Apellido").fill("Rojas");
+  await fillAccountPrivateDetails(page);
+  const submit = page.getByRole("button", { name: "Completar registro" });
+  await expect(submit).toBeDisabled();
+  await acceptAccountTerms(page);
+  await expect(submit).toBeEnabled();
 });
 
 test("confirmed registration supports company fields and surfaces unavailable driver provisioning", async ({ page }) => {
@@ -239,10 +267,11 @@ test("confirmed registration supports company fields and surfaces unavailable dr
   await page.getByLabel("Nombre público del prestador").fill("Transportes Sur");
   await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
   await selectProviderCommune(page);
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page).toHaveURL(/\/servicios$/);
   const company = mocks.events.find((event) => event.path === "/api/account/provision");
-  expect(company?.body).toEqual({ role: "company_owner", first_name: "Ana", last_name: "Pérez", national_id: "12345678-5", birth_date: "1990-01-01", phone: "+56912345678", display_name: "Transportes Sur", company_tax_id: "76123456-0", also_driver: false, commune_code: "13101" });
+  expect(company?.body).toEqual({ role: "company_owner", first_name: "Ana", last_name: "Pérez", national_id: "12345678-5", birth_date: "1990-01-01", phone: "+56912345678", display_name: "Transportes Sur", company_tax_id: "76123456-0", also_driver: false, commune_code: "13101", accepted_terms_version: "2026-11-23" });
 });
 
 test("registration validates phone and RUT inline before creating the account", async ({ page }) => {
@@ -257,6 +286,7 @@ test("registration validates phone and RUT inline before creating the account", 
   await page.getByLabel("Correo electrónico").fill("persona@example.test");
   await page.locator("#auth-password").fill("un-password-seguro");
   await page.locator("#auth-password-confirm").fill("un-password-seguro");
+  await page.getByLabel("Acepto los Términos y Condiciones").check();
   await page.getByRole("button", { name: "Crear cuenta" }).click();
 
   await expect(page.locator("#auth-phone")).toHaveAttribute("aria-invalid", "true");
@@ -278,6 +308,7 @@ test("API validation errors appear inline next to the field they describe", asyn
   await page.locator("#auth-first-name").fill("Camila");
   await page.getByLabel("Apellido").fill("Rojas");
   await fillAccountPrivateDetails(page);
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
 
   await expect(page.locator("#auth-account-national-id")).toHaveAttribute("aria-invalid", "true");
@@ -308,6 +339,7 @@ test("provider account requires a region and commune before provisioning and sen
   await expect(region).toBeEnabled();
   await expect(region).toHaveAttribute("required", "");
   await expect(commune).toBeDisabled();
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page.getByLabel("Nombre público del prestador")).toHaveValue("Fletes Pedro");
   expect(mocks.events.some((event) => event.path === "/api/account/provision")).toBe(false);
@@ -318,6 +350,7 @@ test("provider account requires a region and commune before provisioning and sen
   await expect(commune.locator("option").nth(1)).toHaveText("Santiago");
   await expect(commune.locator("option").nth(2)).toHaveText("Puente Alto");
   await commune.selectOption("13114");
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page.locator(".auth-error")).toContainText("todavía requiere configuración");
   const request = mocks.events.find((event) => event.path === "/api/account/provision");
@@ -341,6 +374,7 @@ test("independent-driver provisioning failure gives an actionable message", asyn
   await continueToProviderDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
   await selectProviderCommune(page);
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page.locator(".auth-error")).toContainText("todavía requiere configuración");
   await expect(page.getByLabel("Nombre público del prestador")).toHaveValue("Fletes Pedro");
@@ -363,6 +397,7 @@ test("company owner can retain company account when linked-driver configuration 
   await page.getByLabel("RUT de la empresa").fill("76.123.456-0");
   await page.locator("#auth-account-also-driver").check();
   await selectProviderCommune(page);
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
   await expect(page.locator(".auth-error")).toContainText("La cuenta de empresa puede continuar sin activar esa opción");
   const request = mocks.events.find((event) => event.path === "/api/account/provision");
@@ -389,6 +424,7 @@ test("a personal-data error from the provider step returns to the personal form"
   await continueToProviderDetails(page);
   await page.getByLabel("Nombre público del prestador").fill("Fletes Pedro");
   await selectProviderCommune(page);
+  await acceptAccountTerms(page);
   await page.getByRole("button", { name: "Completar registro" }).click();
 
   await expect(page.locator("#auth-account-national-id")).toHaveAttribute("aria-invalid", "true");

@@ -17,6 +17,8 @@ import { postLoginPath, safeNextPath } from "@/lib/post-login-path";
 import { normalizeRut } from "@/lib/validation/rut";
 import { maskRutWithCaret, restoreRutCaret } from "@/lib/validation/rut-caret";
 import { createClient } from "@/lib/supabase/client";
+import { TERMS_VERSION } from "@/lib/legal/terms";
+import { TermsDialog } from "@/components/legal/terms-dialog";
 
 type AuthMode = "login" | "register";
 // "account" asks for the personal data; providers then fill their public profile in "provider" before the account is provisioned.
@@ -50,6 +52,7 @@ type RegistrationDraft = {
   displayName: string;
   companyTaxId: string;
   alsoDriver: boolean;
+  acceptedTermsVersion: string;
 };
 
 function messageFor(error: unknown) {
@@ -86,6 +89,16 @@ async function fieldErrorsFromResponse(response: Response): Promise<FieldErrors>
 function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null;
   return <span className="auth-field-error" id={id}>{message}</span>;
+}
+
+// Required terms checkbox for the provisioning step when no registration draft carried the accepted version (login path).
+function AccountTermsField({ checked, onChange, onOpen }: { checked: boolean; onChange: (checked: boolean) => void; onOpen: () => void }) {
+  return (
+    <label className="auth-checkbox" htmlFor="auth-account-terms-accepted">
+      <input checked={checked} id="auth-account-terms-accepted" onChange={(event) => onChange(event.target.checked)} required type="checkbox" />
+      <span>Acepto los <button className="auth-terms-link" onClick={onOpen} type="button">Términos y Condiciones</button></span>
+    </label>
+  );
 }
 
 function isEmailConfirmed(user: User | null | undefined): user is User {
@@ -136,6 +149,10 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
   const [displayName, setDisplayName] = useState("");
   const [companyTaxId, setCompanyTaxId] = useState("");
   const [alsoDriver, setAlsoDriver] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [acceptedTermsVersion, setAcceptedTermsVersion] = useState("");
+  const [accountTermsAccepted, setAccountTermsAccepted] = useState(false);
   const [regionCommune, setRegionCommune] = useState<RegionCommuneValue>({ regionCode: "", communeCode: "" });
   const [confirmedUser, setConfirmedUser] = useState<User | null>(null);
   const needsProviderStep = !invitationIntent && role !== "client";
@@ -159,6 +176,9 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     setDisplayName("");
     setCompanyTaxId("");
     setAlsoDriver(false);
+    setTermsAccepted(false);
+    setAcceptedTermsVersion("");
+    setAccountTermsAccepted(false);
     setRegionCommune({ regionCode: "", communeCode: "" });
     setPhoneVerified(false);
   }
@@ -207,6 +227,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
             setDisplayName(draft.displayName);
             setCompanyTaxId(draft.companyTaxId);
             setAlsoDriver(draft.alsoDriver);
+            setAcceptedTermsVersion(draft.acceptedTermsVersion ?? "");
           } else {
             window.sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
           }
@@ -281,9 +302,10 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
         const registrationDraft: RegistrationDraft = {
           email: email.trim(), phone: phone.trim(), firstName: firstName.trim(), lastName: lastName.trim(),
           nationalId: nationalId.trim(), birthDate, role, displayName: displayName.trim(),
-          companyTaxId: companyTaxId.trim(), alsoDriver,
+          companyTaxId: companyTaxId.trim(), alsoDriver, acceptedTermsVersion: TERMS_VERSION,
         };
         window.sessionStorage.setItem(REGISTRATION_DRAFT_KEY, JSON.stringify(registrationDraft));
+        setAcceptedTermsVersion(TERMS_VERSION);
         const callback = new URL("/auth/callback", window.location.origin);
         callback.searchParams.set("next", invitationIntent
           ? "/registro?step=account&intent=invite"
@@ -424,7 +446,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
 
   async function handleProvision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!client || busy || !isEmailConfirmed(confirmedUser)) return;
+    if (!client || busy || !isEmailConfirmed(confirmedUser) || !termsSatisfied) return;
     setBusy(true);
     setError("");
     setFieldErrors({});
@@ -461,6 +483,7 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
         national_id: nationalRut ?? "",
         birth_date: birthDate,
         phone: phone.trim(),
+        accepted_terms_version: TERMS_VERSION,
       };
       if (provisionRole !== "client") payload.display_name = displayName.trim();
       if (provisionRole !== "client") payload.commune_code = regionCommune.communeCode;
@@ -541,6 +564,9 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
     }
   }
 
+  // A draft that already carries the current version (normal registration) needs no second acceptance.
+  const needsAccountTerms = acceptedTermsVersion !== TERMS_VERSION;
+  const termsSatisfied = !needsAccountTerms || accountTermsAccepted;
   const title = step === "loading" ? "Cargando tu sesión" : step === "email-pending" ? "Confirma tu correo" : step === "enroll" ? "Verifica tu teléfono" : step === "verify" ? "Ingresa tu código SMS" : step === "account" ? "Completa tu cuenta" : step === "provider" ? "Tu perfil de prestador" : mode === "login" ? "Inicia sesión" : "Crea tu cuenta";
   const kicker = step === "account" ? (needsProviderStep ? "Paso 1 de 2" : "Último paso") : step === "provider" ? "Paso 2 de 2" : step === "verify" || step === "enroll" ? "Seguridad de la cuenta" : "";
   const description = step === "account" ? (needsProviderStep ? "Primero tus datos personales; después, cómo te verán los clientes." : "Con estos datos creamos tu cuenta de Amira.") : step === "provider" ? "Así aparecerás cuando los clientes busquen transporte." : step === "email-pending" ? "Te enviaremos a este mismo flujo después de confirmar el correo." : step === "enroll" || step === "verify" ? `Cuenta: ${email || confirmedUser?.email || "correo confirmado"}` : mode === "login" ? "Usa el correo y la contraseña de tu cuenta." : "Regístrate con tu correo y confirma la dirección antes de completar tu perfil.";
@@ -622,9 +648,14 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
               {mode === "register" && <label className="auth-field" htmlFor="auth-password-confirm">Confirmar contraseña
                 <input autoComplete="new-password" id="auth-password-confirm" minLength={8} onChange={(event) => setPasswordConfirm(event.target.value)} required type={passwordVisible ? "text" : "password"} value={passwordConfirm} />
               </label>}
-              <button className="auth-submit" disabled={busy || !client} type="submit">{busy ? "Procesando…" : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}<ArrowRight aria-hidden="true" size={17} /></button>
+              {mode === "register" && <label className="auth-checkbox" htmlFor="auth-terms-accepted">
+                <input checked={termsAccepted} id="auth-terms-accepted" onChange={(event) => setTermsAccepted(event.target.checked)} required type="checkbox" />
+                <span>Acepto los <button className="auth-terms-link" onClick={() => setTermsOpen(true)} type="button">Términos y Condiciones</button></span>
+              </label>}
+              <button className="auth-submit" disabled={busy || !client || (mode === "register" && !termsAccepted)} type="submit">{busy ? "Procesando…" : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}<ArrowRight aria-hidden="true" size={17} /></button>
             </form>
           )}
+          <TermsDialog onAccept={() => { setTermsAccepted(true); setAccountTermsAccepted(true); setTermsOpen(false); }} onClose={() => setTermsOpen(false)} open={termsOpen} />
 
           {step === "email-pending" && <div className="auth-step-actions"><p>Cuando confirmes el correo, volverás aquí para configurar la verificación por SMS y completar tus datos.</p><button className="auth-secondary-action" disabled={busy} onClick={() => { setStep("credentials"); setNotice(""); }} type="button">Volver al acceso</button></div>}
 
@@ -680,9 +711,10 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
               <label className="auth-field" htmlFor="auth-account-birth-date">Fecha de nacimiento
                 <input autoComplete="bday" id="auth-account-birth-date" max={new Date().toISOString().slice(0, 10)} min="1900-01-01" onChange={(event) => setBirthDate(event.target.value)} required type="date" value={birthDate} />
               </label>
+              {!needsProviderStep && needsAccountTerms && <AccountTermsField checked={accountTermsAccepted} onChange={setAccountTermsAccepted} onOpen={() => setTermsOpen(true)} />}
               {needsProviderStep
                 ? <button className="auth-submit" disabled={busy} type="submit">Continuar<ArrowRight aria-hidden="true" size={17} /></button>
-                : <button className="auth-submit" disabled={busy} type="submit">{busy ? "Creando cuenta…" : "Completar registro"}<ArrowRight aria-hidden="true" size={17} /></button>}
+                : <button className="auth-submit" disabled={busy || !termsSatisfied} type="submit">{busy ? "Creando cuenta…" : "Completar registro"}<ArrowRight aria-hidden="true" size={17} /></button>}
             </form>
           )}
 
@@ -700,7 +732,8 @@ export function AuthPanel({ mode, providerIntent = false, invitationIntent = fal
                   También quiero registrarme como conductor de mi propia empresa para reservar servicios.
                 </label>
               </>}
-              <button className="auth-submit" disabled={busy} type="submit">{busy ? "Creando cuenta…" : "Completar registro"}<ArrowRight aria-hidden="true" size={17} /></button>
+              {needsAccountTerms && <AccountTermsField checked={accountTermsAccepted} onChange={setAccountTermsAccepted} onOpen={() => setTermsOpen(true)} />}
+              <button className="auth-submit" disabled={busy || !termsSatisfied} type="submit">{busy ? "Creando cuenta…" : "Completar registro"}<ArrowRight aria-hidden="true" size={17} /></button>
               <button className="auth-secondary-action" disabled={busy} onClick={() => { setStep("account"); setError(""); }} type="button"><ArrowLeft aria-hidden="true" size={15} /> Volver a tus datos</button>
             </form>
           )}
