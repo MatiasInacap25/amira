@@ -70,6 +70,23 @@ const server = createServer((request, response) => {
     if (!adminTokens.has(token)) return send(response, 403, { detail: "Admin access required." });
     if (url.pathname === "/api/admin/me") return send(response, 200, { user_id: user.id, email: user.email });
     if (url.pathname === "/api/admin/badges") return send(response, 200, { documentos: 2, reclamos: 1, "cuentas-bancarias": 0, desembolsos: 0 });
+    if (url.pathname === "/api/admin/finance/summary") return send(response, 200, {
+      collected: 80000, refunded: 0, net_collected: 80000, payout_due: 72000, payout_due_count: 1,
+      payout_blocked_count: 0, payout_paid: 0, commission_gross: 8000, commission_net: 6723, commission_iva: 1277,
+      platform_iva: 1277, retained_net: 0, retained_iva: 0,
+      service_counts: { in_progress: 0, completed: 1, cancelled: 0 }, pending: { documentos: 2, reclamos: 1 },
+    });
+    if (url.pathname === "/api/admin/finance/timeseries") return send(response, 200, [
+      { day: url.searchParams.get("to"), collected: 80000, commission: 8000 },
+    ]);
+    if (url.pathname === "/api/admin/finance/movements") return send(response, 200, []);
+    if (url.pathname === "/api/admin/finance/providers") return send(response, 200, [
+      { provider: "Transportista de prueba", services: 1, gross: 80000, commission: 8000, commission_iva: 1277, net_paid: 0 },
+    ]);
+    if (url.pathname === "/api/admin/configuration") return send(response, 200, {
+      app_env: "test", commission_percent: 10, claim_window_hours: 24, payment_adapter: "simulated", payout_adapter: "simulated",
+      admins: [{ user_id: user.id, email: user.email }],
+    });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";
       const items = [{ id: "audit-1", admin_user_id: user.id, action, entity_type: "rating", entity_id: "rating-1", reason: "Fixture", created_at: "2026-11-20T14:00:00Z" }];

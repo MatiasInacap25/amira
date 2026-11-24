@@ -24,3 +24,12 @@ export const checkAdmin = cache(async (): Promise<{ admin: AdminIdentity; access
 export function serverAdminFetch(path: `/api/admin/${string}`, accessToken: string) {
   return authenticatedApiFetch(path, accessToken, process.env.NEXT_PUBLIC_API_URL);
 }
+
+export async function adminData<T>(path: `/api/admin/${string}`, accessToken: string): Promise<T | null> {
+  try {
+    const response = await serverAdminFetch(path, accessToken);
+    return response.ok ? await response.json() as T : null;
+  } catch {
+    return null;
+  }
+}

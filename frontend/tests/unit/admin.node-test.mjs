@@ -16,3 +16,10 @@ test("filters round-trip and changing a filter resets pagination only", () => {
   assert.equal(writeFilters(filters).toString(), "q=garc%C3%ADa&action=rating.hide&offset=20");
   assert.deepEqual(updateFilter(filters, "q", ""), { action: "rating.hide" });
 });
+
+test("reporting periods use Santiago dates and calendar month lengths", async () => {
+  const { dashboardPeriod, monthlyPeriod } = await import("../../src/lib/admin/finance.ts");
+  assert.deepEqual(dashboardPeriod({ period: "week" }, new Date("2026-11-24T01:00:00Z")),
+    { preset: "week", from: "2026-11-17", to: "2026-11-23" });
+  assert.deepEqual(monthlyPeriod("2024-02"), { month: "2024-02", from: "2024-02-01", to: "2024-02-29" });
+});
