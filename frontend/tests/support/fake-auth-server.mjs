@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { generateKeyPairSync, sign } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 
 const host = "127.0.0.1";
 const port = 54329;
@@ -29,6 +29,7 @@ function makeToken() {
   const header = base64url({ alg: "RS256", typ: "JWT", kid: "amira-e2e" });
   const payload = base64url({
     iss: issuer,
+    jti: randomUUID(),
     sub: user.id,
     aud: "authenticated",
     role: "authenticated",
@@ -51,10 +52,29 @@ function send(response, status, body) {
   response.end(body === undefined ? "" : JSON.stringify(body));
 }
 
+const adminTokens = new Set();
+
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", issuer);
   if (request.method === "OPTIONS") return send(response, 204);
   if (url.pathname === "/__health" && request.method === "GET") return send(response, 200, { ok: true });
+  if (url.pathname === "/__admin_session" && request.method === "GET") {
+    const admin = url.searchParams.get("admin") === "true";
+    const token = makeToken();
+    if (admin) adminTokens.add(token);
+    return send(response, 200, { access_token: token, refresh_token: "fake-admin-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600, user });
+  }
+  if (url.pathname.startsWith("/api/admin/") && request.method === "GET") {
+    const token = request.headers.authorization?.replace(/^Bearer /, "");
+    if (!token) return send(response, 401, {});
+    if (!adminTokens.has(token)) return send(response, 403, { detail: "Admin access required." });
+    if (url.pathname === "/api/admin/me") return send(response, 200, { user_id: user.id, email: user.email });
+    if (url.pathname === "/api/admin/audit") {
+      const action = url.searchParams.get("action") ?? "rating.show";
+      const items = [{ id: "audit-1", admin_user_id: user.id, action, entity_type: "rating", entity_id: "rating-1", reason: "Fixture", created_at: "2026-11-20T14:00:00Z" }];
+      return send(response, 200, { items, total: 1, limit: 20, offset: 0 });
+    }
+  }
   if (url.pathname === "/auth/v1/.well-known/jwks.json" && request.method === "GET") {
     return send(response, 200, { keys: [publicJwk] });
   }
