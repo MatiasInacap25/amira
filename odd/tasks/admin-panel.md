@@ -296,8 +296,8 @@ Additive Alembic migrations only (new tables, new nullable columns, new indexes)
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 | S1, S26 (audit table), S24, S27 skeleton | inline, independent verifier (security) | done | `7be1749` |
-| T2 | S2, S3, S28 (layout + shared components) | delegated (Codex) | pending | |
-| T3 | S4, S22, S25 (dashboard, finanzas, configuración) | delegated (Codex) | pending | |
+| T2 | S2, S3, S28 (layout + shared components) | inline | done | `b180465` |
+| T3 | S4, S22, S25 (dashboard, finanzas, configuración) | read-only explorer required | blocked; assigned model unavailable | |
 | T4 | S5, S6, S7, S8, S18 (personas + vehículos, block/suspend) | delegated (Codex) | pending | |
 | T5 | S9, S10, S11, S12 (revisión: documentos, cuentas, reclamos, valoraciones) | delegated (Codex) | pending | |
 | T6 | S13, S14, S15, S16, S17 (operación) | delegated (Codex) | pending | |
@@ -318,3 +318,4 @@ Each task closes with one Conventional Commit on `feat/admin-panel` with its tes
 - L6 (2026-11-24): Full Playwright stopped with 279 passed, 1 failure, 1 interrupted and 187 not run. The failing role-lookup case passed in isolation on both baseline and T1; no cause confirmed. See `odd/tasks/admin-panel-report.md`.
 - L7 (2026-11-24, user): “Decisión del usuario sobre el bloqueo de T1: NO actualices Next.js en esta rama. Trata el SecurityFatalError de npm run build (Next 16.4.2) como un fallo conocido y previo (ya ocurría en develop en 8441ff1 y es intermitente); la actualización de Next.js se hace en una rama aparte que después se integrará a feat/admin-panel. Para cada tarea, el gate de build queda así: npm run build debe compilar y pasar el type-check; si el único error es SecurityFatalError, regístralo en el Log como conocido y sigue. Marca T1 como done en la tabla. Continúa con T2..T8 con las mismas reglas de antes (worktree /mnt/data/projects/amira-worktrees/admin-panel, un commit por tarea, sin push/PR/merge/review, y el reporte final en odd/tasks/admin-panel-report.md). Si el flaky page-cuenta-servicios.spec.ts:149 vuelve a fallar, reejecútalo aislado y regístralo; no bloquees por él.”
 - L8 (2026-11-24): T2 RED reproduced missing navigation, formatters, URL filters, and badges; mobile later exposed a page overflow from an absolutely positioned table descendant. GREEN: admin Playwright 6/6 on isolated ports, backend focused 56 passed/1 skipped, full backend only the expected adapter failure, lock/lint passed, Node 233 passed/1 TODO. Intermediate build compiled and type-checked, then hit the known SecurityFatalError (L7); final build completed with the advisory. No package updates.
+- L9 (2026-11-24): T3 needs a read-only map across payments, refunds, payout eligibility, claims, and adapter configuration. The required `odd-explorer` launch was rejected because the configured `gpt-6.1-luna` model is unavailable. No T3 code was written. Resume after an available explorer model is authorized.

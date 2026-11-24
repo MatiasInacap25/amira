@@ -1,24 +1,24 @@
 # Admin panel implementation report
 
 Branch: `feat/admin-panel` · Baseline: `8441ff1` (`develop`)
-Status: **Blocked at T1.** T1 implementation is checkpointed; it has not cleared the production build gate.
+Status: **Blocked at T3.** T1 and T2 are complete. The build exception in L7 applies; Next.js was not changed.
 
 ## Task status
 
 | Task | Status | Commit |
 |---|---|---|
-| T1 — Access and audit foundation | Implemented; blocked on production verification | `7be1749` |
-| T2 — Layout and shared components | Not started | — |
-| T3 — Dashboard, finance, and settings | Not started | — |
+| T1 — Access and audit foundation | Done under the user-authorized build exception | `7be1749` |
+| T2 — Layout and shared components | Done | `b180465` |
+| T3 — Dashboard, finance, and settings | Blocked before implementation: assigned explorer model unavailable | — |
 | T4 — People and vehicles | Not started | — |
 | T5 — Moderation and claims | Not started | — |
 | T6 — Operations | Not started | — |
 | T7 — Payments, refunds, and payouts | Not started | — |
 | T8 — Catalogs and final verification | Not started | — |
 
-T1 adds a deny-by-default allowlist using verified Supabase subjects, a guarded admin router, server-rendered access checks, a private audit migration, transaction-bound audit writes, filtered audit queries and CSV, and an audit page. Entity links point to sections that later tasks must implement. The shared table, drawer, and CSV download button are not implemented yet.
+T1 adds a deny-by-default allowlist using verified Supabase subjects, a guarded admin router, server-rendered access checks, a private audit migration, transaction-bound audit writes, filtered audit queries and CSV, and an audit page. T2 adds the responsive sidebar, pending badges, server-gated section routes, audit table integration, URL filters, CSV download, keyboard-accessible row detail, reusable confirmation dialogs, and shared formatters. Sections beyond audit retain placeholders until their own task implements them.
 
-## Verification
+## T1 verification
 
 Commands ran from the designated worktree, or from its app directory as indicated.
 
@@ -43,10 +43,29 @@ Commands ran from the designated worktree, or from its app directory as indicate
 | `git diff --check`; `git diff --cached --check` | Passed locally and in the independent readback where applicable. |
 | `graphify update .` | Passed after implementation and correction. SQL extraction was skipped because the optional parser is unavailable. Generated graph files are ignored. |
 
+## T2 verification
+
+| Command | Observed result |
+|---|---|
+| Frontend: `node --test tests/unit/admin.node-test.mjs` | RED: missing formatter module. GREEN: 2 passed; verifies CLP, Santiago dates, RUT and URL filter round-trip. |
+| Frontend: `npx playwright test tests/admin.spec.ts -g 'sidebar\|mobile'` | RED: no sidebar navigation and no mobile menu. |
+| Frontend: `npx playwright test tests/admin.spec.ts` | Default ports already in use by another checkout; did not stop those processes. |
+| Frontend: `AMIRA_TEST_APP_PORT=3180 AMIRA_TEST_AUTH_PORT=54330 npx playwright test tests/admin.spec.ts -g mobile` | Reproduced and isolated an absolutely positioned table descendant widening the page. Giving the table's scroll container a positioning context fixed it. |
+| Frontend: `AMIRA_TEST_APP_PORT=3180 AMIRA_TEST_AUTH_PORT=54330 npx playwright test tests/admin.spec.ts` | GREEN: 6 passed, including browser back navigation, pending badges, and internal-only table scrolling on mobile. |
+| Backend: `uv run pytest tests/admin/test_access_audit.py -q -k badges --tb=short` | RED: badges route did not exist. |
+| Backend: `uv run pytest -q tests/admin/test_access_audit.py tests/test_payout_service.py --tb=short` | The guessed payout file does not exist; no tests ran. |
+| Backend: `uv run pytest -q tests/admin/test_access_audit.py tests/test_public_db.py tests/*payout* --tb=short` | GREEN: 56 passed, 1 PostgreSQL test skipped. |
+| Backend: `uv lock --check`; `uv run pytest -q --tb=short` | Lock passed; 1,257 passed, 201 skipped, 1 xfailed and only the already permitted payment-adapter failure. |
+| Frontend: `npm run lint`; `node --test tests/unit/*.mjs` | Lint passed. Node: 233 passed, 1 existing TODO, exit 0. |
+| Frontend: `npm run build` | Intermediate run compiled and type-checked, then stopped only with the known `SecurityFatalError` recorded under L7. Final run compiled, passed type-check, and completed with the advisory (exit 0). Next.js stayed on 16.4.2. |
+| `git diff --check`; `git diff --cached --check`; `graphify update .` | Passed. Optional Graphify SQL parser still absent. |
+
+The complete Playwright suite is still pending for T8. There was no repeat of the known role-lookup failure in this turn's focused coverage; the case was not selected. If it fails in a future full run, rerun it in isolation and record the result without treating that case alone as a gate.
+
 ## Open questions and risks
 
-- No unresolved product decision surfaced in T1. A separately authorized Next.js dependency update is the next step; rerun the production build after updating before expanding privileged routes.
-- **Risk: item 2 (privileged authorization), item 5 (pinned dependency).** The latest build and full browser suite are not green; do not deploy this candidate. No real PostgreSQL migration or RLS enforcement test ran; PostgreSQL integration tests skipped without a local test database.
+- No open product decisions for T1 or T2. T3 requires an independent read-only domain map before implementation. The prescribed `odd-explorer` model `gpt-6.1-luna` could not be launched; approve an available equivalent to resume the mapping. The Next.js upgrade stays on a separate branch.
+- **Risk: none for T2.** The badges route inherits the existing tested admin guard and performs only reads. The pre-existing Next.js advisory remains unresolved, and PostgreSQL migration/RLS execution and the complete browser suite still need verification before deployment.
 - S0 money handlers and all moderation, operation, finance, and catalog workflows remain unimplemented. The checkpoint is not a usable complete admin panel.
 
 No push, PR, merge, native review, or edits to the main checkout were performed.
