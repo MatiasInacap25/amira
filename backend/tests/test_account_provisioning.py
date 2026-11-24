@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from amira_api.account_routes import provision_account
 from amira_api.account_schemas import AccountProvisionRequest
+from amira_api.terms import TERMS_VERSION
 from amira_api.auth import AuthenticatedUser
 from amira_api.models import Conductor, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
 from amira_api.settings import Settings
@@ -36,10 +37,14 @@ class FakeSession:
     def __init__(self, values):
         self.values = deque(values)
         self.added = []
+        self.statements = []
         self.commits = 0
         self.rollbacks = 0
 
     def execute(self, statement):
+        if statement.is_insert:  # terms acceptance ON CONFLICT insert: recorded, consumes no lookup value
+            self.statements.append(statement)
+            return Result(None)
         return Result(self.values.popleft())
 
     def add(self, value):
@@ -79,7 +84,7 @@ def test_company_owner_provisioning_creates_profile_but_never_driver():
     company_role = role("company_owner", USER_ROLE_ID)
     profile_kind = profile_role("company", PROFILE_ROLE_ID)
     session = FakeSession([COMMUNE_CODE, company_role, None, profile_kind, None, None])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="company_owner",
         commune_code=COMMUNE_CODE,
         first_name="Casey",
@@ -97,7 +102,8 @@ def test_company_owner_provisioning_creates_profile_but_never_driver():
     assert response.role == "company_owner"
     assert response.profile_id is not None
     assert [type(item) for item in session.added] == [Usuario, Perfil]
-    user, profile = session.added
+    assert len(session.statements) == 1
+    user, profile = session.added[:2]
     assert user.email == "person@example.test"  # request cannot choose the account email
     assert profile.kind == "company"
     assert profile.company_tax_id == COMPANY_RUT
@@ -132,7 +138,7 @@ def test_repeated_company_owner_provisioning_is_idempotent():
         company_tax_id=COMPANY_RUT,
     )
     session = FakeSession([COMMUNE_CODE, account_role, user, profile_kind, profile, None])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="company_owner",
         commune_code=COMMUNE_CODE,
         first_name="Casey",
@@ -172,8 +178,8 @@ def test_concurrent_user_insert_conflict_resolves_to_existing_account():
         def flush(self):
             raise IntegrityError("insert", {}, Exception("unique constraint"))
 
-    session = RacingSession([account_role, None, winner])
-    payload = AccountProvisionRequest(role="client", first_name="Casey", last_name="Client", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE)
+    session = RacingSession([account_role, None, winner, None])
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="client", first_name="Casey", last_name="Client", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE)
     http_response = Response()
 
     response = provision_account(payload, identity(), session, Settings(_env_file=None), http_response)
@@ -195,7 +201,7 @@ def test_independent_driver_gets_null_employer_and_explicit_configured_type():
     account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
     profile_kind = profile_role("independent_driver", UUID("b2000000-0000-4000-8000-000000000006"))
     session = FakeSession([COMMUNE_CODE, account_role, None, profile_kind, None, None])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="independent_driver",
         commune_code=COMMUNE_CODE,
         first_name="Casey",
@@ -218,7 +224,7 @@ def test_independent_driver_fails_closed_without_explicit_type_mapping():
     account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
     profile_kind = profile_role("independent_driver", UUID("b2000000-0000-4000-8000-000000000006"))
     session = FakeSession([COMMUNE_CODE, account_role, None, profile_kind, None])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="independent_driver",
         commune_code=COMMUNE_CODE,
         first_name="Casey",
@@ -238,15 +244,15 @@ def test_independent_driver_fails_closed_without_explicit_type_mapping():
 
 def test_role_specific_profile_fields_are_validated():
     with pytest.raises(ValueError):
-        AccountProvisionRequest(role="client", first_name="Casey", last_name="Client", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE, display_name="Not allowed")
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="client", first_name="Casey", last_name="Client", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE, display_name="Not allowed")
     with pytest.raises(ValueError):
-        AccountProvisionRequest(role="company_owner", first_name="Casey", last_name="Owner", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE, display_name="No RUT")
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="company_owner", first_name="Casey", last_name="Owner", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE, display_name="No RUT")
     with pytest.raises(ValueError):
-        AccountProvisionRequest(role="independent_driver", first_name="Casey", last_name="Driver", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE, display_name="Transport", company_tax_id=COMPANY_RUT)
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="independent_driver", first_name="Casey", last_name="Driver", national_id=PERSONAL_RUT, birth_date=date(1990, 1, 1), phone=PHONE, display_name="Transport", company_tax_id=COMPANY_RUT)
 
 
 def test_chilean_personal_and_company_ruts_are_validated_and_normalized():
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="company_owner",
         commune_code=COMMUNE_CODE,
         first_name="Casey",
@@ -262,7 +268,7 @@ def test_chilean_personal_and_company_ruts_are_validated_and_normalized():
     assert payload.phone == PHONE
 
     with pytest.raises(ValueError):
-        AccountProvisionRequest(role="client", first_name="Casey", last_name="Client", national_id="12.345.678-0", birth_date=date(1990, 1, 1), phone=PHONE)
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="client", first_name="Casey", last_name="Client", national_id="12.345.678-0", birth_date=date(1990, 1, 1), phone=PHONE)
 
 
 @pytest.mark.parametrize(
@@ -285,7 +291,7 @@ def test_private_account_input_is_validated_and_email_cannot_be_supplied(overrid
     }
     values.update(overrides)
     with pytest.raises(ValueError):
-        AccountProvisionRequest(**values)
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, **values)
 
 
 def test_company_owner_can_opt_into_a_company_linked_driver_without_exposing_private_data():
@@ -294,7 +300,7 @@ def test_company_owner_can_opt_into_a_company_linked_driver_without_exposing_pri
     company_driver_type_id = UUID("b2000000-0000-4000-8000-000000000020")
     company_driver_type = TipoConductor(id=company_driver_type_id, name="trusted configured type")
     session = FakeSession([company_driver_type, COMMUNE_CODE, company_role, None, profile_kind, None, None])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="company_owner",
         commune_code=COMMUNE_CODE,
         first_name="Casey",
@@ -323,7 +329,7 @@ def test_company_owner_can_opt_into_a_company_linked_driver_without_exposing_pri
 @pytest.mark.parametrize("configured_type", [None, UUID("b2000000-0000-4000-8000-000000000099")])
 def test_company_driver_opt_in_fails_closed_when_trusted_mapping_missing_or_invalid(configured_type):
     session = FakeSession([None])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="company_owner",
         commune_code=COMMUNE_CODE,
         first_name="Casey",
@@ -348,7 +354,7 @@ def test_company_driver_opt_in_fails_closed_when_trusted_mapping_missing_or_inva
 @pytest.mark.parametrize("role_name", ["client", "independent_driver"])
 def test_non_company_roles_cannot_use_company_driver_toggle(role_name):
     with pytest.raises(ValueError):
-        AccountProvisionRequest(
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
             role=role_name,
             first_name="Casey",
             last_name="Driver",
@@ -363,17 +369,17 @@ def test_non_company_roles_cannot_use_company_driver_toggle(role_name):
 def test_provider_accounts_require_a_catalog_commune_and_clients_cannot_send_one():
     common = {"first_name": "Casey", "last_name": "Owner", "national_id": PERSONAL_RUT, "birth_date": date(1990, 1, 1), "phone": PHONE}
     with pytest.raises(ValueError):
-        AccountProvisionRequest(role="company_owner", display_name="Casey Logistics", company_tax_id=COMPANY_RUT, **common)
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="company_owner", display_name="Casey Logistics", company_tax_id=COMPANY_RUT, **common)
     with pytest.raises(ValueError):
-        AccountProvisionRequest(role="independent_driver", display_name="Casey Transport", commune_code="1310", **common)
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="independent_driver", display_name="Casey Transport", commune_code="1310", **common)
     with pytest.raises(ValueError):
-        AccountProvisionRequest(role="client", commune_code=COMMUNE_CODE, **common)
+        AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, role="client", commune_code=COMMUNE_CODE, **common)
 
 
 def test_unknown_commune_is_rejected_with_validation_shape_before_any_record_is_created():
     account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
     session = FakeSession([None, account_role])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="independent_driver",
         first_name="Casey",
         last_name="Driver",
@@ -399,7 +405,7 @@ def test_provider_profile_and_independent_driver_store_the_selected_commune_code
     account_role = role("independent_driver", UUID("b2000000-0000-4000-8000-000000000004"))
     profile_kind = profile_role("independent_driver", UUID("b2000000-0000-4000-8000-000000000006"))
     session = FakeSession([COMMUNE_CODE, account_role, None, profile_kind, None, None])
-    payload = AccountProvisionRequest(
+    payload = AccountProvisionRequest(accepted_terms_version=TERMS_VERSION, 
         role="independent_driver",
         first_name="Casey",
         last_name="Driver",

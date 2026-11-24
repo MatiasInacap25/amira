@@ -1,10 +1,13 @@
 """Server-owned account provisioning; roles come only from validated input."""
 
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,13 +22,34 @@ from amira_api.account_schemas import (
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.auth_phone_factors import AuthAdminUnavailable, PhoneFactorReader, SupabasePhoneFactorReader
 from amira_api.db import get_db_session
-from amira_api.models import Commune, Conductor, Perfil, RolPerfil, RolUsuario, TipoConductor, Usuario
+from amira_api.models import Commune, Conductor, Perfil, RolPerfil, RolUsuario, TermsAcceptance, TipoConductor, Usuario
 from amira_api.settings import Settings, get_settings
+from amira_api.terms import TERMS_VERSION, TERMS_VERSION_REQUIRED_MESSAGE
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db_session)]
 PHONE_NOT_VERIFIED = "Verifica el número nuevo con el código SMS antes de guardarlo."
+
+
+@dataclass(frozen=True)
+class ClientRequestInfo:
+    ip: str | None
+    user_agent: str | None
+
+
+def get_client_request_info(request: Request) -> ClientRequestInfo:
+    """Client IP (first X-Forwarded-For hop when present) and User-Agent, bounded to their column sizes."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        ip = forwarded_for.split(",")[0].strip() or None
+    else:
+        ip = request.client.host if request.client is not None else None
+    user_agent = request.headers.get("user-agent") or None
+    return ClientRequestInfo(
+        ip=ip[:64] if ip is not None else None,
+        user_agent=user_agent[:512] if user_agent is not None else None,
+    )
 
 
 def get_phone_factor_reader(settings: Annotated[Settings, Depends(get_settings)]) -> PhoneFactorReader:
@@ -94,7 +118,20 @@ def provision_account(
     session: Database,
     settings: Annotated[Settings, Depends(get_settings)],
     response: Response,
+    client_info: Annotated[ClientRequestInfo | None, Depends(get_client_request_info)] = None,
 ) -> AccountResponse:
+    if payload.accepted_terms_version != TERMS_VERSION:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "loc": ["body", "accepted_terms_version"],
+                    "msg": TERMS_VERSION_REQUIRED_MESSAGE,
+                    "type": "value_error",
+                }
+            ],
+        )
+
     company_driver_type: TipoConductor | None = None
     if payload.also_driver:
         if settings.company_driver_type_id is None:
@@ -269,6 +306,21 @@ def provision_account(
                     raise HTTPException(status_code=409, detail="Existing driver record does not match company-linked role.")
             elif driver is not None:
                 raise HTTPException(status_code=409, detail="Existing driver record does not match the selected account capabilities.")
+
+    # Race-safe and idempotent: concurrent or repeated provisions for the same (user, version) insert nothing
+    # instead of tripping the unique constraint. The insert runs in the same transaction as the account writes.
+    terms_table = TermsAcceptance.__table__
+    session.execute(
+        pg_insert(TermsAcceptance)
+        .values(
+            user_id=user.id,
+            version=TERMS_VERSION,
+            accepted_at=datetime.now(UTC),
+            ip=client_info.ip if client_info is not None else None,
+            user_agent=client_info.user_agent if client_info is not None else None,
+        )
+        .on_conflict_do_nothing(index_elements=[terms_table.c["ID_Usuario"], terms_table.c["Version"]])
+    )
 
     session.commit()
     response.status_code = 201 if created else 200
