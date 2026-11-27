@@ -41,6 +41,12 @@ export function ServiceDocuments({ documents, failed, loading }: Props) {
 function DocumentReceiptDialog({ item, onClose }: { item: ServiceDocument; onClose: () => void }) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // Print CSS hides the page only while this class is present, so other pages print normally.
+  useEffect(() => {
+    document.body.classList.add("printing-receipt");
+    return () => document.body.classList.remove("printing-receipt");
+  }, []);
+
   useEffect(() => {
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogRef.current?.focus();

@@ -1296,3 +1296,24 @@ test("cancelled service keeps access to its surviving shared trip without public
   await expect(page.getByRole("link", { name: "Ver mis viajes compartidos" })).toBeVisible();
   await expect(page.getByRole("button", { name: publishButtonName })).toHaveCount(0);
 });
+
+test("print without an open receipt keeps the service detail visible; with a receipt open only the receipt prints", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
+  await mockDocuments(page, "customer", [boletaDocument]);
+  await signInTo(page, "client");
+  await page.goto("/cuenta/servicios/service-1");
+  await expect(page.getByRole("heading", { level: 1, name: "Mudanzas" })).toBeVisible();
+
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator(".account-service-detail")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Mudanzas" })).toBeVisible();
+
+  await page.emulateMedia({ media: "screen" });
+  await page.getByRole("button", { name: "Ver", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Boleta" })).toBeVisible();
+
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByRole("dialog", { name: "Boleta" })).toBeVisible();
+  await expect(page.locator(".account-service-detail")).toBeHidden();
+  await expect(page.locator(".document-receipt-actions")).toBeHidden();
+});

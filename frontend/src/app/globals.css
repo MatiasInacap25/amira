@@ -1030,11 +1030,11 @@ h1, h2, h3, p { margin-top: 0; }
 .document-receipt-actions .button { min-height: 44px; }
 
 @media print {
-  body * { visibility: hidden; }
-  .document-receipt, .document-receipt * { visibility: visible; }
-  .terms-dialog-backdrop { position: static; background: none; }
-  .document-receipt { position: absolute; top: 0; left: 0; width: 100%; max-height: none; overflow: visible; box-shadow: none; }
-  .document-receipt-actions { display: none; }
+  body.printing-receipt * { visibility: hidden; }
+  body.printing-receipt .document-receipt, body.printing-receipt .document-receipt * { visibility: visible; }
+  body.printing-receipt .terms-dialog-backdrop { position: static; background: none; }
+  body.printing-receipt .document-receipt { position: absolute; top: 0; left: 0; width: 100%; max-height: none; overflow: visible; box-shadow: none; }
+  body.printing-receipt .document-receipt-actions { display: none; }
 }
 .chat-result { display: grid; justify-items: start; gap: 12px; padding: 28px 24px; }
 .chat-result h1 { margin: 0; color: #173f55; font-size: clamp(24px, 3.4vw, 30px); letter-spacing: -.03em; }
