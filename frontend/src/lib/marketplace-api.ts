@@ -11,6 +11,7 @@ import {
 } from "@/lib/chats";
 import { buildProviderRequestsQuery, type ProviderRequestStatus } from "@/lib/provider-requests";
 import type { LocationPayload } from "@/lib/geolocation";
+import type { TaxDocumentType } from "@/lib/tax";
 
 export type LocationCommune = {
   code: string;
@@ -139,7 +140,37 @@ export type ServiceCancellation = {
   simulated: true;
 };
 
+// IVA breakdown of the service amount (CLP whole pesos). Commission fields are null for the customer.
+export type ServiceAmountBreakdown = {
+  total: number;
+  net: number;
+  iva: number;
+  commission: number | null;
+  commissionNet: number | null;
+  commissionIva: number | null;
+  carrierAmount: number | null;
+};
+
+// Simulated tax document (sandbox only, never sent to the SII). Customers only receive the boleta.
+export type ServiceDocument = {
+  id: string;
+  type: TaxDocumentType;
+  folio: number;
+  issuedAt: string;
+  issuerName: string;
+  issuerTaxId: string;
+  recipientName: string;
+  recipientTaxId: string | null;
+  net: number;
+  iva: number;
+  total: number;
+  currency: "CLP";
+  simulated: true;
+  serviceId: string;
+};
+
 export type ServiceDetail = ServiceListItem & {
+  amountBreakdown?: ServiceAmountBreakdown | null;
   canCancel?: boolean;
   cancellation?: ServiceCancellation | null;
   chatId: string | null;
@@ -395,6 +426,25 @@ export function requestProviderServiceDetail(accessToken: string, serviceId: str
 export function requestCustomerServiceDetail(accessToken: string, serviceId: string, signal?: AbortSignal) {
   return authenticatedApiFetch(
     `/api/customer/services/${encodeURIComponent(serviceId)}`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+// Customers receive only the boleta; providers receive the boleta and the factura de comisión.
+export function requestCustomerServiceDocuments(accessToken: string, serviceId: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    `/api/customer/services/${encodeURIComponent(serviceId)}/documents`,
+    accessToken,
+    process.env.NEXT_PUBLIC_API_URL,
+    { headers: { Accept: "application/json" }, cache: "no-store", signal },
+  );
+}
+
+export function requestProviderServiceDocuments(accessToken: string, serviceId: string, signal?: AbortSignal) {
+  return authenticatedApiFetch(
+    `/api/provider/services/${encodeURIComponent(serviceId)}/documents`,
     accessToken,
     process.env.NEXT_PUBLIC_API_URL,
     { headers: { Accept: "application/json" }, cache: "no-store", signal },

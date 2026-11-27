@@ -53,6 +53,18 @@ class ServiceCancellation(PublicResponse):
     simulated: Literal[True] = True
 
 
+class AmountBreakdownView(PublicResponse):
+    """IVA breakdown of the service amount, in whole CLP. The commission fields are provider-only: null for customers."""
+
+    total: int
+    net: int
+    iva: int
+    commission: int | None = None
+    commission_net: int | None = None
+    commission_iva: int | None = None
+    carrier_amount: int | None = None
+
+
 class ServiceDetail(ServiceListItem):
     chat_id: UUID
     description: str | None
@@ -81,6 +93,8 @@ class ServiceDetail(ServiceListItem):
     assignments: list[ServiceAssignment]
     # Provider-only: the shared trip this service is linked to, or null. Customers always get null.
     shared_trip_id: UUID | None = None
+    # Null when the service has no amount. Nothing is stored: the breakdown is computed from the amount.
+    amount_breakdown: AmountBreakdownView | None = None
 
 
 class DeliveryPhotoUrl(PublicResponse):

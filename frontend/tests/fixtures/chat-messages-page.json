@@ -27,6 +27,8 @@
         "quotationId": "7e6d5c4b-3a2f-4e1d-9c8b-7a6f5e4d3c2b",
         "status": "pending",
         "amount": 125000,
+        "netAmount": 105042,
+        "ivaAmount": 19958,
         "currency": "CLP",
         "serviceAt": "2099-12-30T12:00:00Z",
         "description": "Mudanza de dos habitaciones",

@@ -819,3 +819,42 @@ class Desembolso(Base):
     service: Mapped[Servicio] = relationship(back_populates="payouts")
     beneficiary_profile: Mapped[Perfil] = relationship(back_populates="payouts")
     payout_account: Mapped[CuentaDesembolso] = relationship(back_populates="payouts")
+
+
+class TaxDocument(Base):
+    """A simulated tax document: the customer's boleta or Amira's commission invoice. Sandbox only, never sent to the SII.
+
+    One document of each type per service, and one folio per type. Emisor_Rut is nullable because a carrier profile
+    created before the company tax id was required has none; the document is still issued rather than blocking the payment.
+    """
+
+    __tablename__ = "Documento_Tributario"
+    __table_args__ = (
+        UniqueConstraint("ID_Servicio", "Tipo", name="uq_tax_document_service_type"),
+        UniqueConstraint("Tipo", "Folio", name="uq_tax_document_type_folio"),
+        CheckConstraint("\"Tipo\" IN ('boleta', 'factura_comision')", name="ck_tax_document_type_allowed"),
+        CheckConstraint('"Folio" > 0', name="ck_tax_document_folio_positive"),
+        CheckConstraint('"Neto" >= 0', name="ck_tax_document_net_nonnegative"),
+        CheckConstraint('"IVA" >= 0', name="ck_tax_document_iva_nonnegative"),
+        CheckConstraint('"Total" >= 0', name="ck_tax_document_total_nonnegative"),
+        CheckConstraint("\"Moneda\" = 'CLP'", name="ck_tax_document_currency_clp"),
+    )
+
+    id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    service_id: Mapped[UUID] = mapped_column("ID_Servicio", ForeignKey("Servicio.ID", ondelete="RESTRICT"), nullable=False, index=True)
+    payment_id: Mapped[UUID | None] = mapped_column("ID_Pago", ForeignKey("Pago.ID", ondelete="RESTRICT"), nullable=True, index=True)
+    payout_id: Mapped[UUID | None] = mapped_column(
+        "ID_Desembolso", ForeignKey("Desembolso.ID", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    type: Mapped[str] = mapped_column("Tipo", String(40), nullable=False)
+    folio: Mapped[int] = mapped_column("Folio", Integer, nullable=False)
+    issuer_name: Mapped[str] = mapped_column("Emisor_Nombre", String(160), nullable=False)
+    issuer_tax_id: Mapped[str | None] = mapped_column("Emisor_Rut", String(16), nullable=True)
+    recipient_name: Mapped[str] = mapped_column("Receptor_Nombre", String(160), nullable=False)
+    recipient_tax_id: Mapped[str | None] = mapped_column("Receptor_Rut", String(16), nullable=True)
+    net: Mapped[Decimal] = mapped_column("Neto", Numeric(18, 4), nullable=False)
+    iva: Mapped[Decimal] = mapped_column("IVA", Numeric(18, 4), nullable=False)
+    total: Mapped[Decimal] = mapped_column("Total", Numeric(18, 4), nullable=False)
+    currency: Mapped[str] = mapped_column("Moneda", String(3), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column("Emitido_En", DateTime(timezone=True), nullable=False)
+    simulated: Mapped[bool] = mapped_column("Simulado", Boolean, nullable=False, server_default=text("true"))

@@ -28,6 +28,7 @@ from amira_api.models import (
     Mensaje,
     Perfil,
     TipoServicio,
+    RolUsuario,
     Usuario,
 )
 
@@ -70,6 +71,7 @@ def db():
     event.listen(engine, "connect", _register_btrim)
     event.listen(engine, "connect", _register_pg_notify(notifications))
     tables = (
+        "Rol_Usuario",
         "Usuario",
         "Perfil",
         "Formulario_servicio",
@@ -79,6 +81,13 @@ def db():
         "Cotizacion",
         "Pago",
         "Servicio",
+        "Cuenta_Desembolso",
+        "Desembolso",
+        "Documento_Tributario",
+        "Reclamo",
+        "Conductor",
+        "Vehiculo",
+        "Servicio_Asignacion",
     )
     Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in tables])
     with engine.begin() as connection:
@@ -175,6 +184,17 @@ def _chat(db: Session, *, customer: Usuario, profile: Perfil, service: TipoServi
         ChatParticipante(id=uuid4(), user_id=provider_owner.id, chat_id=chat.id, last_read_at=last_read_at),
     ])
     return chat
+
+
+def seed_account_roles(db: Session, scenario: Scenario) -> None:
+    """Give the scenario accounts the role rows that the customer route's account lookup joins."""
+    roles = {code: RolUsuario(id=uuid4(), name=code, code=code) for code in ("client", "company_owner", "independent_driver")}
+    db.add_all(roles.values())
+    scenario.customer.role_id = roles["client"].id
+    scenario.other_customer.role_id = roles["client"].id
+    scenario.provider_owner.role_id = roles["company_owner"].id
+    scenario.driver_owner.role_id = roles["independent_driver"].id
+    db.commit()
 
 
 @pytest.fixture
