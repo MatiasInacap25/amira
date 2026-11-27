@@ -54,12 +54,12 @@ def test_deactivation_removes_provider_type_from_new_quote_selection(db, fleet, 
     from amira_api.clock import utc_now
     from amira_api.db import get_db_session
     from amira_api.main import app
-    from amira_api.models import RolPerfil, Valoracion
+    from amira_api.models import RolPerfil
 
     from test_provider_service_actions import CUSTOMER_AUTH
     from test_public_provider_routes import LEGACY_QUOTE_BODY
 
-    for model in (AdminAuditLog, RolPerfil, ServicioDisponible, Valoracion):
+    for model in (AdminAuditLog, RolPerfil, ServicioDisponible):
         model.__table__.create(db.get_bind())
     provider = fleet.company
     identifier = fleet.service_a.form.service_type_id

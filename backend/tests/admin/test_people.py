@@ -93,10 +93,9 @@ def test_customer_filter_and_contact_edit_preserve_identity(db, fleet):
 
 def test_provider_detail_exposes_related_records_and_open_count(db, fleet):
     from amira_api.admin.people import detail
-    from amira_api.models import ServicioDisponible, Valoracion
+    from amira_api.models import ServicioDisponible
 
-    for model in (ServicioDisponible, Valoracion):
-        model.__table__.create(db.get_bind())
+    ServicioDisponible.__table__.create(db.get_bind())
     row = detail(db, "providers", fleet.service_a.profile_id)
     assert row["open_services"] >= 1
     assert row["driver_list"]
