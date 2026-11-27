@@ -24,7 +24,7 @@ const env = Object.fromEntries([
   "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_APP_ENV",
 ].flatMap((key) => process.env[key] ? [[key, process.env[key]]] : []));
 env.NODE_ENV = "development";
-const child = spawn(process.execPath, [nextCli, "dev", "--webpack", "--hostname", "127.0.0.1", "--port", "3179"], {
+const child = spawn(process.execPath, [nextCli, "dev", "--webpack", "--hostname", "127.0.0.1", "--port", process.env.AMIRA_TEST_APP_PORT ?? "3179"], {
   cwd: testRoot,
   env,
   stdio: "inherit",

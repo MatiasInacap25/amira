@@ -103,6 +103,7 @@ def test_provider_request_commit_failure_rolls_back(monkeypatch):
     monkeypatch.setattr(public_routes, "_owned_provider", lambda session, user: (uuid4(), uuid4()))
     request = NS(id=uuid4(), customer_id=uuid4(), status="pending")
     session = Mock()
+    session.scalar.return_value = None  # Active provider.
     session.execute.side_effect = [result(request), result([])]
     session.commit.side_effect = RuntimeError("database offline")
     with pytest.raises(RuntimeError, match="offline"):
@@ -156,7 +157,8 @@ def test_assignments_without_service_date_skip_conflict_query(monkeypatch):
     monkeypatch.setattr(provider_service_routes, "_ensure_vehicles_belong", Mock())
     monkeypatch.setattr(provider_service_routes, "_visible_detail", lambda session, viewer, identifier: expected)
     session = Mock()
+    session.execute.side_effect = [[], result(None)]  # No disabled vehicles, then replacement DELETE.
     payload = ServiceAssignmentsUpdate(assignments=[dict(driverId=uuid4(), vehicleId=uuid4())])
     assert provider_service_routes.replace_service_assignments(uuid4(), payload, identity(), session) is expected
-    assert session.execute.call_count == 1  # Only the replacement DELETE, no same-day SELECT.
+    assert session.execute.call_count == 2  # Vehicle check and replacement DELETE, no same-day SELECT.
     session.commit.assert_called_once()

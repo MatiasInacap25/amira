@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 import logging
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
@@ -14,7 +15,7 @@ from amira_api import auth
 from amira_api.account_routes import provision_account
 from amira_api.account_schemas import AccountProvisionRequest
 from amira_api.terms import TERMS_VERSION
-from amira_api.auth import AuthenticatedUser, get_current_user
+from amira_api.auth import authorize_current_user, AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
 from amira_api.main import app
 from amira_api.models import RolUsuario, Usuario
@@ -73,7 +74,7 @@ def request_protected_route(monkeypatch, token: str, *, dev_skip: bool, app_env:
         dev_skip_sms_mfa=dev_skip,
         app_env=app_env,
     )
-    app.dependency_overrides[get_db_session] = lambda: object()
+    app.dependency_overrides[get_db_session] = lambda: SimpleNamespace(scalar=lambda _statement: None)
 
     async def request():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
@@ -247,7 +248,7 @@ def test_provisioning_accepts_aal1_password_session_under_bypass():
         authentication_methods=frozenset({"password"}),
     )
     settings = Settings(_env_file=None, app_env="development", dev_skip_sms_mfa=True)
-    current_user = get_current_user(current_user=identity, settings=settings, session=object(), fallback_proof=None)
+    current_user = authorize_current_user(current_user=identity, settings=settings, session=object(), fallback_proof=None)
     session = FakeProvisioningSession(
         [
             RolUsuario(id=CLIENT_ROLE_ID, code="client", name="client"),
@@ -345,7 +346,7 @@ def test_model_constructed_settings_without_app_env_reject_aal1_password_session
     settings = Settings.model_construct(dev_skip_sms_mfa=True)
 
     with pytest.raises(HTTPException) as excinfo:
-        get_current_user(current_user=_aal1_password_identity(), settings=settings, session=object(), fallback_proof=None)
+        authorize_current_user(current_user=_aal1_password_identity(), settings=settings, session=object(), fallback_proof=None)
 
     assert excinfo.value.status_code == 403
 
@@ -354,6 +355,6 @@ def test_model_constructed_settings_with_production_reject_aal1_password_session
     settings = Settings.model_construct(dev_skip_sms_mfa=True, app_env="production")
 
     with pytest.raises(HTTPException) as excinfo:
-        get_current_user(current_user=_aal1_password_identity(), settings=settings, session=object(), fallback_proof=None)
+        authorize_current_user(current_user=_aal1_password_identity(), settings=settings, session=object(), fallback_proof=None)
 
     assert excinfo.value.status_code == 403

@@ -33,6 +33,7 @@ from amira_api.evidence_storage import (
     get_evidence_storage_resolver,
     read_capped,
 )
+from amira_api.moderation import require_enabled_vehicles
 from amira_api.models import Conductor, Perfil, Servicio, ServicioAsignacion, ServicioUbicacion, Usuario, Vehiculo
 from amira_api.provider_service_schemas import (
     AssignmentDriverOption,
@@ -304,7 +305,7 @@ def get_service_assignment_options(service_id: UUID, current_user: CurrentUser, 
 
     vehicle_rows = session.execute(
         select(Vehiculo.id, Vehiculo.brand, Vehiculo.model, Vehiculo.plate)
-        .where(_assignable_vehicle_filter(viewer.owned_profile_id))
+        .where(_assignable_vehicle_filter(viewer.owned_profile_id), Vehiculo.disabled_at.is_(None))
     ).all()
     vehicles = [
         AssignmentVehicleOption(vehicle_id=row[0], vehicle_label=f"{row[1]} {row[2]}".strip(), plate=row[3])
@@ -336,6 +337,7 @@ def replace_service_assignments(
     _ensure_drivers_belong(session, viewer, driver_ids)
     _ensure_drivers_verified(session, driver_ids)
     _ensure_vehicles_belong(session, viewer.owned_profile_id, vehicle_ids)
+    require_enabled_vehicles(session, vehicle_ids)
 
     if not payload.confirm_same_day_conflicts:
         conflicts = _same_day_conflicts(session, service_id, service.service_at, driver_ids)

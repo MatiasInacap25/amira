@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
-import { generateKeyPairSync, sign } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 
 const host = "127.0.0.1";
-const port = 54329;
+const port = Number(process.env.AMIRA_TEST_AUTH_PORT ?? 54329);
 const issuer = `http://${host}:${port}/auth/v1`;
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicJwk = { ...publicKey.export({ format: "jwk" }), kid: "amira-e2e", alg: "RS256", use: "sig" };
@@ -29,6 +29,7 @@ function makeToken() {
   const header = base64url({ alg: "RS256", typ: "JWT", kid: "amira-e2e" });
   const payload = base64url({
     iss: issuer,
+    jti: randomUUID(),
     sub: user.id,
     aud: "authenticated",
     role: "authenticated",
@@ -51,10 +52,67 @@ function send(response, status, body) {
   response.end(body === undefined ? "" : JSON.stringify(body));
 }
 
+const adminTokens = new Set();
+
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", issuer);
   if (request.method === "OPTIONS") return send(response, 204);
   if (url.pathname === "/__health" && request.method === "GET") return send(response, 200, { ok: true });
+  if (url.pathname === "/__admin_session" && request.method === "GET") {
+    const admin = url.searchParams.get("admin") === "true";
+    const token = makeToken();
+    if (admin) adminTokens.add(token);
+    return send(response, 200, { access_token: token, refresh_token: "fake-admin-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600, user });
+  }
+  if (url.pathname.startsWith("/api/admin/") && request.method === "GET") {
+    const token = request.headers.authorization?.replace(/^Bearer /, "");
+    if (!token) return send(response, 401, {});
+    if (!adminTokens.has(token)) return send(response, 403, { detail: "Admin access required." });
+    if (url.pathname === "/api/admin/me") return send(response, 200, { user_id: user.id, email: user.email });
+    if (url.pathname === "/api/admin/badges") return send(response, 200, { documentos: 2, reclamos: 1, "cuentas-bancarias": 0, desembolsos: 0 });
+    if (url.pathname === "/api/admin/finance/summary") return send(response, 200, {
+      collected: 80000, refunded: 0, net_collected: 80000, payout_due: 72000, payout_due_count: 1,
+      payout_blocked_count: 0, payout_paid: 0, commission_gross: 8000, commission_net: 6723, commission_iva: 1277,
+      platform_iva: 1277, retained_net: 0, retained_iva: 0,
+      service_counts: { in_progress: 0, completed: 1, cancelled: 0 }, pending: { documentos: 2, reclamos: 1 },
+    });
+    if (url.pathname === "/api/admin/finance/timeseries") return send(response, 200, [
+      { day: url.searchParams.get("to"), collected: 80000, commission: 8000 },
+    ]);
+    if (url.pathname === "/api/admin/finance/movements") return send(response, 200, []);
+    if (url.pathname === "/api/admin/finance/providers") return send(response, 200, [
+      { provider: "Transportista de prueba", services: 1, gross: 80000, commission: 8000, commission_iva: 1277, net_paid: 0 },
+    ]);
+    if (url.pathname === "/api/admin/configuration") return send(response, 200, {
+      app_env: "test", commission_percent: 10, claim_window_hours: 24, payment_adapter: "simulated", payout_adapter: "simulated",
+      admins: [{ user_id: user.id, email: user.email }],
+    });
+    if (url.pathname.startsWith("/api/admin/review/documents")) {
+      const item = (id, name) => ({ id, driver: name, status: "in_review", document_type: "driver_record",
+        created_at: "2026-11-23T12:00:00Z", annotations: [{ register: "Registro", fines: 1 }] });
+      const items = [item("doc-1", "Conductor de prueba"), item("doc-2", "Segundo conductor")];
+      const id = url.pathname.split("/")[5];
+      return id ? send(response, 200, items.find((entry) => entry.id === id)) : send(response, 200, { items, total: 2, limit: 20, offset: 0 });
+    }
+    if (url.pathname.startsWith("/api/admin/operations/chats")) {
+      const item = { id: "chat-1", participants: "Cliente, Conductor", has_claim: false, messages: 1 };
+      return url.pathname.endsWith("/chat-1") ? send(response, 200, item)
+        : send(response, 200, { items: [item], total: 1, limit: 20, offset: 0 });
+    }
+    if (["/api/admin/transactions/payout-candidates", "/api/admin/transactions/payouts"].includes(url.pathname)) {
+      return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
+    }
+    if (url.pathname.startsWith("/api/admin/catalog/")) {
+      const items = url.pathname.endsWith("/roles") ? [{ id: "user:fixture", name: "Cliente", code: "client", kind: "user" }] : [];
+      return send(response, 200, { items, total: items.length, limit: 20, offset: 0 });
+    }
+    if (url.pathname === "/api/admin/people/customers") return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
+    if (url.pathname === "/api/admin/audit") {
+      const action = url.searchParams.get("action") ?? "rating.show";
+      const items = [{ id: "audit-1", admin_user_id: user.id, action, entity_type: "rating", entity_id: "rating-1", reason: "Fixture", created_at: "2026-11-20T14:00:00Z" }];
+      return send(response, 200, { items, total: 1, limit: 20, offset: 0 });
+    }
+  }
   if (url.pathname === "/auth/v1/.well-known/jwks.json" && request.method === "GET") {
     return send(response, 200, { keys: [publicJwk] });
   }

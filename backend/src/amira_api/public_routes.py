@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, aliased
 from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.db import get_db_session
 from amira_api.driver_verification import is_driver_verified
+from amira_api.moderation import require_unsuspended_provider
 from amira_api.models import (
     Chat,
     ChatParticipante,
@@ -105,7 +106,7 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
         .outerjoin(Region, Region.code == Commune.region_code)
         .where(
             Perfil.id == profile_id,
-            Perfil.public_activated_at.is_not(None),
+            Perfil.public_activated_at.is_not(None), Perfil.suspended_at.is_(None),
             Perfil.kind.in_(("company", "independent_driver")),
             RolPerfil.code.in_(("company", "independent_driver")),
         )
@@ -135,7 +136,7 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
             TipoServicio.name.label("name"),
         )
         .join(ServicioDisponible, ServicioDisponible.service_type_id == TipoServicio.id)
-        .where(ServicioDisponible.profile_id == profile_id)
+        .where(ServicioDisponible.profile_id == profile_id, TipoServicio.deactivated_at.is_(None))
         .order_by(TipoServicio.name.asc(), TipoServicio.id.asc())
     ).mappings().all()
     vehicle_rows = session.execute(
@@ -149,6 +150,7 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
         .order_by(Vehiculo.brand.asc(), Vehiculo.model.asc(), Vehiculo.year.asc().nulls_last())
     ).mappings().all()
     eligible_ratings = (
+        Valoracion.hidden_at.is_(None),
         Valoracion.user_id == Servicio.customer_id,
         Servicio.profile_id == profile_id,
         Servicio.completed_at.is_not(None),
@@ -222,14 +224,16 @@ def create_service_request(
 
     matching_service = session.execute(
         select(ServicioDisponible.service_type_id)
+        .join(TipoServicio, TipoServicio.id == ServicioDisponible.service_type_id)
         .join(Perfil, Perfil.id == ServicioDisponible.profile_id)
         .join(RolPerfil, RolPerfil.id == Perfil.role_id)
         .where(
             Perfil.id == payload.profile_id,
-            Perfil.public_activated_at.is_not(None),
+            Perfil.public_activated_at.is_not(None), Perfil.suspended_at.is_(None),
             Perfil.kind.in_(("company", "independent_driver")),
             RolPerfil.code.in_(("company", "independent_driver")),
             ServicioDisponible.service_type_id == payload.service_type_id,
+            TipoServicio.deactivated_at.is_(None),
         )
     ).scalar_one_or_none()
     if matching_service is None:
@@ -475,6 +479,8 @@ def _decide_provider_request(
     session: Session,
 ) -> ProviderRequestDecision:
     account_id, profile_id = _owned_provider(session, current_user)
+    if decision == "accepted":
+        require_unsuspended_provider(session, profile_id)
     request = session.execute(
         select(FormularioServicio)
         .where(FormularioServicio.id == request_id, FormularioServicio.profile_id == profile_id)
@@ -594,7 +600,7 @@ def list_services(
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> PublicServicePage:
     # Hidden service types leave the join itself, so a provider whose only type is hidden is not listed.
-    filters = [Perfil.public_activated_at.is_not(None), visible_service_type_clause()]
+    filters = [Perfil.public_activated_at.is_not(None), Perfil.suspended_at.is_(None), visible_service_type_clause()]
     query = _clean_filter(q)
 
     if query:
@@ -718,7 +724,7 @@ def list_shared_routes(
     filters = [
         Viaje.is_published.is_(True),
         Viaje.accepts_requests.is_(True),
-        Viaje.profile_id.in_(select(Perfil.id).where(Perfil.public_activated_at.is_not(None))),
+        Viaje.profile_id.in_(select(Perfil.id).where(Perfil.public_activated_at.is_not(None), Perfil.suspended_at.is_(None))),
     ]
     if origin_commune_code:
         filters.append(Viaje.origin_commune_code == origin_commune_code)

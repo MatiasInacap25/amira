@@ -107,3 +107,17 @@ def test_payment_lookup_accepts_live_mode_payment_from_configured_test_seller():
     def handler(request):
         return httpx.Response(200, json={"results": [item]})
     assert provider(handler).lookup(payment_id, Decimal("150000"), "CLP") == [("123", "approved")]
+
+
+def test_verified_evidence_exposes_only_recordable_fields():
+    payment_id = uuid4()
+    item = {"id": 123, "collector_id": 1234, "live_mode": False, "status": "approved", "status_detail": "accredited",
+            "transaction_amount": 80000, "currency_id": "CLP", "external_reference": str(payment_id),
+            "payer": {"email": "private@example.test"}}
+    entry = provider(lambda _: httpx.Response(200, json={"results": [item]})).lookup_evidence(
+        payment_id, Decimal("80000"), "CLP"
+    )[0]
+    assert entry.status_detail == "accredited"
+    assert entry.live_mode is False
+    assert entry.amount == 80000
+    assert "private@example.test" not in repr(entry)

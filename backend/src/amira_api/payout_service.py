@@ -13,6 +13,7 @@ so a retry after a lost commit returns the same provider payout instead of payin
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -80,7 +81,8 @@ def commission_for(gross: Decimal, percent: int) -> Decimal:
 
 
 def _release_one(
-    session: Session, provider: PayoutProvider, service_id: UUID, now: datetime, commission_percent: int
+    session: Session, provider: PayoutProvider, service_id: UUID, now: datetime, commission_percent: int,
+    on_release: Callable[[Desembolso], None] | None = None,
 ) -> str:
     """Release one service inside the caller's transaction. Returns the outcome name for the summary."""
     service = session.execute(
@@ -93,9 +95,11 @@ def _release_one(
 
     account = session.execute(
         select(CuentaDesembolso)
-        .where(CuentaDesembolso.profile_id == service.profile_id, CuentaDesembolso.payouts_enabled.is_(True))
+        .where(CuentaDesembolso.profile_id == service.profile_id, CuentaDesembolso.registration_status == "active",
+               CuentaDesembolso.payouts_enabled.is_(True))
         .order_by(CuentaDesembolso.created_at, CuentaDesembolso.id)
         .limit(1)
+        .with_for_update()
     ).scalar_one_or_none()
     if account is None:
         return "missing_account"
@@ -146,11 +150,14 @@ def _release_one(
         commission=int(commission),
         now=now,
     )
+    if on_release is not None:
+        on_release(payout)
     return RELEASED
 
 
 def release_due_payouts(
-    session: Session, now: datetime, provider: PayoutProvider, *, commission_percent: int | None = None
+    session: Session, now: datetime, provider: PayoutProvider, *, commission_percent: int | None = None,
+    on_release: Callable[[Desembolso], None] | None = None,
 ) -> PayoutSummary:
     """Release every due service. A failing service is rolled back and counted; the others still run.
 
@@ -163,7 +170,7 @@ def release_due_payouts(
     summary.due = len(service_ids)
     for service_id in service_ids:
         try:
-            outcome = _release_one(session, provider, service_id, now, percent)
+            outcome = _release_one(session, provider, service_id, now, percent, on_release)
             session.commit()
         except Exception:
             session.rollback()

@@ -17,6 +17,7 @@ NOW = datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
 
 def session_with_results(values, *, postgres=False):
     session = Mock()
+    session.scalar.return_value = None  # Unblocked account.
     session.get_bind.return_value.dialect.name = "postgresql" if postgres else "sqlite"
     session.execute.side_effect = [NS(scalar_one=lambda value=value: value, scalar_one_or_none=lambda value=value: value) for value in values]
     return session

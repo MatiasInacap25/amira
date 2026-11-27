@@ -6,7 +6,7 @@ import pytest
 
 from amira_api.settings import Settings, get_settings
 
-ISOLATED_ENV_VARS = ("DEV_SKIP_SMS_MFA", "APP_ENV")
+ISOLATED_ENV_VARS = ("DEV_SKIP_SMS_MFA", "APP_ENV", "ADMIN_USER_IDS")
 
 # Runs at collection time, before test modules import amira_api.main, which calls get_settings().
 # pydantic-settings reads model_config["env_file"] on every instantiation, so this disables .env loading.

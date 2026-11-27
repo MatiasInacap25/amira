@@ -44,7 +44,7 @@ export function ServiceCancellation({ service, pending, onCancel }: {
   if (cancellation) return (
     <section aria-labelledby="service-cancellation-title" className="account-service-section">
       <h2 id="service-cancellation-title" ref={summaryTitle} tabIndex={-1}>Cancelación del servicio</h2>
-      <p>Cancelado por {cancellation.cancelledBy === "customer" ? "el cliente" : "el prestador"} el {formatServiceDateTime(cancellation.cancelledAt)}.</p>
+      <p>Cancelado por {cancellation.cancelledBy === "admin" ? "administración" : cancellation.cancelledBy === "customer" ? "el cliente" : "el prestador"} el {formatServiceDateTime(cancellation.cancelledAt)}.</p>
       <dl className="account-service-detail-facts">
         <div><dt>Reembolso simulado al cliente</dt><dd>{refundFormatter.format(cancellation.refundedAmount)}</dd></div>
         <div><dt>Adelanto retenido</dt><dd>{refundFormatter.format(cancellation.retainedAmount)}</dd></div>

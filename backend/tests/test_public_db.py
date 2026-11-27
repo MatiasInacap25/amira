@@ -80,7 +80,7 @@ def test_database_engine_forces_psycopg_tls_and_bounded_timeouts(monkeypatch) ->
 def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
     migration = load_public_migration()
 
-    assert len(Base.metadata.tables) == 36
+    assert len(Base.metadata.tables) == 37
     assert (
         (set(migration.PUBLIC_TABLES) - {"alembic_version"})
         | set(load_auth_migration().RLS_TABLES)
@@ -91,6 +91,7 @@ def test_rls_migrations_cover_all_tables_and_alembic_history() -> None:
         | set(load_payment_provider_transaction_migration().RLS_TABLES)
         | set(load_terms_acceptance_migration().RLS_TABLES)
         | set(load_tax_documents_migration().RLS_TABLES)
+        | set(load_admin_audit_migration().RLS_TABLES)
     ) == set(Base.metadata.tables)
     assert "alembic_version" in migration.PUBLIC_TABLES
 
@@ -349,6 +350,15 @@ def test_destructive_test_is_skipped_when_database_url_is_unset(monkeypatch) -> 
 
     with pytest.raises(pytest.skip.Exception, match="is not set"):
         test_published_profile_appears_in_public_search_until_unpublished_or_left_incomplete()
+
+
+def load_admin_audit_migration():
+    migration_path = Path(__file__).parents[1] / "alembic" / "versions" / "20261125_0001_admin_audit.py"
+    spec = spec_from_file_location("admin_audit_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    return migration
 
 
 def load_terms_acceptance_migration():

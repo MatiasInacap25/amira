@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from amira_api.auth import AuthenticatedUser, authorize_current_user, get_verified_user
+from amira_api.auth import AuthenticatedUser, authorize_current_user, ensure_account_not_blocked, get_verified_user
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
 from amira_api.realtime import STREAM_CLOSED, ChatBroker, ListenerState, Subscription, TooManyStreams, chat_broker
@@ -102,6 +102,7 @@ async def stream_chat_events(
     fallback_proof: str | None = Header(default=None, alias="X-Amira-Email-Fallback-Proof"),
 ) -> StreamingResponse:
     current_user = await run_in_threadpool(authorize_current_user, verified_user, settings, session, fallback_proof)
+    await run_in_threadpool(ensure_account_not_blocked, session, current_user.id)
     if current_user.expires_at is None:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials.", headers={"WWW-Authenticate": "Bearer"})
     try:

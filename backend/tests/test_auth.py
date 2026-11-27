@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 import httpx
 import jwt
@@ -62,7 +63,7 @@ def auth_app(monkeypatch, token: str | None, *, fallback_verifier=None, proof: s
 
     app.add_api_route("/auth-test", endpoint, methods=["GET"])
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None, supabase_jwt_issuer=ISSUER)
-    app.dependency_overrides[get_db_session] = lambda: object()
+    app.dependency_overrides[get_db_session] = lambda: SimpleNamespace(scalar=lambda _statement: None)
 
     async def request():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:

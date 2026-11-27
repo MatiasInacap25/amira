@@ -46,7 +46,7 @@ class ServiceAssignment(PublicResponse):
 
 class ServiceCancellation(PublicResponse):
     cancelled_at: datetime
-    cancelled_by: Literal["customer", "provider"]
+    cancelled_by: Literal["customer", "provider", "admin"]
     refunded_amount: float
     retained_amount: float
     currency: Literal["CLP"] = "CLP"

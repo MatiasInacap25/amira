@@ -2,8 +2,10 @@ from functools import lru_cache
 import logging
 from uuid import UUID
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, SecretStr, model_validator
+from typing import Annotated
+
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic import Field, SecretStr, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     # Development-only: lets an aal1 password session skip SMS MFA. Never enabled in production.
     dev_skip_sms_mfa: bool = False
+    admin_user_ids: Annotated[frozenset[UUID], NoDecode] = frozenset()
     resend_api_key: SecretStr | None = None
     invitation_sender_email: str | None = None
     frontend_base_url: str | None = None
@@ -73,6 +76,16 @@ class Settings(BaseSettings):
     # Issuer of the simulated commission invoices. Demo values by default; the real legal identity is set per deployment.
     amira_legal_name: str = "[DEMO] Amira SpA"
     amira_tax_id: str = "76.000.000-0"
+
+    @field_validator("admin_user_ids", mode="before")
+    @classmethod
+    def parse_admin_user_ids(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        try:
+            return frozenset(UUID(part.strip()) for part in value.split(",") if part.strip())
+        except ValueError:
+            raise RuntimeError("ADMIN_USER_IDS must contain comma-separated UUIDs.") from None
 
     @property
     def allowed_origins(self) -> list[str]:

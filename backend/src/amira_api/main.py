@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from amira_api.account_routes import router as account_router
+from amira_api.admin.router import router as admin_router
 from amira_api.chat_routes import router as chat_router
 from amira_api.customer_routes import router as customer_router
 from amira_api.driver_verification_routes import router as driver_verification_router
@@ -42,6 +43,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(account_router)
+app.include_router(admin_router)
 app.include_router(chat_router)
 app.include_router(realtime_router)
 app.include_router(customer_router)
