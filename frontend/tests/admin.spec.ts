@@ -82,3 +82,12 @@ test("finance pages show mandate-model VAT and read-only settings", async ({ pag
   await expect(page.getByRole("main")).toContainText("24 horas");
   expect(errors).toEqual([]);
 });
+
+test("people pages expose the customer directory and its filters", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin/clientes");
+  await expect(page.getByRole("heading", { name: "Clientes", exact: true })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Buscar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Exportar CSV" })).toBeVisible();
+  await expect(page.getByText("No hay resultados con estos filtros")).toBeVisible();
+});

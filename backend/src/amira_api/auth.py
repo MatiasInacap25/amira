@@ -21,11 +21,11 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWTError
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from amira_api.db import get_db_session
-from amira_api.models import EmailFallbackChallenge
+from amira_api.models import EmailFallbackChallenge, Usuario
 from amira_api.settings import Settings, get_settings
 
 
@@ -165,13 +165,27 @@ def get_verified_user(
     )
 
 
-def get_current_user(
+def ensure_account_not_blocked(session: Session, auth_user_id: UUID) -> None:
+    blocked_at = session.scalar(select(Usuario.blocked_at).where(Usuario.auth_user_id == auth_user_id))
+    if blocked_at is not None:
+        raise HTTPException(403, "Tu cuenta está bloqueada. Contacta a soporte.")
+
+
+def get_assured_user(
     current_user: Annotated[AuthenticatedUser, Depends(get_verified_user)],
     settings: Annotated[Settings, Depends(get_settings)],
     session: Annotated[Session, Depends(get_db_session)],
     fallback_proof: str | None = Header(default=None, alias="X-Amira-Email-Fallback-Proof"),
 ) -> AuthenticatedUser:
     return authorize_current_user(current_user, settings, session, fallback_proof)
+
+
+def get_current_user(
+    current_user: Annotated[AuthenticatedUser, Depends(get_assured_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> AuthenticatedUser:
+    ensure_account_not_blocked(session, current_user.id)
+    return current_user
 
 
 def authorize_current_user(

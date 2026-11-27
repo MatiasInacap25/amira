@@ -2,12 +2,12 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException
 
-from amira_api.auth import AuthenticatedUser, get_current_user
+from amira_api.auth import AuthenticatedUser, get_assured_user
 from amira_api.settings import Settings, get_settings
 
 
 def require_admin(
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_assured_user)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthenticatedUser:
     if current_user.id not in settings.admin_user_ids:

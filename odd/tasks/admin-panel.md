@@ -285,7 +285,7 @@ Additive Alembic migrations only (new tables, new nullable columns, new indexes)
 
 ### S29. Tests and checks
 
-- Build exception (L7): compilation and type-check must pass; the sole known `SecurityFatalError` does not block. No Next.js upgrade on this branch. If `page-cuenta-servicios.spec.ts:149` fails, rerun it in isolation and record the result; that case alone does not block.
+- Build gate (L13): the integrated Next.js 16.4.6 production build must exit successfully. The historical 16.4.2 security exception no longer applies. If `page-cuenta-servicios.spec.ts:149` fails, rerun it in isolation and record the result; that case alone does not block.
 
 - Backend (`backend/tests/admin/`): 401 without token, 403 for non-admin, 200 for admin on every route; each state-changing action: happy path, invalid state → 409, audit row written, reason required; dashboard sums with known fixtures (including the 80.000 → 8.000 / 6.723 / 1.277 example); blocked user gets 403 on a normal endpoint; suspended profile hidden from public browse.
 - Frontend: node unit tests for formatters (CLP, RUT, IVA extraction) and filter ⇄ query-string mapping; Playwright spec for the admin layout (sidebar navigation changes content and URL, non-admin sees the no-access message, a reject-with-reason flow).
@@ -297,7 +297,7 @@ Additive Alembic migrations only (new tables, new nullable columns, new indexes)
 |---|---|---|---|---|
 | T1 | S1, S26 (audit table), S24, S27 skeleton | inline, independent verifier (security) | done | `7be1749` |
 | T2 | S2, S3, S28 (layout + shared components) | inline | done | `b180465` |
-| T3 | S4, S22, S25 (dashboard, finanzas, configuración) | read-only explorer required | blocked; assigned model unavailable | |
+| T3 | S4, S22, S25 (dashboard, finanzas, configuración) | inline; authorized read-only explorer | done | `0037b17` |
 | T4 | S5, S6, S7, S8, S18 (personas + vehículos, block/suspend) | delegated (Codex) | pending | |
 | T5 | S9, S10, S11, S12 (revisión: documentos, cuentas, reclamos, valoraciones) | delegated (Codex) | pending | |
 | T6 | S13, S14, S15, S16, S17 (operación) | delegated (Codex) | pending | |
@@ -323,3 +323,5 @@ Each task closes with one Conventional Commit on `feat/admin-panel` with its tes
 - L11 (2026-11-24): T3 mapping used the authorized read-only explorer. Kept the canonical consent/deadline payout predicate, then counted only eligible services with an approved payment. The reporting window is inclusive in America/Santiago. Configuration resolves provisioned UUIDs via Usuario; an unprovisioned identity has no locally known email. Backend RED reproduced missing finance code; focused GREEN 11 passed, full 1,260 passed plus the permitted adapter failure. Node 234 passed/1 TODO, admin Playwright 7 passed with no dashboard hydration error, lint and lock passed; build compiled and type-checked, then reported only the known SecurityFatalError (L7). Graphify and diff checks passed.
 
 - L12 (2026-11-24): T4 was interrupted at the user’s request. Uncommitted work is preserved in stash `de7376a` (`wip T4 admin (interrupted)`), based on `0037b17`. No T4 code was committed.
+- L13 (2026-11-26, user): “No hace falta git fetch ni credenciales: la referencia local origin/develop ya está actualizada (1efc57e, incluye Next 16.4.6) porque el repositorio principal la trajo. Haz solo: git merge --no-edit origin/develop, luego git stash pop, y continúa T4..T8 con las mismas reglas. No hagas ninguna operación remota (fetch, push, pull).” Local merge `62f64c2` and stash pop succeeded without conflicts. Installed 16.4.6 from the local npm cache; strict build restored.
+- L14 (2026-11-26): T4 implements the people/vehicle directories, scoped moderation, audit and additive migration. Browser RED reproduced missing client filters; GREEN 8/8 admin browser checks. Focused people checks 5 passed; full backend before the last scoped detail addition 1,264 passed and only the known adapter fixture failure. Independent security verification 133 passes plus in-memory HTTP probes; scoped recheck verified both provider detail fixes. Lock, offline migration, lint, Node 234/1 TODO, build on Next.js 16.4.6, and diff/Graphify checks passed. S8 legacy attempts have no invitation ID and show “Sin dato”; prospective counting policy remains open. Supabase assurance from another session is not recorded locally and is not inferred.

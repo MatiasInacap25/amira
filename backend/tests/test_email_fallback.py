@@ -7,7 +7,7 @@ from pydantic import SecretStr
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from amira_api.auth import AuthenticatedUser, get_current_user, verify_email_fallback_proof
+from amira_api.auth import AuthenticatedUser, authorize_current_user, verify_email_fallback_proof
 from amira_api.fallback_routes import (
     CODE_TTL,
     MAX_CHALLENGES_PER_WINDOW,
@@ -236,11 +236,11 @@ def test_auth_boundary_accepts_aal1_only_with_consumable_server_proof(session):
     proof = verify(session, sender.sent[-1][1]).proof
     identity = user()
 
-    accepted = get_current_user(identity, settings(), session, proof)
+    accepted = authorize_current_user(identity, settings(), session, proof)
     assert accepted.assurance == "email_fallback"
     assert accepted.assurance != "aal2"
     with pytest.raises(HTTPException) as replay:
-        get_current_user(identity, settings(), session, proof)
+        authorize_current_user(identity, settings(), session, proof)
     assert replay.value.status_code == 403
 
 

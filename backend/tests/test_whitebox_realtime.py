@@ -11,7 +11,7 @@ import pytest
 
 from amira_api import main, realtime, realtime_routes
 from amira_api.settings import Settings
-from test_realtime_stream import user_for
+from test_realtime_stream import RecordingSession, user_for
 
 
 def test_chat_event_payload_enforces_notify_byte_limit():
@@ -78,7 +78,7 @@ def test_stream_dependency_defaults_and_missing_expiry():
         broker = realtime.ChatBroker()
         identity = user_for(uuid4(), None)
         with pytest.raises(HTTPException) as caught:
-            await realtime_routes.stream_chat_events(identity, Settings(), object(), broker,
+            await realtime_routes.stream_chat_events(identity, Settings(), RecordingSession(), broker,
                 lambda: datetime(2026, 11, 7, tzinfo=timezone.utc), realtime_routes.StreamTiming(), None)
         assert caught.value.status_code == 401 and broker.subscriber_count(identity.id) == 0
     asyncio.run(run())
@@ -137,7 +137,7 @@ def test_stream_timeout_at_expiry_closes_without_keepalive(monkeypatch):
         monkeypatch.setattr(realtime_routes.asyncio, "wait_for", timeout)
         broker = realtime.ChatBroker()
         identity = user_for(uuid4(), expires)
-        response = await realtime_routes.stream_chat_events(identity, Settings(), object(), broker,
+        response = await realtime_routes.stream_chat_events(identity, Settings(), RecordingSession(), broker,
             lambda: next(ticks), realtime_routes.StreamTiming(), None)
         with pytest.raises(StopAsyncIteration):
             await anext(response.body_iterator)
@@ -151,7 +151,7 @@ def test_dropped_stream_exits_on_closed_sentinel():
         now = datetime(2026, 11, 7, tzinfo=timezone.utc)
         broker = realtime.ChatBroker(queue_size=1)
         identity = user_for(uuid4(), now + timedelta(minutes=1))
-        response = await realtime_routes.stream_chat_events(identity, Settings(), object(), broker,
+        response = await realtime_routes.stream_chat_events(identity, Settings(), RecordingSession(), broker,
             lambda: now, realtime_routes.StreamTiming(), None)
         broker.set_listening(True)
         broker.set_listening(False)  # Queue overflow replaces pending frames with STREAM_CLOSED.

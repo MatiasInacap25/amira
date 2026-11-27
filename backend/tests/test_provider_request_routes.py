@@ -84,6 +84,11 @@ class FakeSession:
         self.original_status = None
         self.committed = False
 
+    def scalar(self, statement):
+        assert "Fecha_Suspension" in str(statement)
+        assert getattr(statement, "_for_update_arg", None) is not None
+        return None
+
     def execute(self, statement):
         self.store.statements.append(statement)
         self.statements.append(statement)

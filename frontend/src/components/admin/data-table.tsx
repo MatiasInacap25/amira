@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useRef } from "react";
 import { type AdminFilters, updateFilter, writeFilters } from "@/lib/admin/query";
 
-export type RowAction = { label: string; href?: string; disabled?: string; onClick?: () => void };
+export type RowAction = { label: string; href?: string; newTab?: boolean; disabled?: string; onClick?: () => void };
 
 export function RowActionsMenu({ actions, rowLabel }: { actions: readonly RowAction[]; rowLabel: string }) {
   const menu = useRef<HTMLDetailsElement>(null);
@@ -13,10 +13,10 @@ export function RowActionsMenu({ actions, rowLabel }: { actions: readonly RowAct
     <details ref={menu} onClick={(event) => event.stopPropagation()} className="admin-row-menu">
       <summary aria-label={`Acciones: ${rowLabel}`}>⋮</summary>
       <ul>
-        {actions.map(({ label, href, disabled, onClick }) => (
+        {actions.map(({ label, href, newTab, disabled, onClick }) => (
           <li key={label}>
             {disabled ? <button type="button" aria-disabled title={disabled}>{label}</button>
-              : href ? <Link href={href} onClick={() => { if (menu.current) menu.current.open = false; }}>{label}</Link>
+              : href ? <Link href={href} target={newTab ? "_blank" : undefined} rel={newTab ? "noopener noreferrer" : undefined} onClick={() => { if (menu.current) menu.current.open = false; }}>{label}</Link>
               : <button type="button" onClick={() => { if (menu.current) menu.current.open = false; onClick?.(); }}>{label}</button>}
           </li>
         ))}

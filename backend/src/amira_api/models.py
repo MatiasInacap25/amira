@@ -96,6 +96,8 @@ class Usuario(Base):
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    blocked_at: Mapped[datetime | None] = mapped_column("Fecha_Bloqueo", DateTime(timezone=True))
+    blocked_reason: Mapped[str | None] = mapped_column("Motivo_Bloqueo", String(500))
     auth_user_id: Mapped[UUID] = mapped_column("ID_Auth_Supabase", Uuid(as_uuid=True), nullable=False, unique=True)
     first_name: Mapped[str] = mapped_column("Nombre", String(120), nullable=False)
     last_name: Mapped[str] = mapped_column("Apellido", String(120), nullable=False)
@@ -160,6 +162,8 @@ class Perfil(Base):
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    suspended_at: Mapped[datetime | None] = mapped_column("Fecha_Suspension", DateTime(timezone=True))
+    suspended_reason: Mapped[str | None] = mapped_column("Motivo_Suspension", String(500))
     owner_user_id: Mapped[UUID] = mapped_column("ID_user", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column("Descripcion", Text)
     name: Mapped[str] = mapped_column("Nombre", String(160), nullable=False)
@@ -268,6 +272,8 @@ class Vehiculo(Base):
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    disabled_at: Mapped[datetime | None] = mapped_column("Fecha_Deshabilitacion", DateTime(timezone=True))
+    disabled_reason: Mapped[str | None] = mapped_column("Motivo_Deshabilitacion", String(500))
     profile_id: Mapped[UUID] = mapped_column("ID_Perfil", ForeignKey("Perfil.ID", ondelete="RESTRICT"), nullable=False, index=True)
     plate: Mapped[str] = mapped_column("Patente", String(16), nullable=False)
     brand: Mapped[str] = mapped_column("Marca", String(80), nullable=False)

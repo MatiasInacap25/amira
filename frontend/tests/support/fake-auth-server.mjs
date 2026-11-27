@@ -87,6 +87,7 @@ const server = createServer((request, response) => {
       app_env: "test", commission_percent: 10, claim_window_hours: 24, payment_adapter: "simulated", payout_adapter: "simulated",
       admins: [{ user_id: user.id, email: user.email }],
     });
+    if (url.pathname === "/api/admin/people/customers") return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";
       const items = [{ id: "audit-1", admin_user_id: user.id, action, entity_type: "rating", entity_id: "rating-1", reason: "Fixture", created_at: "2026-11-20T14:00:00Z" }];
