@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from amira_api.clock import as_utc
 from amira_api.models import Chat, Cotizacion, Servicio
 from amira_api.quotation_schemas import Quotation, QuotationStatus
+from amira_api.tax import split_iva
 
 PENDING = "pending"
 PAID = "paid"
@@ -25,10 +26,14 @@ def effective_status(quotation: Cotizacion, now: datetime) -> QuotationStatus:
 
 
 def quotation_view(quotation: Cotizacion, now: datetime) -> Quotation:
+    amount = int(quotation.amount)
+    net, iva = split_iva(amount)
     return Quotation(
         quotation_id=quotation.id,
         status=effective_status(quotation, now),
-        amount=int(quotation.amount),
+        amount=amount,
+        net_amount=net,
+        iva_amount=iva,
         currency="CLP",
         service_at=quotation.service_at,
         description=quotation.description,

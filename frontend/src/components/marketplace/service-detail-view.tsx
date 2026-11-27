@@ -14,6 +14,7 @@ import { ServiceActions } from "@/components/marketplace/service-actions";
 import { ServiceAssignmentForm } from "@/components/marketplace/service-assignment-form";
 import { MarketplaceSkeleton, SERVICE_DETAIL_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { ServiceDetail } from "@/components/marketplace/service-detail";
+import { ServiceDocuments } from "@/components/marketplace/service-documents";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { accountApiFetch } from "@/lib/auth/account-api";
 import {
@@ -25,10 +26,12 @@ import {
   requestCustomerServiceClaim,
   requestCustomerServiceConsent,
   requestCustomerServiceDetail,
+  requestCustomerServiceDocuments,
   requestProviderAssignmentOptions,
   requestProviderAssignmentUpdate,
   requestProviderDeliveryPhoto,
   requestProviderServiceComplete,
+  requestProviderServiceDocuments,
   requestProviderServiceDetail,
   requestProviderServiceLocationUpdate,
   requestProviderServiceStart,
@@ -38,6 +41,7 @@ import {
   type ServiceAssignmentOptions,
   type ServiceAssignmentUpdate,
   type ServiceDetail as ServiceDetailData,
+  type ServiceDocument,
   type ServiceLocation,
 } from "@/lib/marketplace-api";
 import {
@@ -219,6 +223,23 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
     ]),
   });
   const detail = detailQuery.data;
+  // Simulated tax documents load once the service itself is known; customers get the boleta only.
+  const documentsQuery = useQuery({
+    queryKey: ["service-documents", provider ? "provider" : "customer", serviceId],
+    queryFn: async () => {
+      const response = await sendWithTokenRetry(
+        (accessToken) => (provider
+          ? requestProviderServiceDocuments(accessToken, serviceId)
+          : requestCustomerServiceDocuments(accessToken, serviceId)),
+        readAccessToken,
+        refreshAccessToken,
+      );
+      if (response.status === 401) throw new CustomerSessionError();
+      return parseServiceResponse<ServiceDocument[]>(response);
+    },
+    enabled: Boolean(detail),
+    retry: false,
+  });
   // Only the profile owner can manage assignments, and only before the service starts.
   const showAssignmentForm = Boolean(detail?.canManage && detail.status === "confirmed");
   // A same-day conflict answer is a successful request too, so only a saved result shows the notice.
@@ -319,6 +340,7 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
             <MarketplaceSkeleton label="Cargando servicio…" layout={SERVICE_DETAIL_LAYOUT} loading={loading} name="service-detail">
               {detail && (
                 <ServiceDetail
+                  documents={<ServiceDocuments documents={documentsQuery.data} failed={documentsQuery.isError} loading={documentsQuery.isPending} />}
                   cancellation={<ServiceCancellation service={detail} pending={cancelService.isPending} onCancel={() => cancelService.mutateAsync()} />}
                   actions={isProviderViewer ? (
                     <>

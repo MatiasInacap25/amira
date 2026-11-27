@@ -75,6 +75,8 @@ function quotationEntry(overrides: Record<string, unknown> = {}) {
       expiresAt: "2099-12-31T12:00:00.000Z",
       createdAt: "2026-10-10T12:00:00Z",
       paidAt: null,
+      netAmount: 105042,
+      ivaAmount: 19958,
       ...overrides,
     },
   };
@@ -530,7 +532,7 @@ test("provider sends a quotation with the entered terms and the dialog closes", 
 
   await page.getByRole("button", { name: "Enviar cotización" }).click();
   const dialog = page.getByRole("dialog", { name: "Envía tu cotización" });
-  await dialog.getByLabel("Monto (CLP)").fill("125000");
+  await dialog.getByLabel("Monto total (IVA incluido)").fill("125000");
   await dialog.getByLabel("Fecha del servicio").fill("2099-12-30T12:00");
   await dialog.getByLabel("Descripción").fill("Mudanza de dos ambientes");
   await expect(dialog.getByLabel("Vigencia (horas)")).toHaveValue("48");
@@ -552,7 +554,7 @@ test("provider sees a server rejection of the quotation as a readable message", 
 
   await page.getByRole("button", { name: "Enviar cotización" }).click();
   const dialog = page.getByRole("dialog", { name: "Envía tu cotización" });
-  await dialog.getByLabel("Monto (CLP)").fill("125000");
+  await dialog.getByLabel("Monto total (IVA incluido)").fill("125000");
   await dialog.getByLabel("Fecha del servicio").fill("2099-12-30T12:00");
   await dialog.getByLabel("Descripción").fill("Mudanza de dos ambientes");
   await dialog.getByRole("button", { name: "Enviar cotización" }).click();
@@ -588,6 +590,32 @@ test("provider quotation dialog shows the chat's service type as read-only text"
   await expect(dialog.getByText("Tipo de servicio", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Mudanzas", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Tipo de servicio")).toHaveCount(0);
+});
+
+test("quotation card shows the total with IVA included and the net and IVA breakdown", async ({ page }) => {
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ timeline: [quotationEntry()] }) }));
+
+  await signInToChat(page, "customer");
+
+  const quotation = page.getByRole("article", { name: "Cotización" });
+  await expect(quotation.getByText("$125.000")).toBeVisible();
+  await expect(quotation.getByText("IVA incluido", { exact: true })).toBeVisible();
+  await expect(quotation.getByText("Neto $105.042 · IVA $19.958", { exact: true })).toBeVisible();
+});
+
+test("provider quotation dialog previews the net and IVA split while the total is typed", async ({ page }) => {
+  await mockThread(page, async (route) => route.fulfill({ json: threadPage({ viewerRole: "provider" }) }));
+
+  await signInToChat(page, "provider");
+
+  await page.getByRole("button", { name: "Enviar cotización" }).click();
+  const dialog = page.getByRole("dialog", { name: "Envía tu cotización" });
+  await expect(dialog.getByLabel("Monto total (IVA incluido)")).toBeVisible();
+  await expect(dialog.getByLabel("Monto (CLP)")).toHaveCount(0);
+  await expect(dialog.getByText("Neto $67.227 · IVA $12.773", { exact: true })).toHaveCount(0);
+
+  await dialog.getByLabel("Monto total (IVA incluido)").fill("80000");
+  await expect(dialog.getByText("Neto $67.227 · IVA $12.773", { exact: true })).toBeVisible();
 });
 
 test("customer sees a pending quotation with its amount, expiry and pay and reject actions", async ({ page }) => {
