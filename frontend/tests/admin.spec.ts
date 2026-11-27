@@ -101,6 +101,29 @@ test("finance pages show mandate-model VAT and read-only settings", async ({ pag
   expect(errors).toEqual([]);
 });
 
+test("dashboard groups KPI cards and adapts their columns to the viewport", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin");
+  const groups = ["Dinero", "Transportistas", "Operación"].map((name) => page.getByRole("region", { name, exact: true }));
+  for (const [index, count] of [5, 2, 6].entries()) {
+    await expect(groups[index].getByRole("heading", { level: 3 })).toHaveCount(count);
+    await expect(groups[index].locator(".admin-card").first()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  }
+  for (const [width, columns] of [[1440, 4], [768, 2], [390, 1]]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(groups[0].locator(".admin-kpi-grid")).toHaveCSS("grid-template-columns", new RegExp(`^(\\S+px ?){${columns}}$`));
+  }
+  const apply = page.getByRole("button", { name: "Aplicar", exact: true });
+  await expect(apply).toHaveCSS("background-color", "rgb(184, 72, 36)");
+  await page.getByLabel("Período").selectOption("today");
+  await apply.click();
+  await expect(page).toHaveURL(/period=today/);
+  const chart = page.getByRole("img", { name: "Gráfico diario de recaudación y comisiones" });
+  await expect(chart.locator("rect").nth(0)).toHaveCSS("fill", "rgb(23, 57, 75)");
+  await expect(chart.locator("rect").nth(1)).toHaveCSS("fill", "rgb(184, 72, 36)");
+  await expect(chart.locator("line")).toHaveCSS("stroke", "rgb(56, 82, 95)");
+});
+
 test("people pages expose the customer directory and its filters", async ({ page, context }) => {
   await login(context, true);
   await page.goto("/admin/clientes");

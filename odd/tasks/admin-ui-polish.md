@@ -44,8 +44,8 @@ Read the relevant guide in `frontend/node_modules/next/dist/docs/` before writin
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S1, S5 | inline (Codex) | complete | `fix(admin): restore design tokens and navigation styling` |
-| T2 | S2 | inline (Codex) | pending | |
+| T1 | S1, S5 | inline (Codex) | complete | `4be0bf3` |
+| T2 | S2 | inline (Codex) | complete | `feat(admin): group dashboard metrics and polish the daily chart` |
 | T3 | S3, S4 | inline (Codex) | pending | |
 | T4 | S6 | inline (Codex) | pending | |
 
@@ -58,3 +58,4 @@ Route: sequential inline work in the already-checked-out Codex branch; each slic
 - L3 (2026-11-27, user): "con codex, primero abre un panel a la derecha y cuando te diga le pasas el plan" → "pasaselo".
 - L4 (2026-11-27, user): Work in /mnt/data/projects/amira on the already-checked-out branch feat/admin-ui-polish (do not switch branches, no remote git operations, no repo-wide formatters or installs). Spec: odd/tasks/admin-ui-polish.md — read it fully until ## Log, then implement T1..T4 in order (S1-S6). Frontend only. Follow existing conventions in frontend/src/app/admin/admin.css and frontend/src/components/admin/. Before writing Next.js code read the relevant guide in frontend/node_modules/next/dist/docs/. After each task run its checks, make one conventional commit (no AI attribution, no Co-Authored-By) and update the Tasks table/Log in the spec file. The known backend env failure is irrelevant here. At the end report: commits, which S# are covered, check results (lint, tsc, node unit, build, Playwright) and where the screenshots are.
 - T1: S1/S5. Playwright reproduced a transparent frame before the fix; all 13 admin Playwright checks passed after it. Lint and Node unit (246 pass, one existing TODO) passed; tsc passed after regenerating stale route types with next typegen. All 12 referenced admin tokens resolve. Captured six baseline screenshots with the local fixture before editing the UI.
+- T2: S2. The new grouping test was RED before implementation; then all 14 admin Playwright checks passed, including the 4/2/1 grid, period query, and chart colors. Lint, tsc, and Node unit (246 pass, one existing TODO) passed. Native assessment for T1: medium, under budget.

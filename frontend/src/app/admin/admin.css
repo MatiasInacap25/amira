@@ -69,3 +69,21 @@ a.admin-card:hover { border-color: var(--lp-action); }
 .admin-skeleton { border-radius: var(--lp-r-md); height: 12rem; background: var(--lp-surface); }
 
 .admin-detail-wide { width: min(800px, 100vw); }
+
+.admin-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.admin-kpi { align-content: start; box-shadow: 0 2px 5px rgb(23 57 75 / .06); }
+.admin-kpi h3, .admin-kpi p, .admin-chart-legend { color: var(--lp-muted); font-size: .875rem; }
+.admin-kpi h3 { font-weight: 600; }
+.admin-kpi strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.admin-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.admin-daily-chart { min-width: 0; }
+.admin-daily-chart svg { display: block; width: 100%; }
+.admin-chart-legend span::before { content: ""; display: inline-block; width: .65em; height: .65em; margin-inline-end: .4em; border-radius: 2px; }
+.admin-chart-legend [data-series="collected"]::before { background: var(--lp-ink); }
+.admin-chart-legend [data-series="commission"]::before { background: var(--lp-action); }
+@media (max-width: 1023.98px) {
+  .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 639.98px) {
+  .admin-kpi-grid { grid-template-columns: minmax(0, 1fr); }
+}
