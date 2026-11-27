@@ -5,14 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from amira_api.provider_service_schemas import ServiceStatus
+from amira_api.provider_service_schemas import CustomerServiceRating, ServiceStatus
 from amira_api.public_schemas import PublicResponse, _to_camel
-
-
-class CustomerServiceRating(PublicResponse):
-    rating: int
-    comment: str | None
-    created_at: datetime
 
 
 class CustomerServiceItem(PublicResponse):
@@ -22,6 +16,11 @@ class CustomerServiceItem(PublicResponse):
     provider_name: str
     service_type_name: str
     completed_at: datetime | None
+    # The requested date and time of the service (FormularioServicio.requested_at); null when not set.
+    scheduled_at: datetime | None
+    # The customer's own request origin and destination as entered on the form; null when missing.
+    origin: str | None
+    destination: str | None
     rating: CustomerServiceRating | None
 
 

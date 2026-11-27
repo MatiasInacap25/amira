@@ -27,10 +27,12 @@ from amira_api.models import (
     ServicioAsignacion,
     TipoServicio,
     Usuario,
+    Valoracion,
     Vehiculo,
 )
 from amira_api.provider_service_schemas import (
     AmountBreakdownView,
+    CustomerServiceRating,
     DeliveryPhotoUrl,
     ServiceAssignment,
     ServiceCancellation,
@@ -138,8 +140,11 @@ def service_rows(*conditions) -> Select:
             _provider_owner.last_name.label("owner_last_name"),
             _customer.first_name.label("customer_first_name"),
             assignment_count.label("assignment_count"),
+            Valoracion.rating.label("rating_value"),
+            Valoracion.comment.label("rating_comment"),
+            Valoracion.created_at.label("rating_created_at"),
         )
-    ).where(*conditions)
+    ).outerjoin(Valoracion, Valoracion.service_id == Servicio.id).where(*conditions)
 
 
 def _counterpart_name(row, viewer_role: ViewerRole) -> str:
@@ -227,6 +232,17 @@ def _amount_breakdown(amount, viewer_role: ViewerRole) -> AmountBreakdownView | 
     )
 
 
+def _customer_rating(row) -> CustomerServiceRating | None:
+    """The customer's rating of the service, or None. ``service_rows`` joins at most one rating per service."""
+    if row.get("rating_value") is None:
+        return None
+    return CustomerServiceRating(
+        rating=row["rating_value"],
+        comment=row["rating_comment"],
+        created_at=row["rating_created_at"],
+    )
+
+
 def shape_detail(
     row,
     viewer_role: ViewerRole,
@@ -266,6 +282,7 @@ def shape_detail(
         assignments=assignments,
         shared_trip_id=row["shared_trip_id"] if viewer_role == "provider" else None,
         amount_breakdown=_amount_breakdown(row["amount"], viewer_role),
+        rating=_customer_rating(row) if viewer_role == "customer" else None,
     )
 
 

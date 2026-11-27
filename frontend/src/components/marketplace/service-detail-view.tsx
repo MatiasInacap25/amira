@@ -15,6 +15,7 @@ import { ServiceAssignmentForm } from "@/components/marketplace/service-assignme
 import { MarketplaceSkeleton, SERVICE_DETAIL_LAYOUT } from "@/components/marketplace/marketplace-skeleton";
 import { ServiceDetail } from "@/components/marketplace/service-detail";
 import { ServiceDocuments } from "@/components/marketplace/service-documents";
+import { ServiceRating } from "@/components/marketplace/service-rating";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import { accountApiFetch } from "@/lib/auth/account-api";
 import {
@@ -416,6 +417,9 @@ export function ServiceDetailView({ serviceId }: { serviceId: string }) {
                       onConsent={() => customerMutations.consent.mutateAsync()}
                       service={detail}
                     />
+                  ) : undefined}
+                  serviceRating={isCustomerViewer && detail.status === "completed" ? (
+                    <ServiceRating rating={detail.rating ?? null} serviceId={serviceId} />
                   ) : undefined}
                   deliveryPhoto={detail.deliveryPhotoAvailable ? (
                     <DeliveryPhoto
