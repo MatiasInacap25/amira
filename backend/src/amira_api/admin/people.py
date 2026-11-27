@@ -82,7 +82,7 @@ def customers(filters):
 def providers(filters):
     status = _status(Perfil.suspended_at, "suspended")
     avg = select(func.avg(Valoracion.rating)).join(Servicio, Servicio.id == Valoracion.service_id).where(
-        Servicio.profile_id == Perfil.id).correlate(Perfil).scalar_subquery()
+        Servicio.profile_id == Perfil.id, Valoracion.hidden_at.is_(None)).correlate(Perfil).scalar_subquery()
     q = select(Perfil.id, Perfil.name, Perfil.kind, Perfil.company_tax_id, _full_name().label("owner"),
                Usuario.email.label("owner_email"), Perfil.public_activated_at.is_not(None).label("published"),
                _count(Conductor, or_(Conductor.employer_profile_id == Perfil.id, Conductor.user_id == Perfil.owner_user_id)).label("drivers"),

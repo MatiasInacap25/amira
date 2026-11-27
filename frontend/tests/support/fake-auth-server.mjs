@@ -87,6 +87,13 @@ const server = createServer((request, response) => {
       app_env: "test", commission_percent: 10, claim_window_hours: 24, payment_adapter: "simulated", payout_adapter: "simulated",
       admins: [{ user_id: user.id, email: user.email }],
     });
+    if (url.pathname.startsWith("/api/admin/review/documents")) {
+      const item = (id, name) => ({ id, driver: name, status: "in_review", document_type: "driver_record",
+        created_at: "2026-11-23T12:00:00Z", annotations: [{ register: "Registro", fines: 1 }] });
+      const items = [item("doc-1", "Conductor de prueba"), item("doc-2", "Segundo conductor")];
+      const id = url.pathname.split("/")[5];
+      return id ? send(response, 200, items.find((entry) => entry.id === id)) : send(response, 200, { items, total: 2, limit: 20, offset: 0 });
+    }
     if (url.pathname === "/api/admin/people/customers") return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";

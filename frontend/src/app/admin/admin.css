@@ -64,3 +64,5 @@
 .admin-card { display: grid; gap: 8px; padding: 16px; background: var(--lp-card); border: 1px solid var(--lp-line); border-radius: var(--lp-r-md); }
 a.admin-card:hover { border-color: var(--lp-action); }
 .admin-skeleton { border-radius: var(--lp-r-md); height: 12rem; background: var(--lp-surface); }
+
+.admin-detail-wide { width: min(800px, 100vw); }

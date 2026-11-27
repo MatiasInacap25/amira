@@ -91,3 +91,21 @@ test("people pages expose the customer directory and its filters", async ({ page
   await expect(page.getByRole("button", { name: "Exportar CSV" })).toBeVisible();
   await expect(page.getByText("No hay resultados con estos filtros")).toBeVisible();
 });
+
+test("document rejection requires a reason and opens the next pending document", async ({ page, context }) => {
+  await login(context, true);
+  let sentReason: string | undefined;
+  await page.route("**/api/admin/review/documents/doc-1/reject", async (route) => {
+    sentReason = route.request().postDataJSON().reason;
+    await route.fulfill({ status: 200, json: { status: "updated" } });
+  });
+  await page.goto("/admin/documentos?detail=doc-1");
+  await page.getByRole("dialog", { name: "Conductor de prueba" }).getByRole("button", { name: "Rechazar" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Rechazar: Conductor de prueba" });
+  await confirmation.getByRole("button", { name: "Confirmar" }).click();
+  expect(sentReason).toBeUndefined();
+  await confirmation.getByLabel("Motivo").fill("El certificado está incompleto.");
+  await confirmation.getByRole("button", { name: "Confirmar" }).click();
+  await expect(page.getByRole("dialog", { name: "Segundo conductor" })).toBeVisible();
+  expect(sentReason).toBe("El certificado está incompleto.");
+});

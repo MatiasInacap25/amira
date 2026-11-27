@@ -8,6 +8,7 @@ from amira_api.admin.badges import pending_badges
 from amira_api.admin.deps import AdminUser, require_admin
 from amira_api.admin.finance_routes import router as finance_router
 from amira_api.admin.people_routes import router as people_router
+from amira_api.admin.review_routes import router as review_router
 from amira_api.admin.schemas import AdminIdentity
 from amira_api.db import get_db_session
 
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(re
 router.include_router(audit_router)
 router.include_router(finance_router)
 router.include_router(people_router)
+router.include_router(review_router)
 
 
 @router.get("/me")

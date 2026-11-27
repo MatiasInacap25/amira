@@ -323,7 +323,7 @@ def create_customer_service_claim(
     if service.payout_deadline_at is None or now >= as_utc(service.payout_deadline_at):
         raise HTTPException(status_code=409, detail="The claim window for this service has closed.")
 
-    # The claim holds the payout: the service leaves completed until the claim is resolved outside this scope.
+    # The claim holds the payout: the service leaves completed until an administrator resolves the claim.
     session.add(
         Reclamo(
             id=uuid4(),

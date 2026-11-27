@@ -132,7 +132,7 @@ export type ServiceAssignment = {
 
 export type ServiceCancellation = {
   cancelledAt: string;
-  cancelledBy: "customer" | "provider";
+  cancelledBy: "customer" | "provider" | "admin";
   refundedAmount: number;
   retainedAmount: number;
   currency: "CLP";

@@ -22,6 +22,9 @@ class ListFilters(BaseModel):
     verification: str | None = Field(None, max_length=50)
     published: bool | None = None
     has_claim: bool | None = None
+    matches: bool | None = None
+    visible: bool | None = None
+    rating: int | None = Field(None, ge=1, le=5)
     start: date | None = None
     end: date | None = None
     limit: int = Field(20, ge=1, le=100)

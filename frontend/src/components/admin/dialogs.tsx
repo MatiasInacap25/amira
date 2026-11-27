@@ -22,8 +22,8 @@ function Modal({ title, children, className, onClose }: {
   );
 }
 
-export function DetailDrawer(props: { title: string; children: ReactNode; onClose: () => void }) {
-  return <Modal {...props} className="admin-detail" />;
+export function DetailDrawer({ wide, ...props }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
+  return <Modal {...props} className={wide ? "admin-detail admin-detail-wide" : "admin-detail"} />;
 }
 
 type Confirmation = {

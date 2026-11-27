@@ -92,9 +92,11 @@ def _release_one(
 
     account = session.execute(
         select(CuentaDesembolso)
-        .where(CuentaDesembolso.profile_id == service.profile_id, CuentaDesembolso.payouts_enabled.is_(True))
+        .where(CuentaDesembolso.profile_id == service.profile_id, CuentaDesembolso.registration_status == "active",
+               CuentaDesembolso.payouts_enabled.is_(True))
         .order_by(CuentaDesembolso.created_at, CuentaDesembolso.id)
         .limit(1)
+        .with_for_update()
     ).scalar_one_or_none()
     if account is None:
         return "missing_account"

@@ -150,6 +150,7 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
         .order_by(Vehiculo.brand.asc(), Vehiculo.model.asc(), Vehiculo.year.asc().nulls_last())
     ).mappings().all()
     eligible_ratings = (
+        Valoracion.hidden_at.is_(None),
         Valoracion.user_id == Servicio.customer_id,
         Servicio.profile_id == profile_id,
         Servicio.completed_at.is_not(None),

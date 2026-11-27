@@ -733,6 +733,8 @@ class Reclamo(Base):
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False, server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column("Fecha_Resolucion", DateTime(timezone=True))
     resolution: Mapped[str | None] = mapped_column("Resolucion", Text)
+    resolved_by: Mapped[UUID | None] = mapped_column("ID_Resolutor_Admin", Uuid(as_uuid=True))
+    resolution_reason: Mapped[str | None] = mapped_column("Motivo_Resolucion", String(500))
     private_evidence_key: Mapped[str | None] = mapped_column("Referencia_Evidencia_Privada", String(512))
 
     service: Mapped[Servicio] = relationship(back_populates="claims")
@@ -752,6 +754,8 @@ class Valoracion(Base):
     user_id: Mapped[UUID] = mapped_column("ID_Usuario", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False, index=True)
     rating: Mapped[int] = mapped_column("Rating", SmallInteger, nullable=False)
     comment: Mapped[str | None] = mapped_column("Comentario", Text)
+    hidden_at: Mapped[datetime | None] = mapped_column("Fecha_Ocultacion", DateTime(timezone=True))
+    hidden_reason: Mapped[str | None] = mapped_column("Motivo_Ocultacion", String(500))
     created_at: Mapped[datetime] = mapped_column("Fecha_Registro", DateTime(timezone=True), nullable=False, server_default=func.now())
 
     service: Mapped[Servicio] = relationship(back_populates="rating")
@@ -789,6 +793,7 @@ class VerificacionIdentidad(Base):
     pdf_storage_key: Mapped[str | None] = mapped_column("Clave_PDF", String(512))
     # Set when an administrator approves or rejects a certificate that was in review.
     reviewed_at: Mapped[datetime | None] = mapped_column("Fecha_Revision", DateTime(timezone=True))
+    reviewed_by: Mapped[UUID | None] = mapped_column("ID_Revisor_Admin", Uuid(as_uuid=True))
 
     user: Mapped[Usuario] = relationship(back_populates="identity_verifications")
 
@@ -805,6 +810,10 @@ class CuentaDesembolso(Base):
     provider: Mapped[str] = mapped_column("Proveedor", String(80), nullable=False)
     provider_account_id: Mapped[str] = mapped_column("ID_Cuenta_Proveedor", String(200), nullable=False)
     registration_status: Mapped[str] = mapped_column("Estado_Registro", String(40), nullable=False)
+    holder_rut: Mapped[str | None] = mapped_column("Rut_Titular", String(16))
+    bank_name: Mapped[str | None] = mapped_column("Banco", String(100))
+    account_type: Mapped[str | None] = mapped_column("Tipo_Cuenta", String(50))
+    account_number: Mapped[str | None] = mapped_column("Numero_Cuenta", String(64))
     payouts_enabled: Mapped[bool] = mapped_column("Habilitada_Desembolsos", Boolean, nullable=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column("Fecha_Actualizacion", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
