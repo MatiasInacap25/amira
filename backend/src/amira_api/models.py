@@ -298,6 +298,8 @@ class TipoServicio(Base):
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column("Nombre_servicio", String(120), nullable=False, unique=True)
     slug: Mapped[str] = mapped_column("Slug", String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column("Descripcion", Text)
+    deactivated_at: Mapped[datetime | None] = mapped_column("Fecha_Desactivacion", DateTime(timezone=True))
     available_profiles: Mapped[list[ServicioDisponible]] = relationship(back_populates="service_type")
     quotations: Mapped[list[Cotizacion]] = relationship(back_populates="service_type")
     form_requests: Mapped[list[FormularioServicio]] = relationship(back_populates="service_type")

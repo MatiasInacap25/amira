@@ -136,7 +136,7 @@ def get_public_provider_profile(profile_id: UUID, session: Database) -> PublicPr
             TipoServicio.name.label("name"),
         )
         .join(ServicioDisponible, ServicioDisponible.service_type_id == TipoServicio.id)
-        .where(ServicioDisponible.profile_id == profile_id)
+        .where(ServicioDisponible.profile_id == profile_id, TipoServicio.deactivated_at.is_(None))
         .order_by(TipoServicio.name.asc(), TipoServicio.id.asc())
     ).mappings().all()
     vehicle_rows = session.execute(
@@ -224,6 +224,7 @@ def create_service_request(
 
     matching_service = session.execute(
         select(ServicioDisponible.service_type_id)
+        .join(TipoServicio, TipoServicio.id == ServicioDisponible.service_type_id)
         .join(Perfil, Perfil.id == ServicioDisponible.profile_id)
         .join(RolPerfil, RolPerfil.id == Perfil.role_id)
         .where(
@@ -232,6 +233,7 @@ def create_service_request(
             Perfil.kind.in_(("company", "independent_driver")),
             RolPerfil.code.in_(("company", "independent_driver")),
             ServicioDisponible.service_type_id == payload.service_type_id,
+            TipoServicio.deactivated_at.is_(None),
         )
     ).scalar_one_or_none()
     if matching_service is None:

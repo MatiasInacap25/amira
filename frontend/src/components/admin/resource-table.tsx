@@ -34,6 +34,7 @@ const extraLabels: Record<string, string> = {
 };
 const labels: Record<string, string> = {
   company: "Empresa", independent_driver: "Conductor independiente", independent: "Independiente", blocked: "Bloqueado", active: "Activo",
+  inactive: "Desactivado", region: "Región", commune: "Comuna", user: "Usuario", profile: "Perfil",
   simulated: "Simulado", mercado_pago: "Mercado Pago", customer: "Cliente", provider: "Proveedor", admin: "Admin",
   claim: "Reclamo", window: "Plazo de reclamo vigente", bank_account: "Sin cuenta aprobada", payment: "Sin pago aprobado", none: "Sin bloqueo",
   released: "Liberado", criminal_record: "Certificado de antecedentes", driver_record: "Hoja de vida", resolved: "Resuelto",
@@ -162,6 +163,9 @@ export function ResourceTable({ resource, data, filters, detail, detailId, live 
         void downloadAdminFile(`${resource.path}/${id}/receipt`, `desembolso-${id}.html`)
           .catch(() => toast.error("No se pudo descargar el comprobante."));
       } });
+    } else if (resource.path === "/api/admin/catalog/service-types") {
+      add("deactivate", "Desactivar", false, row.status === "inactive" ? "El tipo ya está desactivado." : undefined);
+      add("delete", "Eliminar", false, row.referenced ? "Este tipo está referenciado. Puedes desactivarlo." : undefined);
     } else if (pathname.endsWith("/rutas-compartidas")) {
       add("unpublish", "Despublicar", true, !row.published ? "El viaje no está publicado." : undefined);
       add("close", "Cerrar a nuevas solicitudes", false, !row.accepts_requests ? "El viaje ya está cerrado." : undefined);
@@ -251,7 +255,9 @@ export function ResourceTable({ resource, data, filters, detail, detailId, live 
         </dl></> : <p>No se pudo cargar el registro.</p>}
     </DetailDrawer>}
     {mutation && <Dialog title={`${mutation.choice.label}: ${title(mutation.row)}`}
-      consequence={mutation.choice.action === "suspend" ? `El perfil se ocultará. Sus ${Number(mutation.row.open_services ?? 0)} servicios abiertos no se cancelarán.` : ["cancel", "refund"].includes(mutation.choice.action) ? "El servicio se cancelará y el cliente recibirá un reembolso simulado del 100 %, sin retención." : mutation.choice.action === "resolve_customer"
+      consequence={mutation.choice.action === "suspend" ? `El perfil se ocultará. Sus ${Number(mutation.row.open_services ?? 0)} servicios abiertos no se cancelarán.` : mutation.choice.action === "delete" ? "El tipo de servicio se eliminará de forma permanente."
+        : mutation.choice.action === "deactivate" ? "El tipo se ocultará en el catálogo público sin alterar sus referencias."
+        : ["cancel", "refund"].includes(mutation.choice.action) ? "El servicio se cancelará y el cliente recibirá un reembolso simulado del 100 %, sin retención." : mutation.choice.action === "resolve_customer"
         ? "El servicio se cancelará y el pago simulado se reembolsará por completo."
         : mutation.choice.action === "resolve_provider" ? "El servicio volverá a completado y aplicarán las reglas normales de desembolso."
         : "La acción quedará registrada en la auditoría."}

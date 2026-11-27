@@ -144,3 +144,22 @@ test("payout release requires confirmation and shows the simulator summary", asy
   await expect(page).toHaveURL(/tab=paid/);
   await expect(page.getByRole("button", { name: "Liberar desembolsos vencidos" })).toHaveCount(0);
 });
+
+test("catalog offers creation for service types but not for fixed roles", async ({ page, context }) => {
+  await login(context, true);
+  let name: string | undefined;
+  await page.route("**/api/admin/catalog/service-types", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    name = route.request().postDataJSON().name;
+    await route.fulfill({ status: 201, json: { id: "fixture" } });
+  });
+  await page.goto("/admin/catalogos");
+  await page.getByRole("button", { name: "Crear tipo de servicio" }).click();
+  await page.getByRole("dialog").getByLabel("Nombre").fill("Transporte especial");
+  await page.getByRole("dialog").getByRole("button", { name: "Crear", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(name).toBe("Transporte especial");
+  await page.getByRole("link", { name: "Roles", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "client", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Crear tipo de servicio" })).toHaveCount(0);
+});

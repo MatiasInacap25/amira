@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from amira_api.admin.audit_routes import router as audit_router
+from amira_api.admin.catalog_routes import router as catalog_router
 from amira_api.admin.badges import pending_badges
 from amira_api.admin.deps import AdminUser, require_admin
 from amira_api.admin.finance_routes import router as finance_router
@@ -21,6 +22,7 @@ router.include_router(people_router)
 router.include_router(review_router)
 router.include_router(operations_router)
 router.include_router(transactions_router)
+router.include_router(catalog_router)
 
 
 @router.get("/me")

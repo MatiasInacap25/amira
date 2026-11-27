@@ -102,6 +102,10 @@ const server = createServer((request, response) => {
     if (["/api/admin/transactions/payout-candidates", "/api/admin/transactions/payouts"].includes(url.pathname)) {
       return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
     }
+    if (url.pathname.startsWith("/api/admin/catalog/")) {
+      const items = url.pathname.endsWith("/roles") ? [{ id: "user:fixture", name: "Cliente", code: "client", kind: "user" }] : [];
+      return send(response, 200, { items, total: items.length, limit: 20, offset: 0 });
+    }
     if (url.pathname === "/api/admin/people/customers") return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";

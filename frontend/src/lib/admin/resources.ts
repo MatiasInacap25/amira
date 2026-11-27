@@ -170,3 +170,27 @@ export const paidPayoutResource: AdminResource = {
     field("external_id", "ID de proveedor"), field("confirmed_at", "Liberado el", "date"), status],
   filters: [providerFilter, ...dates], defaults: { tab: "paid" },
 };
+
+export const catalogResources: Record<string, AdminResource> = {
+  "service-types": {
+    title: "Catálogos", description: "Gestiona los tipos de servicio disponibles.", path: "/api/admin/catalog/service-types",
+    fields: [field("name", "Nombre"), field("slug", "Identificador"), field("description", "Descripción"), status],
+    filters: [options("status", "Estado", [["active", "Activo"], ["inactive", "Desactivado"]])],
+    edits: [{ key: "name", label: "Nombre", required: true }, { key: "description", label: "Descripción" }],
+  },
+  "driver-types": {
+    title: "Catálogos", description: "Consulta los tipos fijos de conductor.", path: "/api/admin/catalog/driver-types",
+    fields: [field("name", "Nombre"), field("id", "Identificador fijo")],
+    filters: [], defaults: { tab: "driver-types" },
+  },
+  locations: {
+    title: "Catálogos", description: "Consulta los códigos de regiones y comunas.", path: "/api/admin/catalog/locations",
+    fields: [field("name", "Nombre"), field("code", "Código"), field("kind", "Tipo", "status"), field("region", "Región")],
+    filters: [], defaults: { tab: "locations" },
+  },
+  roles: {
+    title: "Catálogos", description: "Consulta los roles fijos de usuario y perfil.", path: "/api/admin/catalog/roles",
+    fields: [field("name", "Nombre"), field("code", "Código"), field("kind", "Tipo", "status")],
+    filters: [], defaults: { tab: "roles" },
+  },
+};
