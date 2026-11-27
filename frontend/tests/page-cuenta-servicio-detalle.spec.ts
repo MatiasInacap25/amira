@@ -234,6 +234,20 @@ test("completed service already rated shows the stored stars and comment read-on
   await expect(section.getByRole("button", { name: "Enviar valoración" })).toHaveCount(0);
 });
 
+test("an expired session while rating links back to this service's detail after sign-in", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail({ rating: null }) }));
+  await page.route("**/api/customer/services/service-1/rating", async (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+  const section = page.getByRole("region", { name: "Valora este servicio" });
+  await section.locator("label.customer-star-option", { hasText: "3 de 5" }).click();
+  await section.getByRole("button", { name: "Enviar valoración" }).click();
+
+  const link = section.getByRole("link", { name: "Iniciar sesión" });
+  await expect(link).toHaveAttribute("href", "/login?next=%2Fcuenta%2Fservicios%2Fservice-1");
+});
+
 test("a 409 on rating shows the already-rated message and the stored rating", async ({ page }) => {
   let detailRequests = 0;
   await mockServiceDetail(page, "customer", async (route) => {

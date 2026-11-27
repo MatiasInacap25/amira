@@ -149,7 +149,7 @@ function ServiceRow({ service }: { service: CustomerService }) {
       </span>
       <span className="customer-service-badges">
         <span className={`account-service-status account-service-status-${service.status}`}>{serviceStatusLabel(service.status)}</span>
-        {service.completedAt && (
+        {service.status === "completed" && (
           <span className={`customer-service-chip ${service.rating ? "customer-service-chip-rated" : "customer-service-chip-pending"}`}>
             {service.rating ? "Valorado" : "Pendiente de valorar"}
           </span>

@@ -11,7 +11,10 @@ import { sendWithTokenRetry } from "@/lib/customer-request-retry";
 import { CustomerSessionError, readAccessToken, refreshAccessToken } from "@/lib/customer-session";
 import { CUSTOMER_SERVICES_KEY, SERVICE_DETAIL_KEY } from "@/lib/service-query-keys";
 
-const SIGN_IN_HREF = "/login?next=%2Fcuenta%2Fservicios";
+// Returns to this service's detail page after sign-in, not the list.
+function signInHref(serviceId: string) {
+  return `/login?next=${encodeURIComponent(`/cuenta/servicios/${serviceId}`)}`;
+}
 
 /**
  * The customer's rating of a completed service. Shows the form until the service is rated, then the stored rating read-only.
@@ -149,7 +152,7 @@ function RatingForm({ onAlreadyRated, serviceId }: { onAlreadyRated: () => void;
       {submitError && (
         <div className="customer-submit-error" role="alert">
           <p>{submitError}</p>
-          {needsSignIn && <Link href={SIGN_IN_HREF}>Iniciar sesión</Link>}
+          {needsSignIn && <Link href={signInHref(serviceId)}>Iniciar sesión</Link>}
         </div>
       )}
       <button className="button button-primary customer-rating-submit" disabled={busy} type="submit">{busy ? "Guardando…" : "Enviar valoración"}</button>
