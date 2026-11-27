@@ -300,10 +300,10 @@ Additive Alembic migrations only (new tables, new nullable columns, new indexes)
 | T2 | S2, S3, S28 (layout + shared components) | inline | done | `b180465` |
 | T3 | S4, S22, S25 (dashboard, finanzas, configuración) | inline; authorized read-only explorer | done | `0037b17` |
 | T4 | S5, S6, S7, S8, S18 (personas + vehículos, block/suspend) | inline; independent verifier | done with S8 counting limitation recorded | `ddf02b2` |
-| T5 | S9, S10, S11, S12 (revisión: documentos, cuentas, reclamos, valoraciones) | inline; independent verifier | done; transcript integration pending S16 | `20b5c86` |
+| T5 | S9, S10, S11, S12 (revisión: documentos, cuentas, reclamos, valoraciones) | inline; independent verifier | done; transcript integrated in T6 | `20b5c86` |
 | T6 | S13, S14, S15, S16, S17 (operación) | inline; independent verifier | done | `2de65fe` |
 | T7 | S19, S20, S21 (pagos, reembolsos, desembolsos) | inline; independent verifier | done | `dd5f322` |
-| T8 | S23 (catálogos) + S29 full suite | inline; independent verifier | done | |
+| T8 | S23 (catálogos) + S29 full suite | inline; independent verifier | done | `71a32a7` |
 
 Each task closes with one Conventional Commit on `feat/admin-panel` with its tests. Route reason: the user asked for Codex to build the admin area in parallel with the main session (parallel writer, isolated worktree).
 
