@@ -1,7 +1,7 @@
 # Admin panel implementation report
 
 Branch: `feat/admin-panel` · Baseline: `8441ff1` (`develop`)
-Status: **Blocked at T3.** T1 and T2 are complete. The build exception in L7 applies; Next.js was not changed.
+Status: **Paused before T6 for the admin cancellation policy.** T1–T5 are checkpointed; the remaining S8 and S11 limitations are listed below. The local integration of `origin/develop` at `1efc57e` was committed as `62f64c2`. The strict Next.js 16.4.6 build passes.
 
 ## Task status
 
@@ -9,14 +9,14 @@ Status: **Blocked at T3.** T1 and T2 are complete. The build exception in L7 app
 |---|---|---|
 | T1 — Access and audit foundation | Done under the user-authorized build exception | `7be1749` |
 | T2 — Layout and shared components | Done | `b180465` |
-| T3 — Dashboard, finance, and settings | Blocked before implementation: assigned explorer model unavailable | — |
-| T4 — People and vehicles | Not started | — |
-| T5 — Moderation and claims | Not started | — |
-| T6 — Operations | Not started | — |
+| T3 — Dashboard, finance, and settings | Done | `0037b17` |
+| T4 — People and vehicles | Done; invitation attempt attribution open | `ddf02b2` |
+| T5 — Moderation and claims | Done; claim transcript depends on S16 | `20b5c86` |
+| T6 — Operations | Not started; admin cancellation retention is undefined | — |
 | T7 — Payments, refunds, and payouts | Not started | — |
 | T8 — Catalogs and final verification | Not started | — |
 
-T1 adds a deny-by-default allowlist using verified Supabase subjects, a guarded admin router, server-rendered access checks, a private audit migration, transaction-bound audit writes, filtered audit queries and CSV, and an audit page. T2 adds the responsive sidebar, pending badges, server-gated section routes, audit table integration, URL filters, CSV download, keyboard-accessible row detail, reusable confirmation dialogs, and shared formatters. Sections beyond audit retain placeholders until their own task implements them.
+T1 adds a deny-by-default allowlist using verified Supabase subjects, a guarded admin router, server-rendered access checks, a private audit migration, transaction-bound audit writes, filtered audit queries and CSV, and an audit page. T2 adds the responsive sidebar, pending badges, server-gated section routes, audit table integration, URL filters, CSV download, keyboard-accessible row detail, reusable confirmation dialogs, and shared formatters. Unimplemented T6–T8 sections retain placeholders until their own task implements them.
 
 ## T1 verification
 
@@ -62,10 +62,28 @@ Commands ran from the designated worktree, or from its app directory as indicate
 
 The complete Playwright suite is still pending for T8. There was no repeat of the known role-lookup failure in this turn's focused coverage; the case was not selected. If it fails in a future full run, rerun it in isolation and record the result without treating that case alone as a gate.
 
+## T3–T5 verification
+
+| Scope | Check | Observed result |
+|---|---|---|
+| Local integration | `git merge --no-edit origin/develop`; `git stash pop`; frontend `npm ci --offline --no-audit --no-fund` | Local reference `1efc57e` verified; merge and stash restore completed without conflicts. Installed the locked Next.js 16.4.6 package without fetching. |
+| T3 | `uv run pytest -q tests/admin/test_finance.py --tb=short`; focused admin tests; full backend | RED: missing finance code; GREEN: 11 focused, 1,260 full passed and the known fixture failure. |
+| T3 | Node unit suite; isolated admin Playwright; lint/build | 234 Node passes, 1 TODO; 7 admin browser passes after SVG hydration fix. Compile/typecheck passed under the historical 16.4.2 exception. |
+| T4 | `uv run --offline pytest -q tests/admin/test_people.py --tb=short`; focused auth/public/request regressions | 5 people tests passed after provider detail correction. Independent verifier ran 133 tests and additional HTTP probes; scoped readback confirmed provider lists and the open-service warning. |
+| T4 | `uv run --offline pytest -q --tb=short` | After accommodating the new fixture dependencies, 1,264 passed, 201 skipped, 1 xfail, and only the permitted payment-adapter fixture failure, before the final scoped provider detail addition. |
+| T4 | Frontend `npx --offline playwright test tests/admin.spec.ts` with ports 3180/54330 | RED: customer directory had no search control; GREEN: 8 passed. |
+| T4 | `uv lock --offline --check`; offline Alembic SQL; `npm run lint`; Node unit suite; Next.js build; diff and Graphify | All completed successfully. Node: 234 passed, 1 existing TODO. Build exited 0 on 16.4.6; only the workspace-root warning remained. |
+| T5 | `uv run --offline pytest -q tests/admin/test_review.py --tb=short`; review/payout/cancellation/public focused suite | RED: two missing review modules. GREEN: 5 direct and 132 focused passed. Independent verifier passed 5 tests plus memory-only refund, masking, rating, and audit probes; verified the PDF layout correction. |
+| T5 | `uv run --offline pytest -q --tb=short` | 1,270 passed, 201 skipped, 1 xfail, and only the permitted payment-adapter fixture failure. |
+| T5 | `uv lock --offline --check`; `DATABASE_URL=postgresql://local.invalid/amira uv run --offline alembic upgrade head --sql` | Passed; generated additive DDL through `20261124_0003`, without opening a PostgreSQL connection. |
+| T5 | Frontend isolated `npx --offline playwright test tests/admin.spec.ts`; repeat with `-g 'document rejection'` | 9 passed; rejection-with-reason and next-document navigation passed again after the two-column PDF fix. |
+| T5 | `npm run lint`; `node --test tests/unit/*.mjs`; `NEXT_TELEMETRY_DISABLED=1 npm run build`; `git diff --check`; `graphify update .` | Lint raced with Playwright's test-results cleanup once, then passed serially. Node 234 passed/1 TODO. Build compiled, type-checked and exited 0 on 16.4.6. Diff and Graphify passed. |
+
+The full browser suite is not yet green; its final run belongs to T8. Keep the user-approved isolated retry for the known role-lookup failure if it recurs.
+
 ## Open questions and risks
 
-- No open product decisions for T1 or T2. T3 requires an independent read-only domain map before implementation. The prescribed `odd-explorer` model `gpt-6.1-luna` could not be launched; approve an available equivalent to resume the mapping. The Next.js upgrade stays on a separate branch.
-- **Risk: none for T2.** The badges route inherits the existing tested admin guard and performs only reads. The pre-existing Next.js advisory remains unresolved, and PostgreSQL migration/RLS execution and the complete browser suite still need verification before deployment.
-- S0 money handlers and all moderation, operation, finance, and catalog workflows remain unimplemented. The checkpoint is not a usable complete admin panel.
-
-No push, PR, merge, native review, or edits to the main checkout were performed.
+- S15 uses the existing cancellation path, which retains 10% for a customer cancellation and 0% for a provider cancellation. S15 does not establish a rule for an administrator-initiated cancellation. No T6 code was started, no refund amount was assumed, and T7–T8 remain pending.
+- S8 displays “Sin dato” for attempts: the historical session-scoped attempts do not carry an invitation ID. T5 shows the claim’s chat link; displaying the audited read-only transcript in the claim detail depends on S16.
+- **Risk: items 1, 2 and 4 (refund and moderation writes, privileged authorization, row-lock ordering).** Local verification used SQLite or offline SQL; production PostgreSQL concurrency and real storage/money infrastructure were not exercised. All admin refunds exercised here were simulated.
+- No fetch, pull, push, PR, further merge, native review, or edits to the main checkout were performed after authorization of the single local merge.
