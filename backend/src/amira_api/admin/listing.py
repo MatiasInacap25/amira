@@ -19,6 +19,9 @@ class ListFilters(BaseModel):
     driver: UUID | None = None
     service: UUID | None = None
     request: UUID | None = None
+    quotation: UUID | None = None
+    payment_provider: str | None = Field(None, max_length=50)
+    actor: str | None = Field(None, max_length=20)
     service_type: UUID | None = None
     exclusive: bool | None = None
     payout_due: bool | None = None

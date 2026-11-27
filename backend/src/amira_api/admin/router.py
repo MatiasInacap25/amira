@@ -10,6 +10,7 @@ from amira_api.admin.finance_routes import router as finance_router
 from amira_api.admin.operations_routes import router as operations_router
 from amira_api.admin.people_routes import router as people_router
 from amira_api.admin.review_routes import router as review_router
+from amira_api.admin.transactions_routes import router as transactions_router
 from amira_api.admin.schemas import AdminIdentity
 from amira_api.db import get_db_session
 
@@ -19,6 +20,7 @@ router.include_router(finance_router)
 router.include_router(people_router)
 router.include_router(review_router)
 router.include_router(operations_router)
+router.include_router(transactions_router)
 
 
 @router.get("/me")

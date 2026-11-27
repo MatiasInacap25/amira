@@ -126,3 +126,21 @@ test("an unclaimed chat does not request the transcript until a reason is entere
   await expect(page.getByText("Mensaje privado")).toBeVisible();
   expect(reason).toBe("Investigar la solicitud de soporte.");
 });
+
+test("payout release requires confirmation and shows the simulator summary", async ({ page, context }) => {
+  await login(context, true);
+  let releases = 0;
+  await page.route("**/api/admin/transactions/payouts/release", async (route) => {
+    releases += 1;
+    await route.fulfill({ json: { due: 2, released: 1, missing_account: 1, missing_payment: 0, skipped: 0, failed: 0 } });
+  });
+  await page.goto("/admin/desembolsos");
+  await page.getByRole("button", { name: "Liberar desembolsos vencidos" }).click();
+  expect(releases).toBe(0);
+  await page.getByRole("dialog").getByRole("button", { name: "Confirmar" }).click();
+  await expect(page.getByText(/Liberados: 1/)).toBeVisible();
+  expect(releases).toBe(1);
+  await page.getByRole("link", { name: "Pagados" }).click();
+  await expect(page).toHaveURL(/tab=paid/);
+  await expect(page.getByRole("button", { name: "Liberar desembolsos vencidos" })).toHaveCount(0);
+});

@@ -18,7 +18,7 @@ from amira_api.clock import utc_now
 from amira_api.db import get_db_session
 from amira_api.models import Chat, Cotizacion, Pago, Servicio, PaymentProviderTransaction
 from amira_api.payment_provider import SIMULATED_PROVIDER_NAME, PaymentProvider
-from amira_api.mercado_pago_provider import MercadoPagoError, MercadoPagoProvider, verify_webhook_signature
+from amira_api.mercado_pago_provider import VerifiedPaymentEvidence, MercadoPagoError, MercadoPagoProvider, verify_webhook_signature
 from amira_api.payment_schemas import (
     PaymentCheckout,
     PaymentConfirmationRequest,
@@ -123,30 +123,38 @@ def _caller_payment(session: Session, current_user: AuthenticatedUser, payment_i
 def _payment_status(session: Session, payment: Pago, service_id) -> str:
     if payment.provider == "mercado_pago" and payment.status == "approved":
         count = session.scalar(select(func.count()).select_from(PaymentProviderTransaction).where(
-            PaymentProviderTransaction.payment_id == payment.id))
+            PaymentProviderTransaction.payment_id == payment.id,
+            func.coalesce(PaymentProviderTransaction.status, "approved") == "approved"))
         if service_id is None or count > 1:
             return "review"
     return payment.status
 
 
-def _reconcile(session: Session, provider: MercadoPagoProvider, payment: Pago, transaction_evidence: list[tuple[str, str]]) -> Pago:
-    for transaction_id, status in transaction_evidence:
+def _reconcile(session: Session, provider: MercadoPagoProvider, payment: Pago, transaction_evidence: list[VerifiedPaymentEvidence]) -> Pago:
+    for item in transaction_evidence:
+        transaction_id = item.transaction_id
         payment = session.execute(select(Pago).where(Pago.id == payment.id).with_for_update()).scalar_one()
-        if status == "rejected":
-            if payment.status == "pending":
-                payment = confirm_payment(session, provider, payment_id=payment.id, provider_payment_id=payment.provider_payment_id,
-                                          status=status, signature="", now=utc_now(), verified=True)
+        stored = session.get(PaymentProviderTransaction, transaction_id)
+        if stored is not None and stored.payment_id != payment.id:
+            raise PaymentConflict("La transacción corresponde a otro pago.")
+        already_approved = stored is not None and stored.status in (None, "approved")
+        if already_approved and item.status == "rejected":
+            # Preserve approval evidence: a later rejected observation is not a refund or reversal.
             continue
-        existing = session.get(PaymentProviderTransaction, transaction_id)
-        if existing is not None:
-            if existing.payment_id != payment.id:
-                raise PaymentConflict("La transacción corresponde a otro pago.")
-            continue
-        session.add(PaymentProviderTransaction(provider_transaction_id=transaction_id, payment_id=payment.id, created_at=utc_now()))
-        session.flush()
-        payment = confirm_payment(session, provider, payment_id=payment.id, provider_payment_id=payment.provider_payment_id,
-                                  status="approved", signature="", now=utc_now(), verified=True,
-                                  provider_transaction_id=transaction_id)
+        if stored is None:
+            stored = PaymentProviderTransaction(provider_transaction_id=transaction_id, payment_id=payment.id, created_at=utc_now())
+            session.add(stored)
+        stored.status, stored.amount, stored.live_mode, stored.status_detail = item.status, item.amount, item.live_mode, item.status_detail
+        apply = (item.status == "approved" and not already_approved) or (item.status == "rejected" and payment.status == "pending")
+        if apply:
+            session.flush()
+            payment = confirm_payment(session, provider, payment_id=payment.id, provider_payment_id=payment.provider_payment_id,
+                                      status=item.status, signature="", now=utc_now(), verified=True,
+                                      provider_transaction_id=transaction_id if item.status == "approved" else None)
+            # Rare conflict recovery can restore a prior row or create it without metadata.
+            stored = session.get(PaymentProviderTransaction, transaction_id)
+            if stored is not None and stored.payment_id == payment.id:
+                stored.status, stored.amount, stored.live_mode, stored.status_detail = item.status, item.amount, item.live_mode, item.status_detail
         session.commit()
     return payment
 
@@ -284,7 +292,7 @@ def read_payment(payment_id: UUID, current_user: CurrentUser, session: Database,
         if provider.name != "mercado_pago":
             raise HTTPException(status_code=503, detail=PAYMENTS_NOT_CONFIGURED)
         try:
-            transaction_ids = provider.lookup(payment.id, payment.amount, payment.currency)
+            transaction_ids = provider.lookup_evidence(payment.id, payment.amount, payment.currency)
             payment = _reconcile(session, provider, payment, transaction_ids)
         except MercadoPagoError:
             raise HTTPException(status_code=503, detail="Payment provider unavailable.") from None
@@ -319,7 +327,7 @@ def mercado_pago_webhook(request: Request, session: Database, settings: AppSetti
         payment = session.get(Pago, payment_id)
         if payment is None or payment.provider != "mercado_pago":
             return {"ok": True}
-        transaction_ids = provider.lookup(payment.id, payment.amount, payment.currency, resource_id)
+        transaction_ids = provider.lookup_evidence(payment.id, payment.amount, payment.currency, resource_id)
         _reconcile(session, provider, payment, transaction_ids)
     except MercadoPagoError:
         raise HTTPException(status_code=503, detail="Payment provider unavailable.") from None

@@ -99,6 +99,9 @@ const server = createServer((request, response) => {
       return url.pathname.endsWith("/chat-1") ? send(response, 200, item)
         : send(response, 200, { items: [item], total: 1, limit: 20, offset: 0 });
     }
+    if (["/api/admin/transactions/payout-candidates", "/api/admin/transactions/payouts"].includes(url.pathname)) {
+      return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
+    }
     if (url.pathname === "/api/admin/people/customers") return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";

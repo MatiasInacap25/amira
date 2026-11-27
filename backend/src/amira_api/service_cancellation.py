@@ -16,7 +16,8 @@ from amira_api.models import Pago, Reembolso, Servicio
 from amira_api.payment_provider import SIMULATED_PROVIDER_NAME
 
 
-def cancel_service(session: Session, service_id: UUID, actor: Literal["customer", "provider", "admin"]) -> None:
+def cancel_service(session: Session, service_id: UUID, actor: Literal["customer", "provider", "admin"],
+                   *, expected_payment_id: UUID | None = None) -> None:
     service = session.execute(
         select(Servicio).where(Servicio.id == service_id).with_for_update().execution_options(populate_existing=True)
     ).scalar_one()
@@ -25,6 +26,8 @@ def cancel_service(session: Session, service_id: UUID, actor: Literal["customer"
     if service.status != "confirmed" or service.starts_at is not None:
         raise HTTPException(status_code=409, detail="Only confirmed services that have not started can be cancelled.")
     payment = approved_refundable_payment(session, service)
+    if expected_payment_id is not None and payment.id != expected_payment_id:
+        raise HTTPException(409, "El pago seleccionado no corresponde al servicio.")
     retained = (payment.amount * Decimal("0.10")).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP) if actor == "customer" else Decimal("0")
     refunded = payment.amount - retained
     now = utc_now()

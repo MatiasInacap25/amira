@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { adminRequest } from "@/lib/admin/client";
+import { adminRequest, downloadAdminFile } from "@/lib/admin/client";
 import { adminDate, adminMoney, adminRut } from "@/lib/admin/formatters";
 import { writeFilters, type AdminFilters } from "@/lib/admin/query";
 import type { AdminPageData, AdminResource, AdminRow, ResourceField } from "@/lib/admin/resources";
@@ -12,6 +12,7 @@ import { DataTable, type RowAction } from "./data-table";
 import { ConfirmDialog, DetailDrawer, ReasonDialog } from "./dialogs";
 import { Filters } from "./filters";
 import { StatusBadge } from "./status-badge";
+import { PayoutRelease } from "./payout-release";
 import { AdminTranscript } from "./transcript";
 
 type Mutation = { action: string; label: string; reason?: boolean };
@@ -27,12 +28,15 @@ const extraLabels: Record<string, string> = {
   estimated_weight: "Peso estimado", estimated_volume: "Volumen estimado", linked_quotes: "Cotizaciones", is_exclusive: "Exclusividad",
   payment_confirmed_at: "Pago confirmado", net: "Neto", iva: "IVA del servicio", commission: "Comisión", carrier_amount: "Neto del transportista",
   linked_services: "Servicios vinculados", ordered_stops: "Paradas", assigned_crew: "Vehículo y conductor",
-  bank_status: "Cuenta bancaria", verifications: "Historial de verificaciones", assignments: "Asignaciones", description: "Descripción",
+  transactions: "Transacciones del proveedor", refunds: "Reembolsos",
+  confirmed_at: "Confirmado el", quotation_id: "Cotización", bank_status: "Cuenta bancaria", verifications: "Historial de verificaciones", assignments: "Asignaciones", description: "Descripción",
   commune_code: "Código de comuna", accepted_at: "Aceptada", revoked_at: "Revocada", year: "Año",
 };
 const labels: Record<string, string> = {
   company: "Empresa", independent_driver: "Conductor independiente", independent: "Independiente", blocked: "Bloqueado", active: "Activo",
-  criminal_record: "Certificado de antecedentes", driver_record: "Hoja de vida", resolved: "Resuelto",
+  simulated: "Simulado", mercado_pago: "Mercado Pago", customer: "Cliente", provider: "Proveedor", admin: "Admin",
+  claim: "Reclamo", window: "Plazo de reclamo vigente", bank_account: "Sin cuenta aprobada", payment: "Sin pago aprobado", none: "Sin bloqueo",
+  released: "Liberado", criminal_record: "Certificado de antecedentes", driver_record: "Hoja de vida", resolved: "Resuelto",
   suspended: "Suspendido", disabled: "Deshabilitado", missing: "Sin documento", accepted: "Aceptada", revoked: "Revocada", expired: "Expirada",
 };
 
@@ -143,6 +147,21 @@ export function ResourceTable({ resource, data, filters, detail, detailId, live 
         const value = row[key];
         if (typeof value === "string") link(slug, "detail", label, encodeURIComponent(value));
       }
+    } else if (pathname.endsWith("/pagos")) {
+      result.push({ label: "Ver transacciones del proveedor", onClick: () => showDetail(row.id) });
+      if (typeof row.service_id === "string") link("servicios", "detail", "Ver servicio", encodeURIComponent(row.service_id));
+      const why = row.status !== "approved" ? "Solo se puede reembolsar un pago aprobado" :
+        row.already_paid_out || row.already_refunded ? "El servicio ya tiene un desembolso o reembolso." :
+        row.payment_provider !== "simulated" ? "Solo se pueden reembolsar pagos simulados." :
+        row.service_status !== "confirmed" ? "El flujo de cancelación requiere un servicio confirmado." : undefined;
+      add("refund", "Reembolsar", true, why);
+    } else if (pathname.endsWith("/reembolsos") || pathname.endsWith("/desembolsos")) {
+      if (typeof row.service_id === "string") link("servicios", "detail", "Ver servicio", encodeURIComponent(row.service_id));
+      if (typeof row.payment_id === "string") link("pagos", "detail", "Ver pago", encodeURIComponent(row.payment_id));
+      if (resource.path.endsWith("/payouts")) result.push({ label: "Descargar comprobante", onClick: () => {
+        void downloadAdminFile(`${resource.path}/${id}/receipt`, `desembolso-${id}.html`)
+          .catch(() => toast.error("No se pudo descargar el comprobante."));
+      } });
     } else if (pathname.endsWith("/rutas-compartidas")) {
       add("unpublish", "Despublicar", true, !row.published ? "El viaje no está publicado." : undefined);
       add("close", "Cerrar a nuevas solicitudes", false, !row.accepts_requests ? "El viaje ya está cerrado." : undefined);
@@ -176,6 +195,7 @@ export function ResourceTable({ resource, data, filters, detail, detailId, live 
   };
   const Dialog = mutation?.choice.reason ? ReasonDialog : ConfirmDialog;
   return <>
+    {resource.path.endsWith("/payout-candidates") && <PayoutRelease />}
     <Filters key={writeFilters(filters).toString()} fields={resource.filters} filters={filters} initial={resource.defaults}
       exportPath={`${resource.path}/export.csv`} filename={pathname.split("/").at(-1)} />
     <DataTable
@@ -231,7 +251,7 @@ export function ResourceTable({ resource, data, filters, detail, detailId, live 
         </dl></> : <p>No se pudo cargar el registro.</p>}
     </DetailDrawer>}
     {mutation && <Dialog title={`${mutation.choice.label}: ${title(mutation.row)}`}
-      consequence={mutation.choice.action === "suspend" ? `El perfil se ocultará. Sus ${Number(mutation.row.open_services ?? 0)} servicios abiertos no se cancelarán.` : mutation.choice.action === "cancel" ? "El servicio se cancelará y el cliente recibirá un reembolso simulado del 100 %, sin retención." : mutation.choice.action === "resolve_customer"
+      consequence={mutation.choice.action === "suspend" ? `El perfil se ocultará. Sus ${Number(mutation.row.open_services ?? 0)} servicios abiertos no se cancelarán.` : ["cancel", "refund"].includes(mutation.choice.action) ? "El servicio se cancelará y el cliente recibirá un reembolso simulado del 100 %, sin retención." : mutation.choice.action === "resolve_customer"
         ? "El servicio se cancelará y el pago simulado se reembolsará por completo."
         : mutation.choice.action === "resolve_provider" ? "El servicio volverá a completado y aplicarán las reglas normales de desembolso."
         : "La acción quedará registrada en la auditoría."}

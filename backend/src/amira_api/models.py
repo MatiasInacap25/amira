@@ -680,6 +680,10 @@ class PaymentProviderTransaction(Base):
     provider_transaction_id: Mapped[str] = mapped_column("ID_Transaccion", String(200), primary_key=True)
     payment_id: Mapped[UUID] = mapped_column("ID_Pago", ForeignKey("Pago.ID", ondelete="RESTRICT"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False)
+    status: Mapped[str | None] = mapped_column("Estado_Verificado", String(20))
+    amount: Mapped[Decimal | None] = mapped_column("Monto_Verificado", Numeric(18, 4))
+    live_mode: Mapped[bool | None] = mapped_column("Modo_Produccion", Boolean)
+    status_detail: Mapped[str | None] = mapped_column("Detalle_Estado", String(120))
 
 
 class TermsAcceptance(Base):

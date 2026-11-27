@@ -37,6 +37,7 @@ export function Filters({ filters, fields, exportPath, filename, initial }: {
       const next = Object.fromEntries(["q", ...fields.map(({ key }) => key)]
         .map((key) => [key, String(form.get(key) ?? "").trim()]).filter(([, value]) => value));
       if (filters.sort) next.sort = filters.sort;
+      if (filters.tab) next.tab = filters.tab;
       go(next);
     }}>
       <label className="grid gap-1">Buscar<input name="q" type="search" className="admin-input" value={search}

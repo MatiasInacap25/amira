@@ -290,7 +290,8 @@ def transcript(session: Session, chat_id: UUID, admin_id: UUID, reason: str | No
     }
 
 
-def cancel_admin_service(session: Session, key: UUID, admin_id: UUID, reason: str | None, settings: Settings):
+def cancel_admin_service(session: Session, key: UUID, admin_id: UUID, reason: str | None, settings: Settings,
+                         *, expected_payment_id: UUID | None = None):
     reason = require_reason(reason)
     if "app_env" not in settings.model_fields_set or settings.app_env.strip().lower() not in SIMULATOR_APP_ENVS:
         raise HTTPException(503, "El reembolso simulado no está habilitado.")
@@ -299,7 +300,9 @@ def cancel_admin_service(session: Session, key: UUID, admin_id: UUID, reason: st
         raise HTTPException(404, "No se encontró el servicio.")
     if service.status != "confirmed" or service.starts_at is not None:
         raise HTTPException(409, "Solo se pueden cancelar servicios confirmados que no hayan comenzado.")
-    cancel_service(session, key, "admin")
+    if session.scalar(select(Desembolso.id).where(Desembolso.service_id == key).limit(1)) is not None:
+        raise HTTPException(409, "El servicio ya tiene un desembolso.")
+    cancel_service(session, key, "admin", expected_payment_id=expected_payment_id)
     append_audit(session, admin_user_id=admin_id, action="service.cancel", entity_type="service", entity_id=key,
                  reason=reason, before={"status": "confirmed"}, after={"status": service.status,
                  "refunded_amount": service.cancellation_refunded_amount, "retained_amount": service.cancellation_retained_amount})

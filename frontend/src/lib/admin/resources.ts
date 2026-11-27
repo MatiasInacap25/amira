@@ -135,4 +135,38 @@ export const adminResources: Record<string, AdminResource> = {
     filters: [{ key: "status", label: "Estado" }, options("published", "Publicado", [["true", "Sí"], ["false", "No"]]),
       options("accepts_requests", "Acepta solicitudes", [["true", "Sí"], ["false", "No"]]), ...dates],
   },
+  pagos: {
+    title: "Pagos", description: "Consulta pagos, evidencia verificada y reembolsos simulados.", path: "/api/admin/transactions/payments",
+    fields: [field("id", "N°"), field("service_id", "Servicio"), field("quotation_id", "Cotización"), field("customer", "Cliente"),
+      field("provider", "Proveedor"), field("amount", "Monto", "money", "amount"), field("net", "Neto", "money"), field("iva", "IVA", "money"),
+      status, field("payment_provider", "Proveedor de pago", "status"), field("external_id", "ID externo"), created,
+      field("confirmed_at", "Aprobado", "date")],
+    filters: [options("status", "Estado", [["pending", "Pendiente"], ["approved", "Aprobado"], ["rejected", "Rechazado"]]),
+      options("payment_provider", "Proveedor de pago", [["simulated", "Simulado"], ["mercado_pago", "Mercado Pago"]]),
+      { key: "quotation", label: "ID de cotización" }, { key: "customer", label: "ID del cliente" }, { key: "service", label: "ID del servicio" },
+      { key: "minimum_amount", label: "Monto mínimo", type: "number" }, { key: "maximum_amount", label: "Monto máximo", type: "number" }, ...dates],
+  },
+  reembolsos: {
+    title: "Reembolsos y cancelaciones", description: "Consulta devoluciones y retenciones registradas.", path: "/api/admin/transactions/refunds",
+    fields: [field("id", "N°"), field("payment_id", "Pago"), field("service_id", "Servicio"), field("customer", "Cliente"),
+      field("amount", "Monto devuelto", "money"), field("retained", "Monto retenido", "money"), field("reason", "Motivo"),
+      field("actor", "Iniciado por", "status"), field("created_at", "Fecha", "date", "created_at"), status],
+    filters: [options("actor", "Iniciado por", [["customer", "Cliente"], ["provider", "Proveedor"], ["admin", "Admin"]]),
+      { key: "service", label: "ID del servicio" }, ...dates],
+  },
+  desembolsos: {
+    title: "Desembolsos", description: "Consulta desembolsos pendientes y sus bloqueos.", path: "/api/admin/transactions/payout-candidates",
+    fields: [field("service_id", "Servicio"), field("provider", "Proveedor"), field("account_status", "Cuenta bancaria", "status"),
+      field("amount", "Bruto", "money"), field("commission", "Comisión", "money"), field("net_amount", "Neto a pagar", "money"),
+      field("completed_at", "Completado el", "date"), field("blocked_by", "Bloqueado por", "status")],
+    filters: [providerFilter, ...dates],
+  },
+};
+
+export const paidPayoutResource: AdminResource = {
+  title: "Desembolsos", description: "Consulta desembolsos liberados y sus comprobantes.", path: "/api/admin/transactions/payouts",
+  fields: [field("id", "N°"), field("service_id", "Servicio"), field("provider", "Proveedor"), field("amount", "Bruto", "money"),
+    field("commission", "Comisión", "money"), field("net_amount", "Neto", "money"),
+    field("external_id", "ID de proveedor"), field("confirmed_at", "Liberado el", "date"), status],
+  filters: [providerFilter, ...dates], defaults: { tab: "paid" },
 };
