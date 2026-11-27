@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { expect, test, type BrowserContext } from "@playwright/test";
 
 for (const path of ["/admin", "/admin/auditoria"]) {
@@ -186,6 +187,50 @@ test("payment disclosure keeps primary filters visible and preserves advanced qu
   await page.getByRole("button", { name: "Limpiar filtros" }).click();
   await expect(page).toHaveURL(/\/admin\/pagos$/);
   await expect(minimum).toBeHidden();
+});
+
+test("admin layout fits the phone viewport and scrolls wide tables locally", async ({ page, context }) => {
+  test.setTimeout(60_000);
+  await login(context, true);
+  const screenshotDir = process.env.AMIRA_ADMIN_SCREENSHOT_DIR;
+  const pages = [
+    { path: "/admin", slug: "principal", title: "Principal" },
+    { path: "/admin/clientes", slug: "clientes", title: "Clientes" },
+    { path: "/admin/pagos", slug: "pagos", title: "Pagos" },
+  ];
+  const phone = { name: "phone", width: 390, height: 844 };
+  const desktop = { name: "desktop", width: 1440, height: 1000 };
+  for (const route of pages) {
+    for (const { name, width, height } of screenshotDir ? [desktop, phone] : [phone]) {
+      await page.setViewportSize({ width, height });
+      await page.goto(route.path);
+      await expect(page.getByRole("heading", { name: route.title, level: 1, exact: true })).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      if (name === "phone") {
+        const fit = await page.evaluate(() => {
+          const main = document.querySelector("main")!;
+          const table = main.querySelector(".admin-table-scroll");
+          return {
+            page: document.documentElement.scrollWidth === document.documentElement.clientWidth,
+            main: main.scrollWidth === main.clientWidth,
+            tableScrolls: Boolean(table && table.scrollWidth > table.clientWidth),
+          };
+        });
+        expect(fit.page, route.path).toBe(true);
+        expect(fit.main, route.path).toBe(true);
+        if (route.slug === "pagos") expect(fit.tableScrolls).toBe(true);
+      }
+      if (screenshotDir) {
+        await page.screenshot({
+          path: join(screenshotDir, `after-${route.slug}-${name}.png`),
+          fullPage: true,
+          animations: "disabled",
+          caret: "initial",
+          style: "nextjs-portal { display: none }",
+        });
+      }
+    }
+  }
 });
 
 test("document rejection requires a reason and opens the next pending document", async ({ page, context }) => {

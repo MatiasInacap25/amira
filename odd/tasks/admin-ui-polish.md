@@ -46,8 +46,8 @@ Read the relevant guide in `frontend/node_modules/next/dist/docs/` before writin
 |---|---|---|---|---|
 | T1 | S1, S5 | inline (Codex) | complete | `4be0bf3` |
 | T2 | S2 | inline (Codex) | complete | `4b1d1dc` |
-| T3 | S3, S4 | inline (Codex) | complete | `feat(admin): polish resource tables and filter controls` |
-| T4 | S6 | inline (Codex) | pending | |
+| T3 | S3, S4 | inline (Codex) | complete | `dcfad04` |
+| T4 | S6 | inline (Codex) | complete | `test(admin): verify responsive layout and record UI polish checks` |
 
 Route: sequential inline work in the already-checked-out Codex branch; each slice has its own local commit. No branch or remote changes. Risk: presentational CSS/markup and narrowly scoped browser interaction, with no data or auth changes.
 
@@ -60,3 +60,5 @@ Route: sequential inline work in the already-checked-out Codex branch; each slic
 - T1: S1/S5. Playwright reproduced a transparent frame before the fix; all 13 admin Playwright checks passed after it. Lint and Node unit (246 pass, one existing TODO) passed; tsc passed after regenerating stale route types with next typegen. All 12 referenced admin tokens resolve. Captured six baseline screenshots with the local fixture before editing the UI.
 - T2: S2. The new grouping test was RED before implementation; then all 14 admin Playwright checks passed, including the 4/2/1 grid, period query, and chart colors. Lint, tsc, and Node unit (246 pass, one existing TODO) passed. Native assessment for T1: medium, under budget.
 - T3: S3/S4. RED reproduced the full UUID and always-visible advanced filters; 16 admin Playwright checks passed after the change, including clipboard, original detail URLs, pagination, disclosure and query/reset behavior. Lint, tsc and Node unit (246 pass, one existing TODO) passed. Native assessment through T2: medium, under budget.
+- T4 verification: lint and tsc passed; Node unit: 246 passed, one existing TODO; Next.js 16.4.6 production build passed. Serial admin Playwright: 17 passed. Full Playwright run with four workers: 484 passed, 10 failed; all 10 passed on the serial last-failed rerun, so all 494 cases passed across the two runs. Independent S1–S5 verification found no blockers and confirmed unchanged auth guards and fixture data. Verified the three phone routes fit 390px, with payment overflow confined to the table. The six before and six after screenshots are in `output/admin-ui-polish/`; use `AMIRA_ADMIN_SCREENSHOT_DIR=../output/admin-ui-polish` with the admin layout Playwright test to regenerate the after set. Native assessment through T3: high because a GET fixture was added to the fake-auth test harness; no production auth or backend changes.
+- Native review through T3: readability and reliability approved, and the exact acknowledgement closed the transaction. Both lenses noted the same non-blocking clipboard caveat: a denied or unavailable clipboard write has no visible failure feedback. No correction was offered.
