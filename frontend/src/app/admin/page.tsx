@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { DashboardPeriod } from "@/components/admin/finance-controls";
 import { KpiCard } from "@/components/admin/kpi-card";
 import { StatusBadge } from "@/components/admin/status-badge";
@@ -27,23 +28,29 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
     <header><h1 className="text-2xl font-semibold">Principal</h1><p>Resumen de actividad y movimientos de Amira.</p></header>
     <DashboardPeriod key={`${period.preset}:${query}`} period={period} />
     {!summary ? <p role="alert">No se pudo cargar el resumen del período. <Link href="/admin">Reintentar</Link></p> :
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard title="Recaudado" value={money(summary.collected)} />
-        <KpiCard title="Reembolsado" value={money(summary.refunded)} />
-        <KpiCard title="Recaudado neto" value={money(summary.net_collected)} />
-        <KpiCard title="Por pagar a transportistas" value={money(summary.payout_due)}
-          description={`${summary.payout_due_count} servicios, ${summary.payout_blocked_count} bloqueados por reclamo`} />
-        <KpiCard title="Pagado a transportistas" value={money(summary.payout_paid)} />
-        <KpiCard title="Comisiones" value={money(summary.commission_gross)}
-          description={`Neto ${money(summary.commission_net)} · IVA ${money(summary.commission_iva)}`} />
-        <KpiCard title="IVA débito de Amira" value={money(summary.platform_iva)}
-          description="IVA de comisiones y retenciones por cancelación." />
-        <KpiCard title="Servicios en curso" value={summary.service_counts.in_progress} />
-        <KpiCard title="Servicios completados" value={summary.service_counts.completed} />
-        <KpiCard title="Servicios cancelados" value={summary.service_counts.cancelled} />
-        {pending.map(([key, label, status]) =>
-          <KpiCard key={key} title={label} value={summary.pending[key] ?? 0} href={`/admin/${key}?status=${status}`} />)}
-      </div>}
+      <>
+        <KpiGroup id="dinero" title="Dinero">
+          <KpiCard title="Recaudado" value={money(summary.collected)} />
+          <KpiCard title="Reembolsado" value={money(summary.refunded)} />
+          <KpiCard title="Recaudado neto" value={money(summary.net_collected)} />
+          <KpiCard title="Comisiones" value={money(summary.commission_gross)}
+            description={`Neto ${money(summary.commission_net)} · IVA ${money(summary.commission_iva)}`} />
+          <KpiCard title="IVA débito de Amira" value={money(summary.platform_iva)}
+            description="IVA de comisiones y retenciones por cancelación." />
+        </KpiGroup>
+        <KpiGroup id="transportistas" title="Transportistas">
+          <KpiCard title="Por pagar a transportistas" value={money(summary.payout_due)}
+            description={`${summary.payout_due_count} servicios, ${summary.payout_blocked_count} bloqueados por reclamo`} />
+          <KpiCard title="Pagado a transportistas" value={money(summary.payout_paid)} />
+        </KpiGroup>
+        <KpiGroup id="operacion" title="Operación">
+          <KpiCard title="Servicios en curso" value={summary.service_counts.in_progress} />
+          <KpiCard title="Servicios completados" value={summary.service_counts.completed} />
+          <KpiCard title="Servicios cancelados" value={summary.service_counts.cancelled} />
+          {pending.map(([key, label, status]) =>
+            <KpiCard key={key} title={label} value={summary.pending[key] ?? 0} href={`/admin/${key}?status=${status}`} />)}
+        </KpiGroup>
+      </>}
     {days && <DailyChart days={days} />}
     <section className="space-y-3">
       <h2 className="text-xl font-semibold">Últimos movimientos</h2>
@@ -61,21 +68,30 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   </main>;
 }
 
+function KpiGroup({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return <section className="space-y-3" aria-labelledby={id}>
+    <h2 id={id} className="text-xl font-semibold">{title}</h2>
+    <div className="admin-kpi-grid">{children}</div>
+  </section>;
+}
+
 function DailyChart({ days }: { days: FinanceDay[] }) {
-  const peak = Math.max(1, ...days.map((day) => Number(day.collected)));
+  const peak = Math.max(1, ...days.flatMap((day) => [Number(day.collected), Number(day.commission)]));
   const step = 600 / Math.max(1, days.length);
-  return <section className="admin-card">
+  const barWidth = Math.min(step * .43, 48);
+  return <section className="admin-card admin-daily-chart">
     <h2 className="text-xl font-semibold">Recaudación y comisiones diarias</h2>
-    <p>Azul: recaudado · Naranja: comisiones</p>
+    <p className="admin-chart-legend"><span data-series="collected">Azul: recaudado</span> · <span data-series="commission">Naranja: comisiones</span></p>
     <svg viewBox="0 0 600 135" role="img" aria-label="Gráfico diario de recaudación y comisiones">
-      <line x1="0" y1="134" x2="600" y2="134" stroke="var(--lp-line)" />
+      <line x1="0" y1="134" x2="600" y2="134" stroke="var(--lp-muted)" vectorEffect="non-scaling-stroke" />
       {days.map((day, index) => {
         const gross = Number(day.collected) * 130 / peak;
         const commission = Number(day.commission) * 130 / peak;
+        const center = (index + .5) * step;
         return <g key={day.day}>
           <title>{`${day.day}: ${money(day.collected)} recaudado, ${money(day.commission)} comisión`}</title>
-          <rect x={index * step} y={134 - gross} width={step * .43} height={gross} fill="var(--lp-ink)" />
-          <rect x={index * step + step * .47} y={134 - commission} width={step * .43} height={commission} fill="var(--lp-action)" />
+          <rect x={center - barWidth - step * .03} y={134 - gross} width={barWidth} height={gross} fill="var(--lp-ink)" />
+          <rect x={center + step * .03} y={134 - commission} width={barWidth} height={commission} fill="var(--lp-action)" />
         </g>;
       })}
     </svg>
