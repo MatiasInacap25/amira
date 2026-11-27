@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import logging
 import re
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode, urlparse
 from uuid import UUID
@@ -31,6 +32,15 @@ def verify_webhook_signature(secret: str, resource_id: str, request_id: str, sig
 
 class MercadoPagoError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class VerifiedPaymentEvidence:
+    transaction_id: str
+    status: str
+    amount: Decimal
+    live_mode: bool
+    status_detail: str | None
 
 
 class MercadoPagoProvider:
@@ -99,6 +109,9 @@ class MercadoPagoProvider:
         return self._sandbox_url(data)
 
     def lookup(self, payment_id: UUID, amount: Decimal, currency: str, resource_id: str | None = None):
+        return [(item.transaction_id, item.status) for item in self.lookup_evidence(payment_id, amount, currency, resource_id)]
+
+    def lookup_evidence(self, payment_id: UUID, amount: Decimal, currency: str, resource_id: str | None = None) -> list[VerifiedPaymentEvidence]:
         if resource_id is not None:
             data = self._request("GET", f"/v1/payments/{resource_id}")
             if str(data.get("id")) != resource_id:
@@ -122,6 +135,9 @@ class MercadoPagoProvider:
             except InvalidOperation:
                 matching_amount = False
             if matching_amount and item.get("id") and item.get("status") in {"approved", "rejected"}:
-                evidence.append((str(item["id"]), item["status"]))
+                detail = item.get("status_detail")
+                if not isinstance(detail, str) or not re.fullmatch(r"[a-z0-9_]{1,120}", detail):
+                    detail = None
+                evidence.append(VerifiedPaymentEvidence(str(item["id"]), item["status"], amount, item["live_mode"], detail))
         # Process approvals first when one checkout contains multiple payment attempts.
-        return sorted(evidence, key=lambda item: item[1] != "approved")
+        return sorted(evidence, key=lambda item: item.status != "approved")

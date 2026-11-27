@@ -21,6 +21,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    JSON,
     Numeric,
     SmallInteger,
     String,
@@ -38,6 +39,22 @@ class Base(DeclarativeBase):
     """Shared SQLAlchemy metadata for Alembic and structural tests."""
 
     type_annotation_map = {dict[str, Any]: JSONB}
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_log"
+    __table_args__ = (Index("ix_admin_audit_log_created_at", "created_at", "id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    # Record the Supabase subject even when the admin has no marketplace account.
+    admin_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(500))
+    before: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"))
+    after: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class Region(Base):
@@ -79,6 +96,8 @@ class Usuario(Base):
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    blocked_at: Mapped[datetime | None] = mapped_column("Fecha_Bloqueo", DateTime(timezone=True))
+    blocked_reason: Mapped[str | None] = mapped_column("Motivo_Bloqueo", String(500))
     auth_user_id: Mapped[UUID] = mapped_column("ID_Auth_Supabase", Uuid(as_uuid=True), nullable=False, unique=True)
     first_name: Mapped[str] = mapped_column("Nombre", String(120), nullable=False)
     last_name: Mapped[str] = mapped_column("Apellido", String(120), nullable=False)
@@ -143,6 +162,8 @@ class Perfil(Base):
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    suspended_at: Mapped[datetime | None] = mapped_column("Fecha_Suspension", DateTime(timezone=True))
+    suspended_reason: Mapped[str | None] = mapped_column("Motivo_Suspension", String(500))
     owner_user_id: Mapped[UUID] = mapped_column("ID_user", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column("Descripcion", Text)
     name: Mapped[str] = mapped_column("Nombre", String(160), nullable=False)
@@ -251,6 +272,8 @@ class Vehiculo(Base):
     )
 
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    disabled_at: Mapped[datetime | None] = mapped_column("Fecha_Deshabilitacion", DateTime(timezone=True))
+    disabled_reason: Mapped[str | None] = mapped_column("Motivo_Deshabilitacion", String(500))
     profile_id: Mapped[UUID] = mapped_column("ID_Perfil", ForeignKey("Perfil.ID", ondelete="RESTRICT"), nullable=False, index=True)
     plate: Mapped[str] = mapped_column("Patente", String(16), nullable=False)
     brand: Mapped[str] = mapped_column("Marca", String(80), nullable=False)
@@ -275,6 +298,8 @@ class TipoServicio(Base):
     id: Mapped[UUID] = mapped_column("ID", Uuid(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column("Nombre_servicio", String(120), nullable=False, unique=True)
     slug: Mapped[str] = mapped_column("Slug", String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column("Descripcion", Text)
+    deactivated_at: Mapped[datetime | None] = mapped_column("Fecha_Desactivacion", DateTime(timezone=True))
     available_profiles: Mapped[list[ServicioDisponible]] = relationship(back_populates="service_type")
     quotations: Mapped[list[Cotizacion]] = relationship(back_populates="service_type")
     form_requests: Mapped[list[FormularioServicio]] = relationship(back_populates="service_type")
@@ -657,6 +682,10 @@ class PaymentProviderTransaction(Base):
     provider_transaction_id: Mapped[str] = mapped_column("ID_Transaccion", String(200), primary_key=True)
     payment_id: Mapped[UUID] = mapped_column("ID_Pago", ForeignKey("Pago.ID", ondelete="RESTRICT"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False)
+    status: Mapped[str | None] = mapped_column("Estado_Verificado", String(20))
+    amount: Mapped[Decimal | None] = mapped_column("Monto_Verificado", Numeric(18, 4))
+    live_mode: Mapped[bool | None] = mapped_column("Modo_Produccion", Boolean)
+    status_detail: Mapped[str | None] = mapped_column("Detalle_Estado", String(120))
 
 
 class TermsAcceptance(Base):
@@ -710,6 +739,8 @@ class Reclamo(Base):
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False, server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column("Fecha_Resolucion", DateTime(timezone=True))
     resolution: Mapped[str | None] = mapped_column("Resolucion", Text)
+    resolved_by: Mapped[UUID | None] = mapped_column("ID_Resolutor_Admin", Uuid(as_uuid=True))
+    resolution_reason: Mapped[str | None] = mapped_column("Motivo_Resolucion", String(500))
     private_evidence_key: Mapped[str | None] = mapped_column("Referencia_Evidencia_Privada", String(512))
 
     service: Mapped[Servicio] = relationship(back_populates="claims")
@@ -729,6 +760,8 @@ class Valoracion(Base):
     user_id: Mapped[UUID] = mapped_column("ID_Usuario", ForeignKey("Usuario.ID", ondelete="RESTRICT"), nullable=False, index=True)
     rating: Mapped[int] = mapped_column("Rating", SmallInteger, nullable=False)
     comment: Mapped[str | None] = mapped_column("Comentario", Text)
+    hidden_at: Mapped[datetime | None] = mapped_column("Fecha_Ocultacion", DateTime(timezone=True))
+    hidden_reason: Mapped[str | None] = mapped_column("Motivo_Ocultacion", String(500))
     created_at: Mapped[datetime] = mapped_column("Fecha_Registro", DateTime(timezone=True), nullable=False, server_default=func.now())
 
     service: Mapped[Servicio] = relationship(back_populates="rating")
@@ -766,6 +799,7 @@ class VerificacionIdentidad(Base):
     pdf_storage_key: Mapped[str | None] = mapped_column("Clave_PDF", String(512))
     # Set when an administrator approves or rejects a certificate that was in review.
     reviewed_at: Mapped[datetime | None] = mapped_column("Fecha_Revision", DateTime(timezone=True))
+    reviewed_by: Mapped[UUID | None] = mapped_column("ID_Revisor_Admin", Uuid(as_uuid=True))
 
     user: Mapped[Usuario] = relationship(back_populates="identity_verifications")
 
@@ -782,6 +816,10 @@ class CuentaDesembolso(Base):
     provider: Mapped[str] = mapped_column("Proveedor", String(80), nullable=False)
     provider_account_id: Mapped[str] = mapped_column("ID_Cuenta_Proveedor", String(200), nullable=False)
     registration_status: Mapped[str] = mapped_column("Estado_Registro", String(40), nullable=False)
+    holder_rut: Mapped[str | None] = mapped_column("Rut_Titular", String(16))
+    bank_name: Mapped[str | None] = mapped_column("Banco", String(100))
+    account_type: Mapped[str | None] = mapped_column("Tipo_Cuenta", String(50))
+    account_number: Mapped[str | None] = mapped_column("Numero_Cuenta", String(64))
     payouts_enabled: Mapped[bool] = mapped_column("Habilitada_Desembolsos", Boolean, nullable=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column("Fecha_Creacion", DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column("Fecha_Actualizacion", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

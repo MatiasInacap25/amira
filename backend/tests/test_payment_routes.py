@@ -932,6 +932,7 @@ def test_verifier_rejected_evidence_is_persisted(pay, scenario, db, monkeypatch)
     assert result.status_code == 200
     assert result.json()["status"] == "rejected"
     assert db.query(Pago).one().status == "rejected"
+    assert db.query(PaymentProviderTransaction).one().status == "rejected"
     assert db.query(Servicio).count() == 0
 
     provider_status[0] = "approved"
@@ -939,4 +940,5 @@ def test_verifier_rejected_evidence_is_persisted(pay, scenario, db, monkeypatch)
     assert later.status_code == 200
     assert later.json()["status"] == "approved"
     assert db.query(Pago).one().status == "approved"
+    assert db.query(PaymentProviderTransaction).one().status == "approved"
     assert db.query(Servicio).count() == 1

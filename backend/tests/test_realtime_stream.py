@@ -86,6 +86,9 @@ class RecordingSession:
     def __init__(self):
         self.closed = False
 
+    def scalar(self, _statement):
+        return None
+
 
 def recording_session_dependency(sessions: list[RecordingSession]) -> Callable[[], Iterator[RecordingSession]]:
     def dependency() -> Iterator[RecordingSession]:
@@ -104,7 +107,7 @@ def open_stream(auth_id: UUID, expires_at: datetime | None, during: Callable[[],
 
     async def run() -> httpx.Response:
         app.dependency_overrides[get_verified_user] = lambda: user_for(auth_id, expires_at)
-        app.dependency_overrides.setdefault(get_db_session, lambda: None)
+        app.dependency_overrides.setdefault(get_db_session, RecordingSession)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             worker = asyncio.create_task(during())
             response = await asyncio.wait_for(client.get("/api/chats/events"), timeout=5)

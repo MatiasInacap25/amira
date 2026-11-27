@@ -16,6 +16,7 @@ from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
 from amira_api.driver_verification import verified_driver_condition
+from amira_api.moderation import require_enabled_vehicles, require_unsuspended_provider
 from amira_api.models import Conductor, Servicio, Usuario, Vehiculo, Viaje
 from amira_api.public_routes import MAX_OFFSET, MAX_PAGE_SIZE, _owned_provider
 from amira_api.shared_trip_schemas import (
@@ -52,6 +53,7 @@ def publish_provider_shared_trip(
     session: Database,
 ) -> SharedTripPublished:
     owner_account_id, profile_id = _owned_provider(session, current_user)
+    require_unsuspended_provider(session, profile_id)
     service = session.execute(
         select(Servicio).where(Servicio.id == service_id, Servicio.profile_id == profile_id).with_for_update()
     ).scalar_one_or_none()
@@ -62,6 +64,7 @@ def publish_provider_shared_trip(
     ).scalar_one_or_none()
     if vehicle is None:
         raise HTTPException(status_code=404, detail=VEHICLE_NOT_FOUND_MESSAGE)
+    require_enabled_vehicles(session, [vehicle.id])
     driver_id = session.execute(
         provider_drivers_query(profile_id, owner_account_id).where(Conductor.id == payload.driver_id)
     ).scalar_one_or_none()

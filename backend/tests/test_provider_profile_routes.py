@@ -46,7 +46,7 @@ def db():
             'CREATE TABLE "Comunas" ("Codigo" VARCHAR(5) PRIMARY KEY, "Codigo_Region" VARCHAR(2) NOT NULL, "Nombre" VARCHAR(120) NOT NULL)'
         ))
         connection.execute(text(
-            'CREATE TABLE "Tipos_Servicio" ("ID" CHAR(32) PRIMARY KEY, "Nombre_servicio" VARCHAR(120) NOT NULL, "Slug" VARCHAR(120) NOT NULL)'
+            'CREATE TABLE "Tipos_Servicio" ("ID" CHAR(32) PRIMARY KEY, "Nombre_servicio" VARCHAR(120) NOT NULL, "Slug" VARCHAR(120) NOT NULL, "Descripcion" TEXT, "Fecha_Desactivacion" DATETIME)'
         ))
         connection.execute(text(
             f"INSERT INTO \"Comunas\" VALUES ('{COMMUNE_SANTIAGO}', '13', 'Santiago'), "

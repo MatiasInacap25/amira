@@ -12,7 +12,8 @@ from amira_api.auth import AuthenticatedUser, get_current_user
 from amira_api.chat_access import caller_account, caller_chats
 from amira_api.clock import utc_now
 from amira_api.db import get_db_session
-from amira_api.models import Chat, Cotizacion, FormularioServicio, Pago
+from amira_api.moderation import require_unsuspended_provider
+from amira_api.models import Chat, Cotizacion, FormularioServicio, Perfil, Pago
 from amira_api.quotation_schemas import Quotation, QuotationCreate
 from amira_api.realtime import ChatEventKind, publish_chat_event
 from amira_api.quotation_service import PENDING, chat_is_settled, effective_status, quotation_view
@@ -39,6 +40,10 @@ def create_quotation(
         raise HTTPException(status_code=404, detail="Chat not found.")
     if row["customer_id"] == caller_id:
         raise HTTPException(status_code=403, detail="Solo el prestador puede enviar cotizaciones.")
+
+    profile_id = session.scalar(select(Perfil.id).where(Perfil.owner_user_id == caller_id))
+    if profile_id is not None:
+        require_unsuspended_provider(session, profile_id)
 
     # Locking the chat serializes concurrent quotations, so exactly one pending quotation survives.
     session.execute(select(Chat.id).where(Chat.id == chat_id).with_for_update()).one()

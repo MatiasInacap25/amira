@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from amira_api.auth import AuthenticatedUser, get_verified_user
+from amira_api.auth import AuthenticatedUser, ensure_account_not_blocked, get_verified_user
 from amira_api.db import get_db_session
 from amira_api.models import EmailFallbackChallenge
 from amira_api.settings import Settings, get_settings
@@ -138,6 +138,7 @@ def issue_email_code(
     sender: Annotated[EmailFallbackSender | None, Depends(get_email_fallback_sender)],
 ) -> ChallengeResponse:
     _require_password_session(user)
+    ensure_account_not_blocked(session, user.id)
     key = _key(settings)
     if sender is None:
         raise HTTPException(status_code=503, detail="Email fallback delivery is not configured.")
@@ -206,6 +207,7 @@ def verify_email_code(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ProofResponse:
     _require_password_session(user)
+    ensure_account_not_blocked(session, user.id)
     key = _key(settings)
     challenge = session.execute(
         select(EmailFallbackChallenge)

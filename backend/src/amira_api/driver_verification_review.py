@@ -5,6 +5,7 @@ certificates are); rejecting it stores the reviewer's reason, which the driver s
 certificate of that type. The row is locked while it changes, so two reviewers cannot decide it twice.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -65,7 +66,7 @@ def _locked_in_review(session: Session, certificate_id: UUID) -> VerificacionIde
     return row
 
 
-def approve_certificate(session: Session, certificate_id: UUID, now: datetime) -> None:
+def approve_certificate(session: Session, certificate_id: UUID, now: datetime, *, on_review: Callable[[VerificacionIdentidad], None] | None = None) -> None:
     try:
         row = _locked_in_review(session, certificate_id)
         row.status = "verified"
@@ -73,13 +74,15 @@ def approve_certificate(session: Session, certificate_id: UUID, now: datetime) -
         row.verified_at = now
         row.reviewed_at = now
         row.updated_at = now
+        if on_review is not None:
+            on_review(row)
         session.commit()
     except ReviewRefused:
         session.rollback()
         raise
 
 
-def reject_certificate(session: Session, certificate_id: UUID, reason: str, now: datetime) -> None:
+def reject_certificate(session: Session, certificate_id: UUID, reason: str, now: datetime, *, on_review: Callable[[VerificacionIdentidad], None] | None = None) -> None:
     reason = reason.strip()
     try:
         if not reason:
@@ -89,6 +92,8 @@ def reject_certificate(session: Session, certificate_id: UUID, reason: str, now:
         row.rejection_reason = reason
         row.reviewed_at = now
         row.updated_at = now
+        if on_review is not None:
+            on_review(row)
         session.commit()
     except ReviewRefused:
         session.rollback()

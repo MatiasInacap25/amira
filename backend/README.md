@@ -347,3 +347,14 @@ trip, or enter the normal completed-service payout process.
 Apply migration `20261116_0001` before deploying this code. It adds nullable audit
 columns and extends the status constraint without rewriting existing service rows.
 Downgrade refuses while cancelled services exist to avoid losing their history.
+
+### Administrator access and audit
+
+Set `ADMIN_USER_IDS` to a comma-separated list of Supabase Auth user UUIDs.
+An empty list grants no access. Administrator endpoints still require the
+normal account assurance check. Verify access with `GET /api/admin/me`.
+
+`GET /api/admin/audit` lists audit events; `GET /api/admin/audit/export.csv`
+exports up to 5,000 matching records. Admin mutations must stage the event in
+the same database transaction as the action and record changed, non-secret
+fields only. The audit API does not expose write endpoints.

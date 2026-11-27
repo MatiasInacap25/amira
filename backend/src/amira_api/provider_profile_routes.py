@@ -16,6 +16,7 @@ from amira_api.clock import utc_now
 from amira_api.db import get_db_session
 from amira_api.driver_verification import is_driver_verified
 from amira_api.invitation_routes import _owned_provider
+from amira_api.moderation import require_unsuspended_provider
 from amira_api.models import Commune, Perfil, ServicioDisponible, TipoServicio
 from amira_api.provider_profile_schemas import ProviderProfileUpdate, ProviderProfileView
 from amira_api.service_type_visibility import hidden_service_type_clause, visible_service_type_clause
@@ -117,6 +118,7 @@ def update_provider_profile(
 @router.post("/publish", response_model=ProviderProfileView)
 def publish_provider_profile(current_user: CurrentUser, session: Database) -> ProviderProfileView:
     _, profile, _, _ = _owned_provider(session, current_user.id, lock=True)
+    require_unsuspended_provider(session, profile.id)
     service_type_ids = list(session.execute(
         select(ServicioDisponible.service_type_id).where(ServicioDisponible.profile_id == profile.id)
     ).scalars())
