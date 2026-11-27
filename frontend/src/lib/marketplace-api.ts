@@ -99,7 +99,12 @@ export type CustomerService = {
   providerProfileId: string;
   providerName: string;
   serviceTypeName: string;
+  status: ServiceStatus;
   completedAt: string | null;
+  // Requested date and time of the service, or null when the request has none yet.
+  scheduledAt: string | null;
+  origin: string | null;
+  destination: string | null;
   rating: CustomerServiceRating | null;
 };
 
@@ -193,6 +198,8 @@ export type ServiceDetail = ServiceListItem & {
   deliveryPhotoAvailable: boolean;
   customerConsentAt: string | null;
   claimOpen: boolean;
+  // Customer's own rating of this service, or null. Always null for the provider viewer.
+  rating?: CustomerServiceRating | null;
   // Customer-only flags; providers always receive false.
   canClaim: boolean;
   canConsent: boolean;

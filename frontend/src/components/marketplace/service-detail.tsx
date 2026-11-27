@@ -18,6 +18,8 @@ type ServiceDetailProps = {
   deliveryPhoto?: ReactNode;
   // Customer-only slot: claim window, consent and claim actions.
   customerResolution?: ReactNode;
+  // Customer-only slot for a completed service: the rating form or the stored rating.
+  serviceRating?: ReactNode;
   // Provider-only slot: publish as a shared trip, or the reason it cannot be published.
   sharedTrip?: ReactNode;
   // In-progress slot: the driver's sharing notice, or the customer's live map. Omitted when neither applies.
@@ -34,7 +36,7 @@ function locationLabel(...parts: Array<string | null | undefined>) {
 }
 
 /** Body of a service. The viewer's role decides how the other party is labelled. */
-export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution, sharedTrip, locationSharing, cancellation, documents }: ServiceDetailProps) {
+export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution, serviceRating, sharedTrip, locationSharing, cancellation, documents }: ServiceDetailProps) {
   const counterpartLabel = service.viewerRole === "customer" ? "Prestador" : "Cliente";
   const breakdown = service.amountBreakdown ?? null;
   return (
@@ -175,6 +177,13 @@ export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhot
         <section aria-labelledby="account-service-resolution-title" className="account-service-section">
           <h2 id="account-service-resolution-title">Conformidad y reclamo</h2>
           {customerResolution}
+        </section>
+      )}
+
+      {serviceRating && (
+        <section aria-labelledby="account-service-rating-title" className="account-service-section">
+          <h2 id="account-service-rating-title">Valora este servicio</h2>
+          {serviceRating}
         </section>
       )}
 

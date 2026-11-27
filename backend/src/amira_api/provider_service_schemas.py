@@ -65,6 +65,12 @@ class AmountBreakdownView(PublicResponse):
     carrier_amount: int | None = None
 
 
+class CustomerServiceRating(PublicResponse):
+    rating: int
+    comment: str | None
+    created_at: datetime
+
+
 class ServiceDetail(ServiceListItem):
     chat_id: UUID
     description: str | None
@@ -95,6 +101,8 @@ class ServiceDetail(ServiceListItem):
     shared_trip_id: UUID | None = None
     # Null when the service has no amount. Nothing is stored: the breakdown is computed from the amount.
     amount_breakdown: AmountBreakdownView | None = None
+    # Customer-only: the customer's rating of this service, or null when not rated. Always null for providers.
+    rating: CustomerServiceRating | None = None
 
 
 class DeliveryPhotoUrl(PublicResponse):
