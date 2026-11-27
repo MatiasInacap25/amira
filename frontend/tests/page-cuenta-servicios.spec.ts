@@ -171,6 +171,8 @@ test("a failed role lookup shows a retryable error and never the customer list",
   await page.locator("#auth-code").fill("246810");
   await page.locator("form.auth-form button[type=submit]").click();
   await expect(page).toHaveURL(/\/cuenta\/servicios$/);
+  // The healthy first load requests the list after the URL changes. Wait for it to render so its request is not counted below.
+  await expect(page.locator(".customer-service-row")).toHaveCount(1);
 
   roleFails = true;
   queries.length = 0;
@@ -231,6 +233,16 @@ test("service without a date or addresses shows the placeholders", async ({ page
   await expect(row).toHaveAccessibleName("Mudanzas, Fecha por confirmar");
   await expect(row.getByText("Fecha por confirmar", { exact: true })).toBeVisible();
   await expect(row.getByText("Sin dirección → Sin dirección", { exact: true })).toBeVisible();
+});
+
+test("a disputed service with a completion date shows no rating chip, matching the detail which offers no rating", async ({ page }) => {
+  const disputed = customerService({ serviceId: "service-disputed", serviceTypeName: "Fletes", status: "disputed", completedAt: "2026-10-10T00:00:00Z" });
+  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([disputed], 1) }));
+  await signInTo(page, "client");
+
+  const row = page.getByRole("link", { name: "Fletes, 20-10-2026 · 10:00" });
+  await expect(row.locator(".account-service-status")).toHaveText("En reclamo");
+  await expect(row.locator(".customer-service-chip")).toHaveCount(0);
 });
 
 test("list shows no rating form or stars, and marks completed services as pending or rated", async ({ page }) => {

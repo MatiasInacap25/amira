@@ -65,6 +65,14 @@ def provider_display_name(kind: str, profile_name: str | None, first_name: str |
     return name or PROVIDER_FALLBACK_NAME
 
 
+def form_or_quotation_address(form_column, quotation_column):
+    """The request form's address when it has text, else the accepted quotation's.
+
+    An empty form value counts as missing, so the list and the detail always agree on the same address.
+    """
+    return func.coalesce(func.nullif(form_column, ""), quotation_column)
+
+
 def _service_relation(statement: Select) -> Select:
     return (
         statement.select_from(Servicio)
@@ -115,8 +123,8 @@ def service_rows(*conditions) -> Select:
             _destination_commune.name.label("destination_commune"),
             _origin_region.name.label("origin_region"),
             _destination_region.name.label("destination_region"),
-            func.coalesce(FormularioServicio.origin, Cotizacion.origin).label("origin_address"),
-            func.coalesce(FormularioServicio.destination, Cotizacion.destination).label("destination_address"),
+            form_or_quotation_address(FormularioServicio.origin, Cotizacion.origin).label("origin_address"),
+            form_or_quotation_address(FormularioServicio.destination, Cotizacion.destination).label("destination_address"),
             Servicio.is_exclusive.label("is_exclusive"),
             Servicio.trip_id.label("shared_trip_id"),
             Servicio.description.label("description"),

@@ -26,6 +26,7 @@ from amira_api.tax_document_service import BOLETA, document_views
 from amira_api.service_views import (
     CLAIM_OPEN,
     DELIVERY_PHOTO_LINK_MESSAGE,
+    form_or_quotation_address,
     load_assignments,
     provider_display_name,
     service_rows,
@@ -118,8 +119,8 @@ def list_customer_services(
                 Servicio.completed_at.label("completed_at"),
                 FormularioServicio.requested_at.label("scheduled_at"),
                 # Same rule as the detail's originAddress/destinationAddress: the form's address, else the quotation's.
-                func.coalesce(FormularioServicio.origin, Cotizacion.origin).label("origin"),
-                func.coalesce(FormularioServicio.destination, Cotizacion.destination).label("destination"),
+                form_or_quotation_address(FormularioServicio.origin, Cotizacion.origin).label("origin"),
+                form_or_quotation_address(FormularioServicio.destination, Cotizacion.destination).label("destination"),
                 Valoracion.rating.label("rating_value"),
                 Valoracion.comment.label("rating_comment"),
                 Valoracion.created_at.label("rating_created_at"),

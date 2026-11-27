@@ -189,8 +189,10 @@ def test_customer_services_list_includes_schedule_and_request_route_or_null_when
     assert items[1]["destination"] is None
     rows_sql = str(session.statements[2].compile(dialect=postgresql.dialect()))
     assert '"Formulario_servicio"."Fecha"' in rows_sql
-    assert 'coalesce("Formulario_servicio"."Origen", "Cotizacion"."Origen") AS origin' in rows_sql
-    assert 'coalesce("Formulario_servicio"."Destino", "Cotizacion"."Destino") AS destination' in rows_sql
+    assert 'coalesce(nullif("Formulario_servicio"."Origen", ' in rows_sql
+    assert '"Cotizacion"."Origen") AS origin' in rows_sql
+    assert 'coalesce(nullif("Formulario_servicio"."Destino", ' in rows_sql
+    assert '"Cotizacion"."Destino") AS destination' in rows_sql
     assert 'LEFT OUTER JOIN "Cotizacion" ON "Cotizacion"."ID" = "Servicio"."ID_Cotizacion_Aceptada"' in rows_sql
 
 
