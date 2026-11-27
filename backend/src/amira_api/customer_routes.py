@@ -21,6 +21,8 @@ from amira_api.customer_schemas import (
 from amira_api.db import get_db_session
 from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError, get_evidence_storage_resolver
 from amira_api.provider_service_schemas import DeliveryPhotoUrl, ServiceDetail, ServiceLocation
+from amira_api.tax_document_schemas import TaxDocumentView
+from amira_api.tax_document_service import BOLETA, document_views
 from amira_api.service_views import (
     CLAIM_OPEN,
     DELIVERY_PHOTO_LINK_MESSAGE,
@@ -151,6 +153,18 @@ def list_customer_services(
         for row in rows
     ]
     return CustomerServicePage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/services/{service_id}/documents", response_model=list[TaxDocumentView])
+def get_customer_service_documents(service_id: UUID, current_user: CurrentUser, session: Database) -> list[TaxDocumentView]:
+    # The customer sees only the boleta issued to them; the commission invoice belongs to Amira and the carrier.
+    account_id = _customer_account_id(session, current_user)
+    visible = session.execute(
+        select(Servicio.id).where(Servicio.id == service_id, Servicio.customer_id == account_id)
+    ).first()
+    if visible is None:
+        raise HTTPException(status_code=404, detail="Service not found.")
+    return document_views(session, service_id, (BOLETA,))
 
 
 @router.get("/services/{service_id}", response_model=ServiceDetail)

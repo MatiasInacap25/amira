@@ -22,6 +22,8 @@ type ServiceDetailProps = {
   sharedTrip?: ReactNode;
   // In-progress slot: the driver's sharing notice, or the customer's live map. Omitted when neither applies.
   locationSharing?: ReactNode;
+  // Documents slot: the simulated tax documents of the service, supplied by the container.
+  documents?: ReactNode;
 };
 
 const NO_VALUE_LABEL = "No indicado";
@@ -32,8 +34,9 @@ function locationLabel(...parts: Array<string | null | undefined>) {
 }
 
 /** Body of a service. The viewer's role decides how the other party is labelled. */
-export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution, sharedTrip, locationSharing, cancellation }: ServiceDetailProps) {
+export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhoto, customerResolution, sharedTrip, locationSharing, cancellation, documents }: ServiceDetailProps) {
   const counterpartLabel = service.viewerRole === "customer" ? "Prestador" : "Cliente";
+  const breakdown = service.amountBreakdown ?? null;
   return (
     <article aria-labelledby="account-service-detail-title" className="account-service-detail">
       <header className="account-service-detail-heading">
@@ -62,9 +65,29 @@ export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhot
           <dd>{formatServiceDateTime(service.serviceAt)}</dd>
         </div>
         <div>
-          <dt>Monto</dt>
-          <dd>{formatServiceAmount(service.amount)}</dd>
+          <dt>Total (IVA incluido)</dt>
+          <dd>{formatServiceAmount(breakdown ? breakdown.total : service.amount)}</dd>
         </div>
+        <div>
+          <dt>Neto</dt>
+          <dd>{formatServiceAmount(breakdown ? breakdown.net : null)}</dd>
+        </div>
+        <div>
+          <dt>IVA</dt>
+          <dd>{formatServiceAmount(breakdown ? breakdown.iva : null)}</dd>
+        </div>
+        {service.viewerRole === "provider" && (
+          <>
+            <div>
+              <dt>Comisión Amira (IVA incluido)</dt>
+              <dd>{formatServiceAmount(breakdown?.commission ?? null)}</dd>
+            </div>
+            <div>
+              <dt>Recibirás</dt>
+              <dd>{formatServiceAmount(breakdown?.carrierAmount ?? null)}</dd>
+            </div>
+          </>
+        )}
         <div>
           <dt>Exclusivo</dt>
           <dd>{service.isExclusive ? "Sí" : "No"}</dd>
@@ -111,6 +134,11 @@ export function ServiceDetail({ service, actions, assignmentEditor, deliveryPhot
             </ul>
           )
         )}
+      </section>
+
+      <section aria-labelledby="account-service-documents-title" className="account-service-section">
+        <h2 id="account-service-documents-title">Documentos</h2>
+        {documents}
       </section>
 
       {cancellation}

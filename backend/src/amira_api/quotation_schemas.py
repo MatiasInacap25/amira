@@ -27,6 +27,9 @@ class Quotation(PublicResponse):
     quotation_id: UUID
     status: QuotationStatus
     amount: int
+    # The amount includes IVA 19 %: net and IVA are extracted from it (amount == net_amount + iva_amount).
+    net_amount: int
+    iva_amount: int
     currency: Literal["CLP"]
     service_at: datetime | None
     description: str | None

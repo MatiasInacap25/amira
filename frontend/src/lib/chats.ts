@@ -71,6 +71,9 @@ export type ChatQuotation = {
   quotationId: string;
   status: QuotationStatus;
   amount: number;
+  // Split of the total (IVA included), computed by the backend.
+  netAmount: number;
+  ivaAmount: number;
   currency: "CLP";
   serviceAt: string;
   description: string;

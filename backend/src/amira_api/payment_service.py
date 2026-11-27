@@ -17,6 +17,7 @@ from amira_api.payment_provider import PaymentProvider
 from amira_api.quotation_service import PENDING, chat_is_settled, effective_status
 from amira_api.realtime import ChatEventKind, publish_chat_event
 from amira_api.shared_trip_service import SharedTripConflict, link_join_request_stops
+from amira_api.tax_document_service import issue_boleta
 
 APPROVED = "approved"
 REJECTED = "rejected"
@@ -209,23 +210,22 @@ def confirm_payment(
             "pickup_stop_id": pickup.id,
             "delivery_stop_id": delivery.id,
         }
-    session.add(
-        Servicio(
-            id=uuid4(),
-            profile_id=form.profile_id,
-            customer_id=form.customer_id,
-            status="confirmed",
-            is_exclusive=form.is_exclusive,
-            service_at=quotation.service_at,
-            description=quotation.description,
-            created_at=now,
-            amount=quotation.amount,
-            payment_confirmed_at=now,
-            form_id=form.id,
-            accepted_quotation_id=quotation.id,
-            **trip_fields,
-        )
+    service = Servicio(
+        id=uuid4(),
+        profile_id=form.profile_id,
+        customer_id=form.customer_id,
+        status="confirmed",
+        is_exclusive=form.is_exclusive,
+        service_at=quotation.service_at,
+        description=quotation.description,
+        created_at=now,
+        amount=quotation.amount,
+        payment_confirmed_at=now,
+        form_id=form.id,
+        accepted_quotation_id=quotation.id,
+        **trip_fields,
     )
+    session.add(service)
     publish_chat_event(
         session,
         chat_id=quotation.chat_id,
@@ -234,6 +234,10 @@ def confirm_payment(
         ref_id=quotation.id,
     )
     try:
+        # The customer's boleta is part of the same approval: it commits with the service or not at all.
+        issue_boleta(
+            session, service=service, payment=payment, customer=form.customer, carrier=form.selected_profile, now=now
+        )
         session.commit()
     except IntegrityError:
         # A concurrent confirmation for the same request won the unique service constraint.
