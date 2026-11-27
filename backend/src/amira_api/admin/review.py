@@ -14,7 +14,7 @@ from amira_api.admin.people import _date_filter
 from amira_api.clock import utc_now
 from amira_api.driver_verification_review import ReviewRefused, approve_certificate, reject_certificate
 from amira_api.evidence_storage import EvidenceStorage, EvidenceStorageError
-from amira_api.models import Conductor, CuentaDesembolso, Desembolso, Pago, Perfil, Reclamo, Servicio, Usuario, Valoracion, VerificacionIdentidad
+from amira_api.models import Conductor, Cotizacion, CuentaDesembolso, Desembolso, Pago, Perfil, Reclamo, Servicio, Usuario, Valoracion, VerificacionIdentidad
 from amira_api.settings import Settings
 
 MISMATCH = "El RUT del titular no coincide con el del proveedor"
@@ -144,6 +144,7 @@ def review_detail(session: Session, kind: str, key: UUID, settings: Settings,
         result.update(
             evidence_url=_signed_url(service_storage, claim.private_evidence_key, settings.service_evidence_url_ttl_seconds),
             delivery_url=_signed_url(service_storage, service.delivery_evidence_key, settings.service_evidence_url_ttl_seconds),
+            chat_id=session.scalar(select(Cotizacion.chat_id).where(Cotizacion.id == service.accepted_quotation_id)),
             service_status=service.status, started_at=service.starts_at, completed_at=service.completed_at, cancelled_at=service.cancelled_at,
             payment_status=session.scalar(select(Pago.status).where(Pago.quotation_id == service.accepted_quotation_id)
                                           .order_by(Pago.created_at.desc()).limit(1)),

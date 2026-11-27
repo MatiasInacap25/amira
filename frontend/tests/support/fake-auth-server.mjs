@@ -94,6 +94,11 @@ const server = createServer((request, response) => {
       const id = url.pathname.split("/")[5];
       return id ? send(response, 200, items.find((entry) => entry.id === id)) : send(response, 200, { items, total: 2, limit: 20, offset: 0 });
     }
+    if (url.pathname.startsWith("/api/admin/operations/chats")) {
+      const item = { id: "chat-1", participants: "Cliente, Conductor", has_claim: false, messages: 1 };
+      return url.pathname.endsWith("/chat-1") ? send(response, 200, item)
+        : send(response, 200, { items: [item], total: 1, limit: 20, offset: 0 });
+    }
     if (url.pathname === "/api/admin/people/customers") return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";

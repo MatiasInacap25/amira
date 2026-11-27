@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { adminRequest } from "@/lib/admin/client";
 import { adminDate, adminMoney, adminRut } from "@/lib/admin/formatters";
@@ -12,6 +12,7 @@ import { DataTable, type RowAction } from "./data-table";
 import { ConfirmDialog, DetailDrawer, ReasonDialog } from "./dialogs";
 import { Filters } from "./filters";
 import { StatusBadge } from "./status-badge";
+import { AdminTranscript } from "./transcript";
 
 type Mutation = { action: string; label: string; reason?: boolean };
 const extraLabels: Record<string, string> = {
@@ -22,6 +23,10 @@ const extraLabels: Record<string, string> = {
   review_reason: "Motivo de la revisión", resolution: "Resolución", resolution_reason: "Motivo de la resolución",
   resolved_at: "Resuelto el", service_status: "Estado del servicio", payment_status: "Estado del pago", payout_status: "Estado del desembolso",
   started_at: "Inicio del servicio", completed_at: "Término del servicio", cancelled_at: "Cancelación del servicio",
+  origin_address: "Dirección de origen", destination_address: "Dirección de destino", cargo_measurements: "Medidas de carga",
+  estimated_weight: "Peso estimado", estimated_volume: "Volumen estimado", linked_quotes: "Cotizaciones", is_exclusive: "Exclusividad",
+  payment_confirmed_at: "Pago confirmado", net: "Neto", iva: "IVA del servicio", commission: "Comisión", carrier_amount: "Neto del transportista",
+  linked_services: "Servicios vinculados", ordered_stops: "Paradas", assigned_crew: "Vehículo y conductor",
   bank_status: "Cuenta bancaria", verifications: "Historial de verificaciones", assignments: "Asignaciones", description: "Descripción",
   commune_code: "Código de comuna", accepted_at: "Aceptada", revoked_at: "Revocada", year: "Año",
 };
@@ -44,6 +49,7 @@ function valueOf(value: unknown, field?: ResourceField) {
   if (field?.format === "rut") return adminRut(String(value));
   if (field?.key === "result" && typeof value === "string") return automaticResults[value] ?? value;
   if (field?.format === "status") return <StatusBadge status={String(value)} label={labels[String(value)]} />;
+  if (field?.key === "is_exclusive") return value ? "Exclusivo" : "Compartido";
   if (typeof value === "boolean") return value ? "Sí" : "No";
   if (Array.isArray(value)) return value.length ? <ul className="list-disc space-y-1 pl-5">
     {value.map((entry, index) => <li key={index}>{typeof entry === "object" && entry !== null
@@ -53,15 +59,21 @@ function valueOf(value: unknown, field?: ResourceField) {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
-export function ResourceTable({ resource, data, filters, detail, detailId }: {
+export function ResourceTable({ resource, data, filters, detail, detailId, live = false }: {
   resource: AdminResource; data: AdminPageData | null; filters: AdminFilters;
-  detail: AdminRow | null; detailId?: string;
+  detail: AdminRow | null; detailId?: string; live?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [mutation, setMutation] = useState<{ row: AdminRow; choice: Mutation } | null>(null);
   const [saving, setSaving] = useState(false);
   const [edit, setEdit] = useState<AdminRow | null>(null);
+  const watching = live && detail?.status === "in_progress";
+  useEffect(() => {
+    if (!watching) return;
+    const timer = window.setInterval(() => router.refresh(), 5000);
+    return () => window.clearInterval(timer);
+  }, [router, watching]);
   const title = (row: AdminRow) => String(row.name ?? row.email ?? row.plate ?? row.driver ?? row.id);
   const showDetail = (id?: string) => {
     const query = writeFilters(id ? { ...filters, detail: id } : filters).toString();
@@ -116,6 +128,25 @@ export function ResourceTable({ resource, data, filters, detail, detailId }: {
     } else if (pathname.endsWith("/valoraciones")) {
       if (row.visible) add("hide", "Ocultar", true);
       else add("show", "Mostrar");
+    } else if (pathname.endsWith("/solicitudes")) {
+      link("cotizaciones", "request", "Ver cotizaciones");
+      link("chats", "request", "Ver chat");
+    } else if (pathname.endsWith("/cotizaciones")) {
+      if (typeof row.request_id === "string") link("solicitudes", "detail", "Ver solicitud", encodeURIComponent(row.request_id));
+      if (row.status === "paid") link("pagos", "quotation", "Ver pago");
+    } else if (pathname.endsWith("/servicios")) {
+      if (row.status === "in_progress") result.push({ label: "Ver ubicación en vivo", href: `${pathname}?${writeFilters({ ...filters, detail: row.id, live: "1" })}` });
+      add("cancel", "Cancelar", true, row.status !== "confirmed" ? "Solo se pueden cancelar servicios confirmados." : undefined);
+      const destinations = [["payment_id", "pagos", "Ver pago"], ["payout_id", "desembolsos", "Ver desembolso"],
+        ["chat_id", "chats", "Ver chat"], ["claim_id", "reclamos", "Ver reclamo"]] as const;
+      for (const [key, slug, label] of destinations) {
+        const value = row[key];
+        if (typeof value === "string") link(slug, "detail", label, encodeURIComponent(value));
+      }
+    } else if (pathname.endsWith("/rutas-compartidas")) {
+      add("unpublish", "Despublicar", true, !row.published ? "El viaje no está publicado." : undefined);
+      add("close", "Cerrar a nuevas solicitudes", false, !row.accepts_requests ? "El viaje ya está cerrado." : undefined);
+      if (row.published && row.accepts_requests) result.push({ label: "Ver en el sitio público", href: `/rutas-compartidas#route-${id}`, newTab: true });
     }
     return result;
   };
@@ -153,6 +184,8 @@ export function ResourceTable({ resource, data, filters, detail, detailId }: {
           ? <Link className="underline" href={`/admin/proveedores?detail=${encodeURIComponent(row.provider_id)}`}>{String(row.provider ?? "Sin dato")}</Link>
           : field.key === "service_id" && typeof row.service_id === "string"
             ? <Link className="underline" href={`/admin/servicios?detail=${encodeURIComponent(row.service_id)}`}>{row.service_id}</Link>
+            : field.key === "request_id" && typeof row.request_id === "string"
+              ? <Link className="underline" href={`/admin/solicitudes?detail=${encodeURIComponent(row.request_id)}`}>{row.request_id}</Link>
             : field.key === "comment" && typeof row.comment === "string" ? <span className="block max-w-64 truncate" title={row.comment}>{row.comment}</span>
             : valueOf(row[field.key], field),
       }))}
@@ -162,6 +195,17 @@ export function ResourceTable({ resource, data, filters, detail, detailId }: {
     />
     {detailId && <DetailDrawer wide={pathname.endsWith("/documentos")} title={detail ? title(detail) : "Detalle no disponible"} onClose={() => showDetail()}>
       {detail ? <>
+        {(pathname.endsWith("/chats") || (pathname.endsWith("/reclamos") && typeof detail.chat_id === "string")) &&
+          <AdminTranscript key={detail.id} chatId={pathname.endsWith("/chats") ? detail.id : String(detail.chat_id)}
+            hasClaim={pathname.endsWith("/reclamos") || detail.has_claim === true} />}
+        {Array.isArray(detail.images) && detail.images.length > 0 && <section className="admin-card"><h3 className="font-semibold">Imágenes de la solicitud</h3>
+          {detail.images.filter((image): image is string => typeof image === "string").map((image, index) =>
+            <a className="underline" key={image} href={image} target="_blank" rel="noopener noreferrer">Ver imagen {index + 1}</a>)}
+        </section>}
+        {pathname.endsWith("/servicios") && (watching || detail.last_location != null) &&
+          <section className="admin-card" aria-label="Última ubicación"><h3 className="font-semibold">{watching ? "Ubicación en vivo" : "Última ubicación"}</h3>
+            <p>{detail.last_location ? valueOf(detail.last_location) : "Sin ubicación disponible."}</p>
+          </section>}
         {pathname.endsWith("/documentos") && <div className="mb-4 grid gap-4 sm:grid-cols-2">
           <section>
             <h3 className="mb-2 font-semibold">Certificado PDF</h3>
@@ -183,11 +227,11 @@ export function ResourceTable({ resource, data, filters, detail, detailId }: {
         <dl className="grid gap-2">
         {resource.fields.map((field) => <div key={field.key}><dt className="font-semibold">{field.label}</dt><dd className="break-words">{valueOf(detail[field.key], field)}</dd></div>)}
         {Object.entries(extraLabels).filter(([key]) => key in detail && !resource.fields.some((field) => field.key === key)).map(([key, label]) =>
-          <div key={key}><dt className="font-semibold">{label}</dt><dd className="break-words">{valueOf(detail[key], key.endsWith("_at") ? { key, label, format: "date" } : ["refunded", "paid_out"].includes(key) ? { key, label, format: "money" } : undefined)}</dd></div>)}
+          <div key={key}><dt className="font-semibold">{label}</dt><dd className="break-words">{valueOf(detail[key], key.endsWith("_at") ? { key, label, format: "date" } : ["refunded", "paid_out", "net", "iva", "commission", "carrier_amount"].includes(key) ? { key, label, format: "money" } : undefined)}</dd></div>)}
         </dl></> : <p>No se pudo cargar el registro.</p>}
     </DetailDrawer>}
     {mutation && <Dialog title={`${mutation.choice.label}: ${title(mutation.row)}`}
-      consequence={mutation.choice.action === "suspend" ? `El perfil se ocultará. Sus ${Number(mutation.row.open_services ?? 0)} servicios abiertos no se cancelarán.` : mutation.choice.action === "resolve_customer"
+      consequence={mutation.choice.action === "suspend" ? `El perfil se ocultará. Sus ${Number(mutation.row.open_services ?? 0)} servicios abiertos no se cancelarán.` : mutation.choice.action === "cancel" ? "El servicio se cancelará y el cliente recibirá un reembolso simulado del 100 %, sin retención." : mutation.choice.action === "resolve_customer"
         ? "El servicio se cancelará y el pago simulado se reembolsará por completo."
         : mutation.choice.action === "resolve_provider" ? "El servicio volverá a completado y aplicarán las reglas normales de desembolso."
         : "La acción quedará registrada en la auditoría."}

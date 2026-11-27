@@ -109,3 +109,20 @@ test("document rejection requires a reason and opens the next pending document",
   await expect(page.getByRole("dialog", { name: "Segundo conductor" })).toBeVisible();
   expect(sentReason).toBe("El certificado está incompleto.");
 });
+
+test("an unclaimed chat does not request the transcript until a reason is entered", async ({ page, context }) => {
+  await login(context, true);
+  let reason: string | undefined;
+  await page.route("**/api/admin/operations/chats/chat-1/transcript", async (route) => {
+    reason = route.request().postDataJSON().reason;
+    await route.fulfill({ json: { items: [{ id: "message", sender: "Cliente", text: "Mensaje privado", created_at: "2026-11-23T10:00:00Z" }], before: null } });
+  });
+  await page.goto("/admin/chats?detail=chat-1");
+  await expect(page.getByText("Mensaje privado")).toHaveCount(0);
+  await page.getByRole("button", { name: "Abrir conversación" }).click();
+  expect(reason).toBeUndefined();
+  await page.getByLabel("Motivo de acceso").fill("Investigar la solicitud de soporte.");
+  await page.getByRole("button", { name: "Abrir conversación" }).click();
+  await expect(page.getByText("Mensaje privado")).toBeVisible();
+  expect(reason).toBe("Investigar la solicitud de soporte.");
+});

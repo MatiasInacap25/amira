@@ -26,6 +26,6 @@ export default async function AdminSectionPage({ params, searchParams }: PagePro
   ]);
   return <main className="space-y-4 p-6">
     <header><h1 className="text-2xl font-semibold">{resource.title}</h1><p>{resource.description}</p></header>
-    <ResourceTable resource={resource} data={data} filters={filters} detail={detail} detailId={detailId} />
+    <ResourceTable resource={resource} data={data} filters={filters} detail={detail} detailId={detailId} live={get("live") === "1"} />
   </main>;
 }

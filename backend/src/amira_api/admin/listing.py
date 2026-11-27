@@ -1,6 +1,7 @@
 """Shared parameter and pagination contract for allowlisted admin resources."""
 
 from datetime import date
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -17,6 +18,13 @@ class ListFilters(BaseModel):
     customer: UUID | None = None
     driver: UUID | None = None
     service: UUID | None = None
+    request: UUID | None = None
+    service_type: UUID | None = None
+    exclusive: bool | None = None
+    payout_due: bool | None = None
+    accepts_requests: bool | None = None
+    minimum_amount: Decimal | None = Field(None, ge=0, max_digits=18)
+    maximum_amount: Decimal | None = Field(None, ge=0, max_digits=18)
     kind: str | None = Field(None, max_length=50)
     region: str | None = Field(None, max_length=20)
     verification: str | None = Field(None, max_length=50)
@@ -42,7 +50,7 @@ def listed(session: Session, source, params: ListFilters, *, limit: int | None =
     sort = params.sort or ("-created_at" if "created_at" in keys else "-id")
     descending = sort.startswith("-")
     sort_key = sort.removeprefix("-")
-    if sort_key not in {"id", "created_at", "paid", "open_days"} or sort_key not in keys:
+    if sort_key not in {"id", "created_at", "paid", "open_days", "amount", "departure_at"} or sort_key not in keys:
         raise HTTPException(422, "Orden no válido.")
     column = rows.c[sort_key]
     statement = select(rows).order_by(column.desc() if descending else column.asc(), primary.asc())

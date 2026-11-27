@@ -16,7 +16,7 @@ from amira_api.models import Pago, Reembolso, Servicio
 from amira_api.payment_provider import SIMULATED_PROVIDER_NAME
 
 
-def cancel_service(session: Session, service_id: UUID, actor: Literal["customer", "provider"]) -> None:
+def cancel_service(session: Session, service_id: UUID, actor: Literal["customer", "provider", "admin"]) -> None:
     service = session.execute(
         select(Servicio).where(Servicio.id == service_id).with_for_update().execution_options(populate_existing=True)
     ).scalar_one()

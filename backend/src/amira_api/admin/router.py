@@ -7,6 +7,7 @@ from amira_api.admin.audit_routes import router as audit_router
 from amira_api.admin.badges import pending_badges
 from amira_api.admin.deps import AdminUser, require_admin
 from amira_api.admin.finance_routes import router as finance_router
+from amira_api.admin.operations_routes import router as operations_router
 from amira_api.admin.people_routes import router as people_router
 from amira_api.admin.review_routes import router as review_router
 from amira_api.admin.schemas import AdminIdentity
@@ -17,6 +18,7 @@ router.include_router(audit_router)
 router.include_router(finance_router)
 router.include_router(people_router)
 router.include_router(review_router)
+router.include_router(operations_router)
 
 
 @router.get("/me")
