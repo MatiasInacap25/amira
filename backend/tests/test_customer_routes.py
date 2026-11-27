@@ -21,6 +21,7 @@ PROFILE_ID = UUID("04db2a78-34fb-429e-ae9c-9fc5a9d10e32")
 SERVICE_ID = UUID("0c3b7b0e-6f0a-4a57-8f7e-3d1f0f6a9b10")
 COMPLETED_AT = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 RATED_AT = datetime(2026, 10, 6, 9, 30, tzinfo=timezone.utc)
+SCHEDULED_AT = datetime(2026, 12, 1, 14, 30, tzinfo=timezone.utc)
 
 
 class FakeResult:
@@ -116,6 +117,9 @@ def service_row(**overrides):
         "rating_value": None,
         "rating_comment": None,
         "rating_created_at": None,
+        "scheduled_at": None,
+        "origin": None,
+        "destination": None,
     }
     return {**row, **overrides}
 
@@ -144,6 +148,9 @@ def test_customer_services_list_returns_own_services_with_optional_rating_and_pa
         "providerName": "Transportes del Sur",
         "serviceTypeName": "Mudanzas",
         "completedAt": "2026-10-05T12:00:00Z",
+        "scheduledAt": None,
+        "origin": None,
+        "destination": None,
         "rating": {"rating": 5, "comment": "Buen servicio", "createdAt": "2026-10-06T09:30:00Z"},
     }
     assert body["items"][1]["rating"] is None
@@ -154,6 +161,137 @@ def test_customer_services_list_returns_own_services_with_optional_rating_and_pa
     assert "LIMIT" in rows_sql
     count_sql = str(session.statements[1].compile(dialect=postgresql.dialect()))
     assert '"Servicio"."ID_Cliente" = ' in count_sql
+
+
+def test_customer_services_list_includes_schedule_and_request_route_or_null_when_missing():
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(count=2),
+        FakeResult(rows=[
+            service_row(
+                scheduled_at=SCHEDULED_AT,
+                origin="Av. Providencia 1000",
+                destination="Calle Los Aromos 45",
+            ),
+            service_row(service_id=uuid4(), scheduled_at=None, origin=None, destination=None),
+        ]),
+    ])
+
+    response = run_request("GET", "/api/customer/services", session)
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert items[0]["scheduledAt"] == "2026-12-01T14:30:00Z"
+    assert items[0]["origin"] == "Av. Providencia 1000"
+    assert items[0]["destination"] == "Calle Los Aromos 45"
+    assert items[1]["scheduledAt"] is None
+    assert items[1]["origin"] is None
+    assert items[1]["destination"] is None
+    rows_sql = str(session.statements[2].compile(dialect=postgresql.dialect()))
+    assert '"Formulario_servicio"."Fecha"' in rows_sql
+    assert 'coalesce(nullif("Formulario_servicio"."Origen", ' in rows_sql
+    assert '"Cotizacion"."Origen") AS origin' in rows_sql
+    assert 'coalesce(nullif("Formulario_servicio"."Destino", ' in rows_sql
+    assert '"Cotizacion"."Destino") AS destination' in rows_sql
+    assert 'LEFT OUTER JOIN "Cotizacion" ON "Cotizacion"."ID" = "Servicio"."ID_Cotizacion_Aceptada"' in rows_sql
+
+
+def test_customer_services_list_falls_back_to_quotation_route_like_the_detail():
+    session = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(count=1),
+        FakeResult(rows=[service_row(origin="Cotización Origen 1", destination="Cotización Destino 2")]),
+    ])
+
+    response = run_request("GET", "/api/customer/services", session)
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["origin"] == "Cotización Origen 1"
+    assert response.json()["items"][0]["destination"] == "Cotización Destino 2"
+
+
+def detail_row(**overrides):
+    row = {
+        "service_id": SERVICE_ID,
+        "status": "completed",
+        "service_type_name": "Mudanzas",
+        "service_at": None,
+        "amount": None,
+        "currency": "CLP",
+        "chat_id": uuid4(),
+        "origin_commune": "Providencia",
+        "destination_commune": "Ñuñoa",
+        "origin_region": "Metropolitana",
+        "destination_region": "Metropolitana",
+        "origin_address": "Av. Providencia 1000",
+        "destination_address": "Calle Los Aromos 45",
+        "is_exclusive": False,
+        "shared_trip_id": None,
+        "description": None,
+        "created_at": COMPLETED_AT,
+        "started_at": None,
+        "cancelled_at": None,
+        "cancelled_by": None,
+        "cancellation_refunded_amount": None,
+        "cancellation_retained_amount": None,
+        "completed_at": COMPLETED_AT,
+        "payout_deadline_at": None,
+        "delivery_evidence_key": None,
+        "customer_consent_at": None,
+        "payout_released": False,
+        "claim_open": False,
+        "provider_kind": "company",
+        "profile_name": "Transportes del Sur",
+        "owner_first_name": "Ana",
+        "owner_last_name": "Pérez",
+        "customer_first_name": "Luis",
+        "assignment_count": 0,
+        "rating_value": None,
+        "rating_comment": None,
+        "rating_created_at": None,
+    }
+    return {**row, **overrides}
+
+
+def test_customer_service_detail_includes_rating_after_rating_and_null_before():
+    unrated = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(row=detail_row()),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/customer/services/{SERVICE_ID}", unrated)
+
+    assert response.status_code == 200
+    assert response.json()["rating"] is None
+
+    rated = FakeSession([
+        FakeResult(row=(ACCOUNT_ID, "client")),
+        FakeResult(row=detail_row(rating_value=5, rating_comment="Buen servicio", rating_created_at=RATED_AT)),
+        FakeResult(rows=[]),
+    ])
+
+    response = run_request("GET", f"/api/customer/services/{SERVICE_ID}", rated)
+
+    assert response.status_code == 200
+    assert response.json()["rating"] == {
+        "rating": 5,
+        "comment": "Buen servicio",
+        "createdAt": "2026-10-06T09:30:00Z",
+    }
+
+
+def test_provider_service_detail_never_carries_a_rating():
+    from amira_api.service_views import shape_detail
+
+    row = detail_row(rating_value=4, rating_comment=None, rating_created_at=RATED_AT)
+
+    provider_view = shape_detail(row, "provider", can_manage=True, viewer_assigned=False, assignments=[])
+    customer_view = shape_detail(row, "customer", can_manage=False, viewer_assigned=False, assignments=[])
+
+    assert provider_view.rating is None
+    assert customer_view.rating is not None
+    assert customer_view.rating.rating == 4
 
 
 def test_customer_services_total_and_items_are_counted_over_the_same_joined_relation():

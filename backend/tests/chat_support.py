@@ -81,6 +81,7 @@ def db():
         "Cotizacion",
         "Pago",
         "Servicio",
+        "Valoracion",
         "Cuenta_Desembolso",
         "Desembolso",
         "Documento_Tributario",

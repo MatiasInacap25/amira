@@ -698,6 +698,19 @@ h1, h2, h3, p { margin-top: 0; }
 .customer-submit-error a { display: inline-block; margin-top: 6px; color: #173f55; font-weight: 700; text-underline-offset: 3px; }
 .customer-rating-submit { justify-self: start; }
 .customer-services-more { justify-self: center; }
+.customer-service-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; color: #172532; text-decoration: none; transition: border-color .15s ease, box-shadow .15s ease; }
+.customer-service-card:hover { border-color: #9fb3c0; box-shadow: 0 1px 6px rgba(23, 37, 50, .08); }
+.customer-service-card:focus-visible { outline: 3px solid rgba(40, 122, 160, .35); outline-offset: 2px; }
+.customer-service-main { display: grid; gap: 4px; min-width: 0; }
+.customer-service-main h2 { margin: 0; color: #172532; font-size: 16px; font-weight: 720; letter-spacing: -.02em; }
+.customer-service-provider, .customer-service-route { color: #586978; font-size: 13px; overflow-wrap: anywhere; }
+.customer-service-schedule { color: #263847; font-size: 14px; font-weight: 600; }
+.customer-service-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.customer-service-chip { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.customer-service-chip-pending { background: #fff4e8; color: #9a4b12; }
+.customer-service-chip-rated { background: #e9f5ef; color: #1d6a45; }
+.customer-service-rating-block { display: grid; gap: 14px; }
+.customer-service-rating h3 { margin: 0; color: #263847; font-size: 14px; font-weight: 700; }
 @media (max-width: 760px) {
   .customer-service-card { padding: 14px; }
 }

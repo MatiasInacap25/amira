@@ -54,7 +54,7 @@ INDEPENDENT_AUTH = UUID("7c2e0a10-0000-4000-8000-000000000007")
 TABLES = (
     "Rol_Usuario", "Rol_Perfil", "Usuario", "Perfil", "Tipo_Conductor", "Conductor", "Vehiculo",
     "Servicios_Disponibles", "Formulario_servicio", "Chat", "Cotizacion",
-    "Servicio", "Servicio_Asignacion", "Viaje", "Viaje_Vehiculo", "Parada_Viaje", "Verificacion_Identidad",
+    "Servicio", "Servicio_Asignacion", "Valoracion", "Viaje", "Viaje_Vehiculo", "Parada_Viaje", "Verificacion_Identidad",
 )
 JOIN_REQUEST_DATE = "2030-10-20T09:00:00-03:00"
 

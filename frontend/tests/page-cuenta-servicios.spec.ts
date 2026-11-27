@@ -33,13 +33,18 @@ function session(aal: "aal1" | "aal2" = "aal1", tokenId?: string, expiresIn = 36
 
 type CustomerRating = { rating: number; comment: string | null; createdAt: string };
 
+// The list item carries the schedule and route, and the rating only as a flag for the chip. The rating itself is read on the detail page.
 function customerService(overrides: Record<string, unknown> = {}) {
   return {
     serviceId: "service-1",
     providerProfileId: "provider-profile-1",
     providerName: "Transportes Andes",
     serviceTypeName: "Mudanzas",
+    status: "completed",
     completedAt: "2026-10-10T00:00:00Z",
+    scheduledAt: "2026-10-20T13:00:00Z",
+    origin: "Santiago",
+    destination: "Valparaíso",
     rating: null as CustomerRating | null,
     ...overrides,
   };
@@ -166,6 +171,8 @@ test("a failed role lookup shows a retryable error and never the customer list",
   await page.locator("#auth-code").fill("246810");
   await page.locator("form.auth-form button[type=submit]").click();
   await expect(page).toHaveURL(/\/cuenta\/servicios$/);
+  // The healthy first load requests the list after the URL changes. Wait for it to render so its request is not counted below.
+  await expect(page.locator(".customer-service-row")).toHaveCount(1);
 
   roleFails = true;
   queries.length = 0;
@@ -181,122 +188,84 @@ test("a failed role lookup shows a retryable error and never the customer list",
   await expect.poll(() => roleAttempts).toBeGreaterThan(attemptsBeforeRetry);
 });
 
-test("customer sees each completed service with provider, completion date, and a detail link", async ({ page }) => {
+test("intro asks the customer to review services and open a completed one to rate it", async ({ page }) => {
   await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService()], 1) }));
   await signInTo(page, "client");
 
-  const card = page.locator(".customer-service-card");
-  await expect(card.getByRole("heading", { name: "Mudanzas" })).toBeVisible();
-  await expect(card.getByText("Transportes Andes · Completado el 10 de octubre de 2026", { exact: true })).toBeVisible();
-  await expect(card.getByRole("link", { name: "Ver detalle" })).toHaveAttribute("href", "/cuenta/servicios/service-1");
-  await expect(card.getByRole("heading", { name: "Mudanzas" }).getByRole("link", { name: "Mudanzas" })).toHaveAttribute("href", "/cuenta/servicios/service-1");
+  await expect(page.locator(".customer-services-intro")).toHaveText("Revisa tus servicios. Entra a un servicio completado para valorarlo.");
 });
 
-test("completed service without a rating shows the rating form and blocks an empty submit", async ({ page }) => {
-  const posts: unknown[] = [];
+test("customer sees each service with type, provider, date, time and origin to destination", async ({ page }) => {
   await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService()], 1) }));
-  await page.route("**/api/customer/services/*/rating", async (route) => {
-    posts.push(route.request().postDataJSON());
-    await route.fulfill({ status: 201, json: {} });
-  });
   await signInTo(page, "client");
 
-  const card = page.locator(".customer-service-card");
-  await expect(card.getByRole("group", { name: "Calificación" })).toBeVisible();
-  await expect(card.getByLabel("Comentario (opcional)")).toBeVisible();
-
-  await card.getByRole("button", { name: "Enviar valoración" }).click();
-  await expect(card.getByText("Elige una calificación de 1 a 5 estrellas.", { exact: true })).toBeVisible();
-  await expect(card.getByRole("group", { name: "Calificación" })).toHaveAttribute("aria-describedby", /rating-service-1-error/);
-  expect(posts).toHaveLength(0);
+  const row = page.locator(".customer-service-card");
+  await expect(row).toHaveAccessibleName("Mudanzas, 20-10-2026 · 10:00");
+  await expect(row).toHaveAttribute("href", "/cuenta/servicios/service-1");
+  await expect(row.getByRole("heading", { name: "Mudanzas" })).toBeVisible();
+  await expect(row.getByText("Transportes Andes", { exact: false })).toBeVisible();
+  await expect(row.getByText("20-10-2026 · 10:00", { exact: true })).toBeVisible();
+  await expect(row.getByText("Santiago → Valparaíso", { exact: true })).toBeVisible();
+  await expect(row.locator(".account-service-status")).toHaveText("Finalizado");
 });
 
-test("submitting a rating saves it and the card then shows the stored stars and date", async ({ page }) => {
-  const posts: unknown[] = [];
-  let stored: CustomerRating | null = null;
-  await mockCustomerServices(page, async (_url, route) => {
-    const service = customerService({ rating: stored });
-    await route.fulfill({ json: customerPage([service], 1) });
-  });
-  await page.route("**/api/customer/services/*/rating", async (route) => {
-    posts.push(route.request().postDataJSON());
-    stored = { rating: 4, comment: "Llegaron puntuales.", createdAt: "2026-10-12T12:00:00Z" };
-    await route.fulfill({ status: 201, json: {} });
-  });
+test("every row shows its service status badge, and the rating chip only for completed services", async ({ page }) => {
+  const confirmed = customerService({ serviceId: "service-2", serviceTypeName: "Fletes", status: "confirmed", completedAt: null });
+  const cancelled = customerService({ serviceId: "service-3", serviceTypeName: "Bodegaje", status: "cancelled", completedAt: null });
+  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService(), confirmed, cancelled], 3) }));
   await signInTo(page, "client");
 
-  const card = page.locator(".customer-service-card");
-  await card.locator("label.customer-star-option", { hasText: "4 de 5" }).click();
-  await expect(card.getByLabel("4 de 5")).toBeChecked();
-  await card.getByLabel("Comentario (opcional)").fill("  Llegaron puntuales.  ");
-  await card.getByRole("button", { name: "Enviar valoración" }).click();
-
-  await expect(card.getByRole("img", { name: "Valoración: 4 de 5 estrellas" })).toBeVisible();
-  await expect(card.getByText("Llegaron puntuales.", { exact: true })).toBeVisible();
-  await expect(card.getByText("Valorado el 12 de octubre de 2026", { exact: true })).toBeVisible();
-  await expect(card.getByRole("group", { name: "Calificación" })).toHaveCount(0);
-  expect(posts).toEqual([{ rating: 4, comment: "Llegaron puntuales." }]);
+  await expect(page.getByRole("link", { name: "Mudanzas, 20-10-2026 · 10:00" }).locator(".account-service-status")).toHaveText("Finalizado");
+  await expect(page.getByRole("link", { name: "Mudanzas, 20-10-2026 · 10:00" }).locator(".customer-service-chip")).toHaveText("Pendiente de valorar");
+  await expect(page.getByRole("link", { name: "Fletes, 20-10-2026 · 10:00" }).locator(".account-service-status")).toHaveText("Confirmado");
+  await expect(page.getByRole("link", { name: "Fletes, 20-10-2026 · 10:00" }).locator(".customer-service-chip")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Bodegaje, 20-10-2026 · 10:00" }).locator(".account-service-status")).toHaveText("Cancelado");
+  await expect(page.getByRole("link", { name: "Bodegaje, 20-10-2026 · 10:00" }).locator(".customer-service-chip")).toHaveCount(0);
 });
 
-test("a 409 on rating refreshes the list to the stored rating", async ({ page }) => {
-  let listRequests = 0;
-  await mockCustomerServices(page, async (_url, route) => {
-    listRequests += 1;
-    const rating = listRequests > 1 ? { rating: 5, comment: null, createdAt: "2026-10-12T12:00:00Z" } : null;
-    await route.fulfill({ json: customerPage([customerService({ rating })], 1) });
-  });
-  await page.route("**/api/customer/services/*/rating", async (route) => route.fulfill({ status: 409, json: { detail: "Already rated" } }));
-  await signInTo(page, "client");
-
-  const card = page.locator(".customer-service-card");
-  await card.locator("label.customer-star-option", { hasText: "5 de 5" }).click();
-  await card.getByRole("button", { name: "Enviar valoración" }).click();
-
-  await expect(card.getByRole("img", { name: "Valoración: 5 de 5 estrellas" })).toBeVisible();
-  await expect(card.getByRole("group", { name: "Calificación" })).toHaveCount(0);
-});
-
-// The 409 refetch returns the rated service, which unmounts RatingForm and its submit error with it.
-test("a 409 on rating shows the already-rated message", async ({ page }) => {
-  let listRequests = 0;
-  await mockCustomerServices(page, async (_url, route) => {
-    listRequests += 1;
-    const rating = listRequests > 1 ? { rating: 5, comment: null, createdAt: "2026-10-12T12:00:00Z" } : null;
-    await route.fulfill({ json: customerPage([customerService({ rating })], 1) });
-  });
-  await page.route("**/api/customer/services/*/rating", async (route) => route.fulfill({ status: 409, json: { detail: "Already rated" } }));
-  await signInTo(page, "client");
-
-  const card = page.locator(".customer-service-card");
-  await card.locator("label.customer-star-option", { hasText: "5 de 5" }).click();
-  await card.getByRole("button", { name: "Enviar valoración" }).click();
-
-  await expect(page.locator(".customer-submit-error")).toHaveText("Este servicio ya fue valorado.");
-});
-
-test("a 422 saying the service is not completed shows the completed-service message", async ({ page }) => {
-  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService()], 1) }));
-  await page.route("**/api/customer/services/*/rating", async (route) =>
-    route.fulfill({ status: 422, json: { detail: [{ loc: ["body", "service"], type: "service_not_completed", msg: "x" }] } }),
-  );
-  await signInTo(page, "client");
-
-  const card = page.locator(".customer-service-card");
-  await card.locator("label.customer-star-option", { hasText: "3 de 5" }).click();
-  await card.getByRole("button", { name: "Enviar valoración" }).click();
-
-  await expect(page.locator(".customer-submit-error")).toHaveText("Solo puedes valorar servicios completados.");
-});
-
-test("a service not yet completed explains that rating is not available", async ({ page }) => {
+test("service without a date or addresses shows the placeholders", async ({ page }) => {
   await mockCustomerServices(page, async (_url, route) =>
-    route.fulfill({ json: customerPage([customerService({ completedAt: null })], 1) }),
+    route.fulfill({ json: customerPage([customerService({ scheduledAt: null, origin: null, destination: null })], 1) }),
   );
   await signInTo(page, "client");
 
-  const card = page.locator(".customer-service-card");
-  await expect(card.getByText("Podrás valorar este servicio cuando esté completado.", { exact: true })).toBeVisible();
-  await expect(card.getByRole("button", { name: "Enviar valoración" })).toHaveCount(0);
+  const row = page.locator(".customer-service-card");
+  await expect(row).toHaveAccessibleName("Mudanzas, Fecha por confirmar");
+  await expect(row.getByText("Fecha por confirmar", { exact: true })).toBeVisible();
+  await expect(row.getByText("Sin dirección → Sin dirección", { exact: true })).toBeVisible();
+});
+
+test("a disputed service with a completion date shows no rating chip, matching the detail which offers no rating", async ({ page }) => {
+  const disputed = customerService({ serviceId: "service-disputed", serviceTypeName: "Fletes", status: "disputed", completedAt: "2026-10-10T00:00:00Z" });
+  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([disputed], 1) }));
+  await signInTo(page, "client");
+
+  const row = page.getByRole("link", { name: "Fletes, 20-10-2026 · 10:00" });
+  await expect(row.locator(".account-service-status")).toHaveText("En reclamo");
+  await expect(row.locator(".customer-service-chip")).toHaveCount(0);
+});
+
+test("list shows no rating form or stars, and marks completed services as pending or rated", async ({ page }) => {
+  const rated = customerService({ serviceId: "service-2", serviceTypeName: "Fletes", rating: { rating: 4, comment: "Muy bien.", createdAt: "2026-10-12T12:00:00Z" } });
+  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService(), rated], 2) }));
+  await signInTo(page, "client");
+
+  const pending = page.getByRole("link", { name: "Mudanzas, 20-10-2026 · 10:00" });
+  await expect(pending.locator(".customer-service-chip", { hasText: "Pendiente de valorar" })).toBeVisible();
+  const valued = page.getByRole("link", { name: "Fletes, 20-10-2026 · 10:00" });
+  await expect(valued.locator(".customer-service-chip", { hasText: "Valorado" })).toBeVisible();
+
+  await expect(page.locator(".customer-rating-form")).toHaveCount(0);
+  await expect(page.getByRole("img", { name: /Valoración:/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Enviar valoración" })).toHaveCount(0);
+});
+
+test("clicking a service row opens that service's detail page", async ({ page }) => {
+  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService()], 1) }));
+  await signInTo(page, "client");
+
+  await page.locator(".customer-service-card").click();
+  await expect(page).toHaveURL(/\/cuenta\/servicios\/service-1$/);
 });
 
 test("empty customer list shows the no-services state with a search link", async ({ page }) => {
@@ -350,7 +319,7 @@ test("customer list fits a phone-width viewport without horizontal page scroll",
     route.fulfill({
       json: customerPage([
         customerService({ rating: { rating: 4, comment: "Un comentario bastante largo para revisar el ajuste en pantallas pequeñas.", createdAt: "2026-10-12T12:00:00Z" } }),
-        customerService({ serviceId: "service-2", completedAt: null }),
+        customerService({ serviceId: "service-2", completedAt: null, origin: "Una dirección de origen bastante larga para revisar el ajuste", destination: "Una dirección de destino igual de larga para revisar" }),
       ], 2),
     }),
   );
@@ -417,14 +386,4 @@ test("provider service card route area selects the detail and its title remains 
   const routeArea = await card.locator("dd").first().boundingBox();
   await page.mouse.click(routeArea!.x + 10, routeArea!.y + 10);
   await expect(page).toHaveURL(/\/cuenta\/servicios\/service-provider-1$/);
-});
-
-test("customer service card heading selects detail without replacing rating controls", async ({ page }) => {
-  await mockCustomerServices(page, async (_url, route) => route.fulfill({ json: customerPage([customerService()], 1) }));
-  await signInTo(page, "client");
-  const card = page.locator(".customer-service-card");
-  await expect(card.getByRole("button", { name: "Enviar valoración" })).toBeVisible();
-  const headingArea = await card.getByRole("heading", { name: "Mudanzas" }).boundingBox();
-  await page.mouse.click(headingArea!.x + 10, headingArea!.y + 10);
-  await expect(page).toHaveURL(/\/cuenta\/servicios\/service-1$/);
 });

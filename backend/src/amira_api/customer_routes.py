@@ -26,6 +26,7 @@ from amira_api.tax_document_service import BOLETA, document_views
 from amira_api.service_views import (
     CLAIM_OPEN,
     DELIVERY_PHOTO_LINK_MESSAGE,
+    form_or_quotation_address,
     load_assignments,
     provider_display_name,
     service_rows,
@@ -35,6 +36,7 @@ from amira_api.service_views import (
 from amira_api.settings import Settings, get_settings
 from amira_api.service_cancellation import cancel_service
 from amira_api.models import (
+    Cotizacion,
     Desembolso,
     FormularioServicio,
     Perfil,
@@ -115,12 +117,17 @@ def list_customer_services(
                 Usuario.last_name.label("owner_last_name"),
                 TipoServicio.name.label("service_type_name"),
                 Servicio.completed_at.label("completed_at"),
+                FormularioServicio.requested_at.label("scheduled_at"),
+                # Same rule as the detail's originAddress/destinationAddress: the form's address, else the quotation's.
+                form_or_quotation_address(FormularioServicio.origin, Cotizacion.origin).label("origin"),
+                form_or_quotation_address(FormularioServicio.destination, Cotizacion.destination).label("destination"),
                 Valoracion.rating.label("rating_value"),
                 Valoracion.comment.label("rating_comment"),
                 Valoracion.created_at.label("rating_created_at"),
             ),
             account_id,
         )
+        .outerjoin(Cotizacion, Cotizacion.id == Servicio.accepted_quotation_id)
         .outerjoin(Valoracion, Valoracion.service_id == Servicio.id)
         .order_by(Servicio.created_at.desc(), Servicio.id.desc())
         .limit(limit)
@@ -140,6 +147,9 @@ def list_customer_services(
             ),
             service_type_name=row["service_type_name"],
             completed_at=row["completed_at"],
+            scheduled_at=row["scheduled_at"],
+            origin=row["origin"],
+            destination=row["destination"],
             rating=(
                 CustomerServiceRating(
                     rating=row["rating_value"],

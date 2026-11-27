@@ -187,6 +187,119 @@ test("a failed detail request shows a retryable error that recovers the service"
   await expect(page.locator(".customer-services-wrap [role=alert]")).toHaveCount(0);
 });
 
+// Rating lives in the detail page for a completed service; the list only shows whether it is rated.
+test("completed unrated service shows the rating form in the detail, and rating it shows Tu valoración", async ({ page }) => {
+  const posts: unknown[] = [];
+  let stored: { rating: number; comment: string | null; createdAt: string } | null = null;
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail({ rating: stored }) }));
+  await page.route("**/api/customer/services/service-1/rating", async (route) => {
+    posts.push(route.request().postDataJSON());
+    stored = { rating: 4, comment: "Llegaron puntuales.", createdAt: "2026-10-12T12:00:00Z" };
+    await route.fulfill({ status: 201, json: {} });
+  });
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+
+  const section = page.getByRole("region", { name: "Valora este servicio" });
+  await expect(section.getByRole("group", { name: "Calificación" })).toBeVisible();
+  await section.getByRole("button", { name: "Enviar valoración" }).click();
+  await expect(section.getByText("Elige una calificación de 1 a 5 estrellas.", { exact: true })).toBeVisible();
+  expect(posts).toHaveLength(0);
+
+  await section.locator("label.customer-star-option", { hasText: "4 de 5" }).click();
+  await section.getByLabel("Comentario (opcional)").fill("  Llegaron puntuales.  ");
+  await section.getByRole("button", { name: "Enviar valoración" }).click();
+
+  await expect(section.getByRole("heading", { name: "Tu valoración" })).toBeVisible();
+  await expect(section.getByRole("img", { name: "Valoración: 4 de 5 estrellas" })).toBeVisible();
+  await expect(section.getByText("Llegaron puntuales.", { exact: true })).toBeVisible();
+  await expect(section.getByText("Valorado el 12 de octubre de 2026", { exact: true })).toBeVisible();
+  await expect(section.getByRole("group", { name: "Calificación" })).toHaveCount(0);
+  expect(posts).toEqual([{ rating: 4, comment: "Llegaron puntuales." }]);
+});
+
+test("completed service already rated shows the stored stars and comment read-only", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) =>
+    route.fulfill({ json: serviceDetail({ rating: { rating: 3, comment: "Bien, pero llegó tarde.", createdAt: "2026-10-12T12:00:00Z" } }) }),
+  );
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+
+  const section = page.getByRole("region", { name: "Valora este servicio" });
+  await expect(section.getByRole("heading", { name: "Tu valoración" })).toBeVisible();
+  await expect(section.getByRole("img", { name: "Valoración: 3 de 5 estrellas" })).toBeVisible();
+  await expect(section.getByText("Bien, pero llegó tarde.", { exact: true })).toBeVisible();
+  await expect(section.getByRole("button", { name: "Enviar valoración" })).toHaveCount(0);
+});
+
+test("an expired session while rating links back to this service's detail after sign-in", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail({ rating: null }) }));
+  await page.route("**/api/customer/services/service-1/rating", async (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+  const section = page.getByRole("region", { name: "Valora este servicio" });
+  await section.locator("label.customer-star-option", { hasText: "3 de 5" }).click();
+  await section.getByRole("button", { name: "Enviar valoración" }).click();
+
+  const link = section.getByRole("link", { name: "Iniciar sesión" });
+  await expect(link).toHaveAttribute("href", "/login?next=%2Fcuenta%2Fservicios%2Fservice-1");
+});
+
+test("a 409 on rating shows the already-rated message and the stored rating", async ({ page }) => {
+  let detailRequests = 0;
+  await mockServiceDetail(page, "customer", async (route) => {
+    detailRequests += 1;
+    const rating = detailRequests > 1 ? { rating: 5, comment: null, createdAt: "2026-10-12T12:00:00Z" } : null;
+    await route.fulfill({ json: serviceDetail({ rating }) });
+  });
+  await page.route("**/api/customer/services/service-1/rating", async (route) => route.fulfill({ status: 409, json: { detail: "Already rated" } }));
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+  const section = page.getByRole("region", { name: "Valora este servicio" });
+  await section.locator("label.customer-star-option", { hasText: "5 de 5" }).click();
+  await section.getByRole("button", { name: "Enviar valoración" }).click();
+
+  await expect(section.getByRole("img", { name: "Valoración: 5 de 5 estrellas" })).toBeVisible();
+  await expect(section.locator(".customer-submit-error")).toHaveText("Este servicio ya fue valorado.");
+});
+
+test("a 422 saying the service is not completed shows the completed-service message in the detail", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
+  await page.route("**/api/customer/services/service-1/rating", async (route) =>
+    route.fulfill({ status: 422, json: { detail: [{ loc: ["body", "service"], type: "service_not_completed", msg: "x" }] } }),
+  );
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+  const section = page.getByRole("region", { name: "Valora este servicio" });
+  await section.locator("label.customer-star-option", { hasText: "3 de 5" }).click();
+  await section.getByRole("button", { name: "Enviar valoración" }).click();
+
+  await expect(section.locator(".customer-submit-error")).toHaveText("Solo puedes valorar servicios completados.");
+});
+
+test("provider detail and a service that is not completed have no rating section", async ({ page }) => {
+  await mockServiceDetail(page, "provider", async (route) => route.fulfill({ json: serviceDetail({ viewerRole: "provider", canManage: false }) }));
+  await signInTo(page, "independent_driver");
+
+  await page.goto("/cuenta/servicios/service-1");
+  await expect(page.getByRole("heading", { level: 1, name: "Mudanzas" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Valora este servicio" })).toHaveCount(0);
+});
+
+test("customer detail of a service not yet completed has no rating section", async ({ page }) => {
+  await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail({ status: "in_progress", completedAt: null }) }));
+  await signInTo(page, "client");
+
+  await page.goto("/cuenta/servicios/service-1");
+  await expect(page.getByRole("heading", { level: 1, name: "Mudanzas" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Valora este servicio" })).toHaveCount(0);
+});
+
 test("customer sees the counterpart, route, amount, dates, description and a chat link", async ({ page }) => {
   await mockServiceDetail(page, "customer", async (route) => route.fulfill({ json: serviceDetail() }));
   await signInTo(page, "client");

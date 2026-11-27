@@ -27,10 +27,12 @@ from amira_api.models import (
     ServicioAsignacion,
     TipoServicio,
     Usuario,
+    Valoracion,
     Vehiculo,
 )
 from amira_api.provider_service_schemas import (
     AmountBreakdownView,
+    CustomerServiceRating,
     DeliveryPhotoUrl,
     ServiceAssignment,
     ServiceCancellation,
@@ -61,6 +63,14 @@ def provider_display_name(kind: str, profile_name: str | None, first_name: str |
     else:
         name = (profile_name or "").strip()
     return name or PROVIDER_FALLBACK_NAME
+
+
+def form_or_quotation_address(form_column, quotation_column):
+    """The request form's address when it has text, else the accepted quotation's.
+
+    An empty form value counts as missing, so the list and the detail always agree on the same address.
+    """
+    return func.coalesce(func.nullif(form_column, ""), quotation_column)
 
 
 def _service_relation(statement: Select) -> Select:
@@ -113,8 +123,8 @@ def service_rows(*conditions) -> Select:
             _destination_commune.name.label("destination_commune"),
             _origin_region.name.label("origin_region"),
             _destination_region.name.label("destination_region"),
-            func.coalesce(FormularioServicio.origin, Cotizacion.origin).label("origin_address"),
-            func.coalesce(FormularioServicio.destination, Cotizacion.destination).label("destination_address"),
+            form_or_quotation_address(FormularioServicio.origin, Cotizacion.origin).label("origin_address"),
+            form_or_quotation_address(FormularioServicio.destination, Cotizacion.destination).label("destination_address"),
             Servicio.is_exclusive.label("is_exclusive"),
             Servicio.trip_id.label("shared_trip_id"),
             Servicio.description.label("description"),
@@ -138,8 +148,11 @@ def service_rows(*conditions) -> Select:
             _provider_owner.last_name.label("owner_last_name"),
             _customer.first_name.label("customer_first_name"),
             assignment_count.label("assignment_count"),
+            Valoracion.rating.label("rating_value"),
+            Valoracion.comment.label("rating_comment"),
+            Valoracion.created_at.label("rating_created_at"),
         )
-    ).where(*conditions)
+    ).outerjoin(Valoracion, Valoracion.service_id == Servicio.id).where(*conditions)
 
 
 def _counterpart_name(row, viewer_role: ViewerRole) -> str:
@@ -227,6 +240,17 @@ def _amount_breakdown(amount, viewer_role: ViewerRole) -> AmountBreakdownView | 
     )
 
 
+def _customer_rating(row) -> CustomerServiceRating | None:
+    """The customer's rating of the service, or None. ``service_rows`` joins at most one rating per service."""
+    if row.get("rating_value") is None:
+        return None
+    return CustomerServiceRating(
+        rating=row["rating_value"],
+        comment=row["rating_comment"],
+        created_at=row["rating_created_at"],
+    )
+
+
 def shape_detail(
     row,
     viewer_role: ViewerRole,
@@ -266,6 +290,7 @@ def shape_detail(
         assignments=assignments,
         shared_trip_id=row["shared_trip_id"] if viewer_role == "provider" else None,
         amount_breakdown=_amount_breakdown(row["amount"], viewer_role),
+        rating=_customer_rating(row) if viewer_role == "customer" else None,
     )
 
 

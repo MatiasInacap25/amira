@@ -1,21 +1,19 @@
 "use client";
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Star } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect } from "react";
 import { CUSTOMER_SERVICES_LAYOUT, MarketplaceSkeleton } from "@/components/marketplace/marketplace-skeleton";
 import { MarketplaceFooter, MarketplaceHeader } from "@/components/marketplace/site-navigation";
 import {
-  createCustomerServiceRating,
   requestCustomerServices,
   type CustomerServicePage,
   type CustomerService,
 } from "@/lib/marketplace-api";
-import { normalizeRatingComment, RATING_COMMENT_MAX_LENGTH, validateRatingDraft, type RatingDraftErrors } from "@/lib/customer-rating-validation";
-import { mapRatingRejection } from "@/lib/customer-rating-errors";
 import { nextCustomerServicesOffset } from "@/lib/customer-services-pagination";
+import { formatServiceRoute, formatServiceSchedule } from "@/lib/customer-service-schedule";
+import { serviceStatusLabel } from "@/lib/service-status";
 import { CUSTOMER_SERVICES_KEY } from "@/lib/service-query-keys";
 import { shouldClearCustomerCache } from "@/lib/customer-cache-policy";
 import { sendWithTokenRetry } from "@/lib/customer-request-retry";
@@ -75,8 +73,6 @@ export function CustomerServicesView() {
     if (sessionExpired) router.replace(SIGN_IN_HREF);
   }, [router, sessionExpired]);
 
-  // Lives here, not in RatingForm, so the notice survives the refetch that unmounts the form.
-  const [alreadyRatedIds, setAlreadyRatedIds] = useState<ReadonlySet<string>>(() => new Set());
   const services = servicesQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const needsSignIn = sessionQuery.isError || servicesQuery.error instanceof CustomerSessionError;
   const servicesFailed = servicesQuery.isError && !(servicesQuery.error instanceof CustomerSessionError);
@@ -87,7 +83,7 @@ export function CustomerServicesView() {
       <main className="marketplace-main lp-app customer-services-page" id="contenido">
         <div className="customer-services-wrap">
           <h1>Mis servicios</h1>
-          <p className="customer-services-intro">Valora los servicios completados. Tu valoración aparece en el perfil del prestador.</p>
+          <p className="customer-services-intro">Revisa tus servicios. Entra a un servicio completado para valorarlo.</p>
 
           {needsSignIn && (
             <div className="marketplace-state marketplace-error" role="alert">
@@ -116,11 +112,7 @@ export function CustomerServicesView() {
             <ul className="customer-service-list">
               {services.map((service) => (
                 <li className="customer-service-row" key={service.serviceId}>
-                  <ServiceRatingRow
-                    alreadyRated={alreadyRatedIds.has(service.serviceId)}
-                    onAlreadyRated={() => setAlreadyRatedIds((current) => new Set(current).add(service.serviceId))}
-                    service={service}
-                  />
+                  <ServiceRow service={service} />
                 </li>
               ))}
             </ul>
@@ -139,143 +131,30 @@ export function CustomerServicesView() {
   );
 }
 
-function ServiceRatingRow({ alreadyRated, onAlreadyRated, service }: { alreadyRated: boolean; onAlreadyRated: () => void; service: CustomerService }) {
+// The whole row is the link to the detail page, where the customer rates a completed service.
+function ServiceRow({ service }: { service: CustomerService }) {
+  const schedule = formatServiceSchedule(service.scheduledAt);
+  const route = formatServiceRoute(service.origin, service.destination);
   return (
-    <article aria-labelledby={`service-${service.serviceId}-title`} className="customer-service-card">
-      <header>
-        <h2 id={`service-${service.serviceId}-title`}>
-          <Link className="customer-service-title-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>{service.serviceTypeName}</Link>
-        </h2>
-        <p>{service.providerName}{service.completedAt ? ` · Completado el ${formatDate(service.completedAt)}` : ""}</p>
-        <Link className="account-service-detail-link service-card-selection-link" href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}>Ver detalle</Link>
-      </header>
-      {service.rating ? (
-        <div className="customer-service-rating">
-          <StarDisplay value={service.rating.rating} />
-          {service.rating.comment && <p>{service.rating.comment}</p>}
-          <time dateTime={service.rating.createdAt}>Valorado el {formatDate(service.rating.createdAt)}</time>
-        </div>
-      ) : service.completedAt ? (
-        <RatingForm serviceId={service.serviceId} onAlreadyRated={onAlreadyRated} />
-      ) : (
-        <p className="customer-service-pending">Podrás valorar este servicio cuando esté completado.</p>
-      )}
-      {alreadyRated && (
-        <div className="customer-submit-error" role="alert">
-          <p>Este servicio ya fue valorado.</p>
-        </div>
-      )}
-    </article>
+    <Link
+      aria-label={`${service.serviceTypeName}, ${schedule}`}
+      className="customer-service-card"
+      href={`/cuenta/servicios/${encodeURIComponent(service.serviceId)}`}
+    >
+      <span className="customer-service-main">
+        <h2>{service.serviceTypeName}</h2>
+        <span className="customer-service-provider">{service.providerName}</span>
+        <time className="customer-service-schedule" dateTime={service.scheduledAt ?? undefined}>{schedule}</time>
+        <span className="customer-service-route">{route}</span>
+      </span>
+      <span className="customer-service-badges">
+        <span className={`account-service-status account-service-status-${service.status}`}>{serviceStatusLabel(service.status)}</span>
+        {service.status === "completed" && (
+          <span className={`customer-service-chip ${service.rating ? "customer-service-chip-rated" : "customer-service-chip-pending"}`}>
+            {service.rating ? "Valorado" : "Pendiente de valorar"}
+          </span>
+        )}
+      </span>
+    </Link>
   );
-}
-
-function StarDisplay({ value }: { value: number }) {
-  return (
-    <p aria-label={`Valoración: ${value} de 5 estrellas`} className="customer-star-display" role="img">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Star aria-hidden="true" fill={star <= value ? "currentColor" : "none"} key={star} size={16} />
-      ))}
-    </p>
-  );
-}
-
-function RatingForm({ onAlreadyRated, serviceId }: { onAlreadyRated: () => void; serviceId: string }) {
-  const queryClient = useQueryClient();
-  const [rating, setRating] = useState<number | null>(null);
-  const [comment, setComment] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<RatingDraftErrors>({});
-  const [submitError, setSubmitError] = useState("");
-  const [needsSignIn, setNeedsSignIn] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy) return;
-    const errors = validateRatingDraft({ rating, comment });
-    setFieldErrors(errors);
-    setSubmitError("");
-    setNeedsSignIn(false);
-    if (rating === null || Object.keys(errors).length > 0) return;
-
-    setBusy(true);
-    try {
-      const response = await sendWithTokenRetry(
-        (accessToken) => createCustomerServiceRating(serviceId, { rating, comment: normalizeRatingComment(comment) }, accessToken),
-        readAccessToken,
-        refreshAccessToken,
-      );
-      if (response.ok) {
-        await queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY });
-        return;
-      }
-      if (response.status === 401) {
-        setNeedsSignIn(true);
-        setSubmitError("Tu sesión expiró. Inicia sesión nuevamente para continuar.");
-      }
-      else if (response.status === 404) setSubmitError("No encontramos este servicio en tu cuenta. Actualiza la página e inténtalo nuevamente.");
-      else if (response.status === 409) {
-        onAlreadyRated();
-        await queryClient.invalidateQueries({ queryKey: CUSTOMER_SERVICES_KEY });
-      } else if (response.status === 422) {
-        const rejection = mapRatingRejection(await response.json().catch(() => null));
-        setFieldErrors(rejection.fieldErrors);
-        setSubmitError(rejection.submitError);
-      }
-      else setSubmitError("No pudimos guardar la valoración. Inténtalo nuevamente.");
-    } catch (cause) {
-      if (cause instanceof CustomerSessionError) {
-        setNeedsSignIn(true);
-        setSubmitError("Tu sesión expiró. Inicia sesión nuevamente para continuar.");
-      } else {
-        setSubmitError("No pudimos guardar la valoración. Revisa tu conexión e inténtalo nuevamente.");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const ratingErrorId = `rating-${serviceId}-error`;
-  const commentErrorId = `rating-${serviceId}-comment-error`;
-
-  return (
-    <form className="customer-rating-form" noValidate onSubmit={submit}>
-      <fieldset aria-describedby={fieldErrors.rating ? ratingErrorId : undefined} className="customer-rating-fieldset">
-        <legend>Calificación</legend>
-        <div className="customer-star-picker">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <label className="customer-star-option" key={star}>
-              <input checked={rating === star} className="customer-star-input" name={`rating-${serviceId}`} onChange={() => { setRating(star); setFieldErrors({}); }} type="radio" value={star} />
-              <Star aria-hidden="true" className={star <= (rating ?? 0) ? "customer-star-filled" : undefined} fill={star <= (rating ?? 0) ? "currentColor" : "none"} size={22} />
-              <span className="customer-star-label">{star} de 5</span>
-            </label>
-          ))}
-        </div>
-        {fieldErrors.rating && <p className="customer-field-error" id={ratingErrorId}>{fieldErrors.rating}</p>}
-      </fieldset>
-      <div className="customer-rating-comment">
-        <label htmlFor={`rating-${serviceId}-comment`}>Comentario (opcional)</label>
-        <textarea
-          aria-describedby={fieldErrors.comment ? commentErrorId : undefined}
-          aria-invalid={fieldErrors.comment ? true : undefined}
-          id={`rating-${serviceId}-comment`}
-          maxLength={RATING_COMMENT_MAX_LENGTH}
-          onChange={(event) => { setComment(event.target.value); setFieldErrors((current) => ({ ...current, comment: undefined })); }}
-          rows={3}
-          value={comment}
-        />
-        {fieldErrors.comment && <p className="customer-field-error" id={commentErrorId}>{fieldErrors.comment}</p>}
-      </div>
-      {submitError && (
-        <div className="customer-submit-error" role="alert">
-          <p>{submitError}</p>
-          {needsSignIn && <Link href={SIGN_IN_HREF}>Iniciar sesión</Link>}
-        </div>
-      )}
-      <button className="button button-primary customer-rating-submit" disabled={busy} type="submit">{busy ? "Guardando…" : "Enviar valoración"}</button>
-    </form>
-  );
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(value));
 }
