@@ -16,7 +16,7 @@ export function FinanceExport({ query }: { query: string }) {
 
 export function DashboardPeriod({ period }: { period: { preset: string; from: string; to: string } }) {
   const [preset, setPreset] = useState(period.preset);
-  return <form action="/admin" className="flex flex-wrap items-end gap-3">
+  return <form action="/admin" className="admin-card admin-toolbar">
     <label className="grid gap-1">Período
       <select name="period" className="admin-input" value={preset} onChange={(event) => setPreset(event.target.value)}>
         <option value="today">Hoy</option><option value="week">7 días</option><option value="30">30 días</option>
@@ -27,6 +27,6 @@ export function DashboardPeriod({ period }: { period: { preset: string; from: st
       <label className="grid gap-1">Desde<input type="date" name="from" defaultValue={period.from} required className="admin-input" /></label>
       <label className="grid gap-1">Hasta<input type="date" name="to" defaultValue={period.to} required className="admin-input" /></label>
     </>}
-    <button className="admin-button">Aplicar</button>
+    <button className="admin-button admin-primary">Aplicar</button>
   </form>;
 }

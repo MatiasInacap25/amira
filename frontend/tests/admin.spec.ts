@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { expect, test, type BrowserContext } from "@playwright/test";
 
 for (const path of ["/admin", "/admin/auditoria"]) {
@@ -48,6 +49,24 @@ test("admin sidebar follows navigation and browser history", async ({ page, cont
   await expect(sidebar.getByRole("link", { name: "Principal" })).toHaveAttribute("aria-current", "page");
 });
 
+test("admin design tokens style the frame, page header and active navigation", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin");
+  const frame = page.locator(".admin-frame");
+  const header = page.getByRole("heading", { name: "Principal" }).locator("..");
+  const nav = page.getByRole("navigation", { name: "Administración" });
+  const active = nav.getByRole("link", { name: "Principal" });
+  await expect(frame).toHaveCSS("background-color", "rgb(244, 247, 247)");
+  await expect(header).toHaveCSS("border-bottom-width", "1px");
+  await expect(active).toHaveCSS("border-inline-start-color", "rgb(184, 72, 36)");
+  await expect(active).toHaveCSS("outline-style", "none");
+  await page.getByRole("link", { name: "Amira Admin" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(active).toBeFocused();
+  await expect(active).toHaveCSS("outline-style", "solid");
+  await expect(nav.getByLabel("2 pendientes")).toHaveCSS("color", "rgb(184, 72, 36)");
+});
+
 test("mobile opens and dismisses the menu without page overflow", async ({ page, context }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(context, true);
@@ -83,6 +102,29 @@ test("finance pages show mandate-model VAT and read-only settings", async ({ pag
   expect(errors).toEqual([]);
 });
 
+test("dashboard groups KPI cards and adapts their columns to the viewport", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin");
+  const groups = ["Dinero", "Transportistas", "Operación"].map((name) => page.getByRole("region", { name, exact: true }));
+  for (const [index, count] of [5, 2, 6].entries()) {
+    await expect(groups[index].getByRole("heading", { level: 3 })).toHaveCount(count);
+    await expect(groups[index].locator(".admin-card").first()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  }
+  for (const [width, columns] of [[1440, 4], [768, 2], [390, 1]]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(groups[0].locator(".admin-kpi-grid")).toHaveCSS("grid-template-columns", new RegExp(`^(\\S+px ?){${columns}}$`));
+  }
+  const apply = page.getByRole("button", { name: "Aplicar", exact: true });
+  await expect(apply).toHaveCSS("background-color", "rgb(184, 72, 36)");
+  await page.getByLabel("Período").selectOption("today");
+  await apply.click();
+  await expect(page).toHaveURL(/period=today/);
+  const chart = page.getByRole("img", { name: "Gráfico diario de recaudación y comisiones" });
+  await expect(chart.locator("rect").nth(0)).toHaveCSS("fill", "rgb(23, 57, 75)");
+  await expect(chart.locator("rect").nth(1)).toHaveCSS("fill", "rgb(184, 72, 36)");
+  await expect(chart.locator("line")).toHaveCSS("stroke", "rgb(56, 82, 95)");
+});
+
 test("people pages expose the customer directory and its filters", async ({ page, context }) => {
   await login(context, true);
   await page.goto("/admin/clientes");
@@ -90,6 +132,105 @@ test("people pages expose the customer directory and its filters", async ({ page
   await expect(page.getByRole("searchbox", { name: "Buscar" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Exportar CSV" })).toBeVisible();
   await expect(page.getByText("No hay resultados con estos filtros")).toBeVisible();
+});
+
+test("payment table separates cells and copies UUIDs without changing detail links", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await login(context, true);
+  await page.goto("/admin/pagos");
+  const row = page.getByRole("row").nth(1);
+  const id = "12345678-1234-4234-8234-123456789abc";
+  const service = "23456789-1234-4234-8234-123456789abc";
+  const copy = row.getByRole("button", { name: `Copiar N°: ${id}` });
+  await expect(row.getByTitle(id)).toHaveText("12345678…");
+  const serviceLink = row.getByRole("link", { name: "23456789…" });
+  await expect(serviceLink).toHaveAttribute("href", `/admin/servicios?detail=${service}`);
+  await expect(serviceLink.getByTitle(service)).toBeVisible();
+  await expect(row.getByRole("cell").nth(1)).toHaveCSS("border-inline-start-width", "1px");
+  await expect(row.getByRole("cell").nth(5)).toHaveCSS("text-align", "right");
+  await expect(row.getByRole("cell").nth(11)).toHaveCSS("white-space", "nowrap");
+  await expect(row.getByRole("cell").last()).toHaveCSS("text-align", "right");
+  await expect(page.getByRole("navigation", { name: "Paginación" })).toContainText("Mostrando 1–1 de 1");
+  await copy.click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(id);
+  await expect(page).toHaveURL(/\/admin\/pagos$/);
+  await row.getByRole("button", { name: "12345678…" }).click();
+  await expect(page).toHaveURL(new RegExp(`detail=${id}`));
+});
+
+test("payment disclosure keeps primary filters visible and preserves advanced query fields", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin/pagos");
+  const state = page.getByRole("combobox", { name: "Estado", exact: true });
+  const since = page.getByLabel("Desde");
+  const minimum = page.getByLabel("Monto mínimo");
+  await expect(page.getByRole("searchbox", { name: "Buscar" })).toBeVisible();
+  await expect(state).toBeVisible();
+  await expect(since).toBeVisible();
+  await expect(page.getByLabel("Hasta")).toBeVisible();
+  await expect(minimum).toBeHidden();
+  await page.getByText("Más filtros", { exact: true }).click();
+  await expect(minimum).toBeVisible();
+  await expect(minimum).toHaveCSS("height", "40px");
+  await expect(state).toHaveCSS("height", "40px");
+  await state.selectOption("approved");
+  await since.fill("2026-11-01");
+  await minimum.fill("500");
+  await page.getByText("Más filtros", { exact: true }).click();
+  const apply = page.getByRole("button", { name: "Aplicar filtros" });
+  await expect(apply).toHaveCSS("background-color", "rgb(184, 72, 36)");
+  await apply.click();
+  await expect.poll(() => Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+    status: "approved", start: "2026-11-01", minimum_amount: "500",
+  });
+  await expect(minimum).toHaveValue("500");
+  await page.getByRole("button", { name: "Limpiar filtros" }).click();
+  await expect(page).toHaveURL(/\/admin\/pagos$/);
+  await expect(minimum).toBeHidden();
+});
+
+test("admin layout fits the phone viewport and scrolls wide tables locally", async ({ page, context }) => {
+  test.setTimeout(60_000);
+  await login(context, true);
+  const screenshotDir = process.env.AMIRA_ADMIN_SCREENSHOT_DIR;
+  const pages = [
+    { path: "/admin", slug: "principal", title: "Principal" },
+    { path: "/admin/clientes", slug: "clientes", title: "Clientes" },
+    { path: "/admin/pagos", slug: "pagos", title: "Pagos" },
+  ];
+  const phone = { name: "phone", width: 390, height: 844 };
+  const desktop = { name: "desktop", width: 1440, height: 1000 };
+  for (const route of pages) {
+    for (const { name, width, height } of screenshotDir ? [desktop, phone] : [phone]) {
+      await page.setViewportSize({ width, height });
+      await page.goto(route.path);
+      await expect(page.getByRole("heading", { name: route.title, level: 1, exact: true })).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      if (name === "phone") {
+        const fit = await page.evaluate(() => {
+          const main = document.querySelector("main")!;
+          const table = main.querySelector(".admin-table-scroll");
+          return {
+            page: document.documentElement.scrollWidth === document.documentElement.clientWidth,
+            main: main.scrollWidth === main.clientWidth,
+            tableScrolls: Boolean(table && table.scrollWidth > table.clientWidth),
+          };
+        });
+        expect(fit.page, route.path).toBe(true);
+        expect(fit.main, route.path).toBe(true);
+        if (route.slug === "pagos") expect(fit.tableScrolls).toBe(true);
+      }
+      if (screenshotDir) {
+        await page.screenshot({
+          path: join(screenshotDir, `after-${route.slug}-${name}.png`),
+          fullPage: true,
+          animations: "disabled",
+          caret: "initial",
+          style: "nextjs-portal { display: none }",
+        });
+      }
+    }
+  }
 });
 
 test("document rejection requires a reason and opens the next pending document", async ({ page, context }) => {

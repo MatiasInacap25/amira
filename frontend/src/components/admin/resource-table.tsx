@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -62,6 +61,12 @@ function valueOf(value: unknown, field?: ResourceField) {
       : String(entry)}</li>)}
   </ul> : "Sin registros";
   return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+function resourceCellHref(field: string, row: AdminRow) {
+  if (field === "provider" && typeof row.provider_id === "string") return `/admin/proveedores?detail=${encodeURIComponent(row.provider_id)}`;
+  if (field === "service_id" && typeof row.service_id === "string") return `/admin/servicios?detail=${encodeURIComponent(row.service_id)}`;
+  if (field === "request_id" && typeof row.request_id === "string") return `/admin/solicitudes?detail=${encodeURIComponent(row.request_id)}`;
 }
 
 export function ResourceTable({ resource, data, filters, detail, detailId, live = false }: {
@@ -203,15 +208,17 @@ export function ResourceTable({ resource, data, filters, detail, detailId, live 
     <Filters key={writeFilters(filters).toString()} fields={resource.filters} filters={filters} initial={resource.defaults}
       exportPath={`${resource.path}/export.csv`} filename={pathname.split("/").at(-1)} />
     <DataTable
-      columns={resource.fields.map((field) => ({ title: field.label, sort: field.sort, cell: (row: AdminRow) =>
-        field.key === "provider" && typeof row.provider_id === "string"
-          ? <Link className="underline" href={`/admin/proveedores?detail=${encodeURIComponent(row.provider_id)}`}>{String(row.provider ?? "Sin dato")}</Link>
-          : field.key === "service_id" && typeof row.service_id === "string"
-            ? <Link className="underline" href={`/admin/servicios?detail=${encodeURIComponent(row.service_id)}`}>{row.service_id}</Link>
-            : field.key === "request_id" && typeof row.request_id === "string"
-              ? <Link className="underline" href={`/admin/solicitudes?detail=${encodeURIComponent(row.request_id)}`}>{row.request_id}</Link>
-            : field.key === "comment" && typeof row.comment === "string" ? <span className="block max-w-64 truncate" title={row.comment}>{row.comment}</span>
-            : valueOf(row[field.key], field),
+      columns={resource.fields.map((field) => ({
+        title: field.label,
+        sort: field.sort,
+        format: field.format === "money" || field.format === "date" ? field.format : undefined,
+        identifier: (row: AdminRow) => field.key === "id" || field.key.endsWith("_id") ? row[field.key] : undefined,
+        href: (row: AdminRow) => resourceCellHref(field.key, row),
+        cell: (row: AdminRow, shortId?: string) => shortId ??
+          (field.key === "provider" && typeof row.provider_id === "string" ? String(row.provider ?? "Sin dato")
+            : field.key === "comment" && typeof row.comment === "string"
+              ? <span className="block max-w-64 truncate" title={row.comment}>{row.comment}</span>
+              : valueOf(row[field.key], field)),
       }))}
       rows={data?.items ?? []} rowId={(row) => row.id} rowLabel={title} onDetail={(row) => showDetail(row.id)}
       actions={actions} filters={filters} pathname={pathname} total={data?.total ?? 0} limit={data?.limit ?? 20} offset={data?.offset ?? 0}

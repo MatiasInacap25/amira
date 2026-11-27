@@ -34,10 +34,15 @@ const fields = [
   { key: "date_from", label: "Desde", type: "date" }, { key: "date_to", label: "Hasta", type: "date" },
 ] as const;
 
-function entityLink(row: AuditEntry) {
+function entityHref(row: AuditEntry) {
   const section = entityPaths.get(row.entity_type);
+  return section ? `/admin/${section}?detail=${encodeURIComponent(row.entity_id)}` : undefined;
+}
+
+function entityLink(row: AuditEntry) {
+  const href = entityHref(row);
   const name = `${row.entity_type}: ${row.entity_id}`;
-  return section ? <Link href={`/admin/${section}?detail=${encodeURIComponent(row.entity_id)}`}>{name}</Link> : name;
+  return href ? <Link href={href}>{name}</Link> : name;
 }
 
 export function AuditTable({ filters, data, detail }: { filters: AdminFilters; data: AuditPageData | null; detail: string | undefined }) {
@@ -52,10 +57,10 @@ export function AuditTable({ filters, data, detail }: { filters: AdminFilters; d
         exportPath="/api/admin/audit/export.csv" filename="auditoria" />
       <DataTable
         columns={[
-          { title: "Fecha", sort: "created_at", cell: (row: AuditEntry) => adminDate(row.created_at) },
-          { title: "Admin", cell: (row) => row.admin_user_id },
+          { title: "Fecha", sort: "created_at", format: "date", cell: (row: AuditEntry) => adminDate(row.created_at) },
+          { title: "Admin", identifier: (row) => row.admin_user_id, cell: (row, shortId) => shortId ?? row.admin_user_id },
           { title: "Acción", cell: (row) => row.action },
-          { title: "Entidad", cell: entityLink },
+          { title: "Entidad", href: entityHref, identifier: (row) => row.entity_id, cell: (row, shortId) => `${row.entity_type}: ${shortId ?? row.entity_id}` },
           { title: "Motivo", cell: (row) => row.reason ?? "—" },
         ]}
         rows={data?.items ?? []} rowId={(row) => row.id} rowLabel={(row) => row.action} onDetail={open}

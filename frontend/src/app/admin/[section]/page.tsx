@@ -20,7 +20,7 @@ export default async function AdminSectionPage({ params, searchParams }: PagePro
     ["locations", "Regiones y comunas"], ["roles", "Roles"]] as const;
   const tab = catalogTabs.find(([id]) => id === raw.tab)?.[0] ?? "service-types";
   const resource = catalog ? catalogResources[tab] : paid ? paidPayoutResource : adminResources[section];
-  if (!resource) return <main className="space-y-2 p-6"><h1>{item.label}</h1><p>Sección en preparación.</p></main>;
+  if (!resource) return <main className="p-6"><header><h1 className="text-2xl font-semibold">{item.label}</h1><p>Sección en preparación.</p></header></main>;
   const get = (key: string) => {
     const value = raw[key];
     return typeof value === "string" ? value : null;
