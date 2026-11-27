@@ -133,6 +133,61 @@ test("people pages expose the customer directory and its filters", async ({ page
   await expect(page.getByText("No hay resultados con estos filtros")).toBeVisible();
 });
 
+test("payment table separates cells and copies UUIDs without changing detail links", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await login(context, true);
+  await page.goto("/admin/pagos");
+  const row = page.getByRole("row").nth(1);
+  const id = "12345678-1234-4234-8234-123456789abc";
+  const service = "23456789-1234-4234-8234-123456789abc";
+  const copy = row.getByRole("button", { name: `Copiar N°: ${id}` });
+  await expect(row.getByTitle(id)).toHaveText("12345678…");
+  const serviceLink = row.getByRole("link", { name: "23456789…" });
+  await expect(serviceLink).toHaveAttribute("href", `/admin/servicios?detail=${service}`);
+  await expect(serviceLink.getByTitle(service)).toBeVisible();
+  await expect(row.getByRole("cell").nth(1)).toHaveCSS("border-inline-start-width", "1px");
+  await expect(row.getByRole("cell").nth(5)).toHaveCSS("text-align", "right");
+  await expect(row.getByRole("cell").nth(11)).toHaveCSS("white-space", "nowrap");
+  await expect(row.getByRole("cell").last()).toHaveCSS("text-align", "right");
+  await expect(page.getByRole("navigation", { name: "Paginación" })).toContainText("Mostrando 1–1 de 1");
+  await copy.click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(id);
+  await expect(page).toHaveURL(/\/admin\/pagos$/);
+  await row.getByRole("button", { name: "12345678…" }).click();
+  await expect(page).toHaveURL(new RegExp(`detail=${id}`));
+});
+
+test("payment disclosure keeps primary filters visible and preserves advanced query fields", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin/pagos");
+  const state = page.getByRole("combobox", { name: "Estado", exact: true });
+  const since = page.getByLabel("Desde");
+  const minimum = page.getByLabel("Monto mínimo");
+  await expect(page.getByRole("searchbox", { name: "Buscar" })).toBeVisible();
+  await expect(state).toBeVisible();
+  await expect(since).toBeVisible();
+  await expect(page.getByLabel("Hasta")).toBeVisible();
+  await expect(minimum).toBeHidden();
+  await page.getByText("Más filtros", { exact: true }).click();
+  await expect(minimum).toBeVisible();
+  await expect(minimum).toHaveCSS("height", "40px");
+  await expect(state).toHaveCSS("height", "40px");
+  await state.selectOption("approved");
+  await since.fill("2026-11-01");
+  await minimum.fill("500");
+  await page.getByText("Más filtros", { exact: true }).click();
+  const apply = page.getByRole("button", { name: "Aplicar filtros" });
+  await expect(apply).toHaveCSS("background-color", "rgb(184, 72, 36)");
+  await apply.click();
+  await expect.poll(() => Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+    status: "approved", start: "2026-11-01", minimum_amount: "500",
+  });
+  await expect(minimum).toHaveValue("500");
+  await page.getByRole("button", { name: "Limpiar filtros" }).click();
+  await expect(page).toHaveURL(/\/admin\/pagos$/);
+  await expect(minimum).toBeHidden();
+});
+
 test("document rejection requires a reason and opens the next pending document", async ({ page, context }) => {
   await login(context, true);
   let sentReason: string | undefined;

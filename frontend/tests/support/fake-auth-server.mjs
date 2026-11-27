@@ -106,6 +106,15 @@ const server = createServer((request, response) => {
       const items = url.pathname.endsWith("/roles") ? [{ id: "user:fixture", name: "Cliente", code: "client", kind: "user" }] : [];
       return send(response, 200, { items, total: items.length, limit: 20, offset: 0 });
     }
+    if (url.pathname === "/api/admin/transactions/payments") {
+      const items = [{
+        id: "12345678-1234-4234-8234-123456789abc", service_id: "23456789-1234-4234-8234-123456789abc",
+        quotation_id: "34567890-1234-4234-8234-123456789abc", external_id: "45678901-1234-4234-8234-123456789abc",
+        customer: "Cliente de prueba", provider: "Transportista de prueba", amount: 80000, net: 67227, iva: 12773,
+        status: "approved", payment_provider: "simulated", created_at: "2026-11-20T14:00:00Z", confirmed_at: "2026-11-20T14:05:00Z",
+      }];
+      return send(response, 200, { items, total: items.length, limit: 20, offset: 0 });
+    }
     if (url.pathname === "/api/admin/people/customers") return send(response, 200, { items: [], total: 0, limit: 20, offset: 0 });
     if (url.pathname === "/api/admin/audit") {
       const action = url.searchParams.get("action") ?? "rating.show";

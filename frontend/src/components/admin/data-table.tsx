@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { type AdminFilters, updateFilter, writeFilters } from "@/lib/admin/query";
 
 export type RowAction = { label: string; href?: string; newTab?: boolean; disabled?: string; onClick?: () => void };
@@ -25,7 +26,25 @@ export function RowActionsMenu({ actions, rowLabel }: { actions: readonly RowAct
   );
 }
 
-type Column<T> = { title: string; sort?: string; cell: (item: T) => ReactNode };
+const UUID = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
+
+function CopyIdentifier({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return <button className="admin-copy" type="button" aria-label={`Copiar ${label}: ${value}`}
+    onBlur={() => setCopied(false)}
+    onClick={() => { void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => setCopied(false)); }}>
+    {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+  </button>;
+}
+
+type Column<T> = {
+  title: string;
+  sort?: string;
+  format?: "money" | "date";
+  identifier?: (item: T) => unknown;
+  href?: (item: T) => string | undefined;
+  cell: (item: T, shortId?: string) => ReactNode;
+};
 
 export function DataTable<T>({ columns, rows, rowId, rowLabel, onDetail, actions, filters, pathname, total, limit, offset,
   loading, error, onRetry }: {
@@ -42,24 +61,35 @@ export function DataTable<T>({ columns, rows, rowId, rowLabel, onDetail, actions
     <>
       <div className="admin-table-scroll">
         <table>
-          <thead><tr>{columns.map(({ title, sort }) => (
-            <th key={title} scope="col" aria-sort={sort && filters.sort === sort ? "ascending" : sort && filters.sort === `-${sort}` ? "descending" : undefined}>
+          <thead><tr>{columns.map(({ title, sort, format }) => (
+            <th key={title} scope="col" data-format={format} aria-sort={sort && filters.sort === sort ? "ascending" : sort && filters.sort === `-${sort}` ? "descending" : undefined}>
               {sort ? <Link href={href("sort", filters.sort === sort ? `-${sort}` : sort)}>{title}</Link> : title}
             </th>
-          ))}{actions && <th scope="col"><span className="sr-only">Acciones</span></th>}</tr></thead>
+          ))}{actions && <th className="admin-actions-cell" scope="col"><span className="sr-only">Acciones</span></th>}</tr></thead>
           <tbody>{rows.map((row) => (
             <tr key={rowId(row)} onClick={onDetail ? (event) => {
               if (!(event.target as Element).closest("a,button,summary,details")) onDetail(row);
             } : undefined}>
-              {columns.map(({ title, cell }, index) => <td key={title}>{index === 0 && onDetail
-                ? <button className="text-left underline" type="button" onClick={() => onDetail(row)}>{cell(row)}</button>
-                : cell(row)}</td>)}
-              {actions && <td><RowActionsMenu actions={actions(row)} rowLabel={rowLabel?.(row) ?? rowId(row)} /></td>}
+              {columns.map(({ title, cell, format, identifier, href: cellHref }, index) => {
+                const raw = identifier?.(row);
+                const uuid = typeof raw === "string" && UUID.test(raw) ? raw : undefined;
+                const value = cell(row, uuid ? `${uuid.slice(0, 8)}…` : undefined);
+                const label = uuid ? <span title={uuid}>{value}</span> : value;
+                const link = cellHref?.(row);
+                const content = link ? <Link className="underline" href={link}>{label}</Link>
+                  : index === 0 && onDetail
+                    ? <button className="text-left underline" type="button" onClick={() => onDetail(row)}>{label}</button>
+                    : label;
+                return <td key={title} data-format={format}>
+                  {uuid ? <span className="admin-id-cell">{content}<CopyIdentifier label={title} value={uuid} /></span> : content}
+                </td>;
+              })}
+              {actions && <td className="admin-actions-cell"><RowActionsMenu actions={actions(row)} rowLabel={rowLabel?.(row) ?? rowId(row)} /></td>}
             </tr>
           ))}</tbody>
         </table>
       </div>
-      <nav aria-label="Paginación" className="mt-3 flex flex-wrap gap-4">
+      <nav aria-label="Paginación" className="admin-pagination">
         <span>Mostrando {offset + 1}–{offset + rows.length} de {total}</span>
         {offset > 0 && <Link href={href("offset", String(Math.max(0, offset - limit)))}>Anterior</Link>}
         {offset + limit < total && <Link href={href("offset", String(offset + limit))}>Siguiente</Link>}
