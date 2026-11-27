@@ -48,6 +48,24 @@ test("admin sidebar follows navigation and browser history", async ({ page, cont
   await expect(sidebar.getByRole("link", { name: "Principal" })).toHaveAttribute("aria-current", "page");
 });
 
+test("admin design tokens style the frame, page header and active navigation", async ({ page, context }) => {
+  await login(context, true);
+  await page.goto("/admin");
+  const frame = page.locator(".admin-frame");
+  const header = page.getByRole("heading", { name: "Principal" }).locator("..");
+  const nav = page.getByRole("navigation", { name: "Administración" });
+  const active = nav.getByRole("link", { name: "Principal" });
+  await expect(frame).toHaveCSS("background-color", "rgb(244, 247, 247)");
+  await expect(header).toHaveCSS("border-bottom-width", "1px");
+  await expect(active).toHaveCSS("border-inline-start-color", "rgb(184, 72, 36)");
+  await expect(active).toHaveCSS("outline-style", "none");
+  await page.getByRole("link", { name: "Amira Admin" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(active).toBeFocused();
+  await expect(active).toHaveCSS("outline-style", "solid");
+  await expect(nav.getByLabel("2 pendientes")).toHaveCSS("color", "rgb(184, 72, 36)");
+});
+
 test("mobile opens and dismisses the menu without page overflow", async ({ page, context }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(context, true);

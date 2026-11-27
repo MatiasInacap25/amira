@@ -1,3 +1,4 @@
+import "@/styles/lp-tokens.css";
 import "./admin.css";
 import { Sidebar } from "@/components/admin/sidebar";
 import Link from "next/link";
